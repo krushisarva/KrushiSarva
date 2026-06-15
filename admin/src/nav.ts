@@ -4,7 +4,7 @@ import {
   Beef, Tractor, HardHat, CalendarCheck, MessageSquare, MessagesSquare, UsersRound,
   Cpu, Coins, FlaskConical, Activity, Landmark, IndianRupee, Sprout, Bug, RefreshCw,
   Megaphone, Flag, Fingerprint, ShieldAlert, FileCheck2, Trash2, History,
-  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, type LucideIcon,
+  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, PackageX, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem { label: string; to: string; icon: LucideIcon; keywords?: string; scope?: string }
@@ -20,7 +20,8 @@ export const NAV: NavGroup[] = [
   ]},
   { title: 'Marketplace', items: [
     { label: 'Categories', to: '/categories', icon: Tags },
-    { label: 'Products', to: '/products', icon: Package },
+    { label: 'Products', to: '/products', icon: Package, keywords: 'catalogue import export csv bulk' },
+    { label: 'Low Stock', to: '/low-stock', icon: PackageX, scope: 'CMS_EDITOR', keywords: 'inventory alerts restock out of stock threshold' },
     { label: 'Reviews', to: '/reviews', icon: Star },
     { label: 'Orders', to: '/orders', icon: ShoppingCart, keywords: 'gmv refund payment' },
   ]},
