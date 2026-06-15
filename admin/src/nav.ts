@@ -4,7 +4,7 @@ import {
   Beef, Tractor, HardHat, CalendarCheck, MessageSquare, MessagesSquare, UsersRound,
   Cpu, Coins, FlaskConical, Activity, Landmark, IndianRupee, Sprout, Bug, RefreshCw,
   Megaphone, Flag, Fingerprint, ShieldAlert, FileCheck2, Trash2, History,
-  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, type LucideIcon,
+  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem { label: string; to: string; icon: LucideIcon; keywords?: string; scope?: string }
@@ -23,6 +23,9 @@ export const NAV: NavGroup[] = [
     { label: 'Products', to: '/products', icon: Package },
     { label: 'Reviews', to: '/reviews', icon: Star },
     { label: 'Orders', to: '/orders', icon: ShoppingCart, keywords: 'gmv refund payment' },
+  ]},
+  { title: 'Finance', scope: 'FINANCE', items: [
+    { label: 'Finance', to: '/finance', icon: Wallet, scope: 'FINANCE', keywords: 'payout settlement ledger seller commission balance reference' },
   ]},
   { title: 'Rentals & Trade', items: [
     { label: 'Animals', to: '/animals', icon: Beef },
