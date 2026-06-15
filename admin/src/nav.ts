@@ -4,7 +4,7 @@ import {
   Beef, Tractor, HardHat, CalendarCheck, MessageSquare, MessagesSquare, UsersRound,
   Cpu, Coins, FlaskConical, Activity, Landmark, IndianRupee, Sprout, Bug, RefreshCw,
   Megaphone, Flag, Fingerprint, ShieldAlert, FileCheck2, Trash2, History,
-  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, type LucideIcon,
+  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, ListTodo, AlertTriangle, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem { label: string; to: string; icon: LucideIcon; keywords?: string; scope?: string }
@@ -65,6 +65,8 @@ export const NAV: NavGroup[] = [
     { label: 'Feature Flags', to: '/flags', icon: ToggleRight },
     { label: 'API Health', to: '/health', icon: HeartPulse },
     { label: 'Queues', to: '/queues', icon: ListChecks },
+    { label: 'Jobs', to: '/jobs', icon: ListTodo, keywords: 'bullmq retry failed background' },
+    { label: 'Error Logs', to: '/error-logs', icon: AlertTriangle, keywords: 'errors exceptions server' },
   ]},
   { title: 'Team & Access', scope: 'SUPER_ADMIN', items: [
     { label: 'Team', to: '/team', icon: UserCog, scope: 'SUPER_ADMIN', keywords: 'admin roles scopes invite revoke rbac permissions' },

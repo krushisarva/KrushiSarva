@@ -151,6 +151,7 @@ export const ADMIN_ACTIONS = {
   PEST_ALERT_CREATE:    'ADMIN_PEST_ALERT_CREATE',
   PEST_ALERT_UPDATE:    'ADMIN_PEST_ALERT_UPDATE',
   MANDI_SYNC_TRIGGER:   'ADMIN_MANDI_SYNC_TRIGGER',
+  JOB_RETRY:            'ADMIN_JOB_RETRY',              // re-enqueue a failed BullMQ job
   BROADCAST_SEND:       'ADMIN_BROADCAST_SEND',
   ERASURE_PROCESS:      'ADMIN_ERASURE_PROCESS',
   SETTING_UPDATE:       'ADMIN_SETTING_UPDATE',      // runtime AppSetting changed from the admin panel

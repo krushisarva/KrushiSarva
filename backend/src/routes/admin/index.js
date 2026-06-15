@@ -25,7 +25,7 @@ import { postsRouter, commentsRouter, groupsRouter } from './community.routes.js
 import aiRoutes from './ai.routes.js';
 import { schemesRouter, mspRouter, cropMasterRouter, pestAlertsRouter, mandiRouter } from './cms.routes.js';
 import broadcastRoutes from './broadcast.routes.js';
-import { flagsRouter, healthRouter, queuesRouter } from './ops.routes.js';
+import { flagsRouter, healthRouter, queuesRouter, jobsRouter, errorLogsRouter } from './ops.routes.js';
 import { consentsRouter, erasureRouter, auditRouter } from './compliance.routes.js';
 import settingsRoutes from './settings.routes.js';
 import { teamRouter, meRouter } from './team.routes.js';
@@ -78,6 +78,8 @@ router.use('/notifications', requireScope(S.CONTENT_MODERATOR), broadcastRoutes)
 router.use('/flags', requireScope(S.OPS), flagsRouter);
 router.use('/health', requireScope(S.OPS), healthRouter);
 router.use('/queues', requireScope(S.OPS), queuesRouter);
+router.use('/jobs', requireScope(S.OPS), jobsRouter);
+router.use('/error-logs', requireScope(S.OPS), errorLogsRouter);
 // Compliance (DPDP) — most sensitive, SUPER_ADMIN only
 router.use('/consents', requireScope(S.SUPER_ADMIN), consentsRouter);
 router.use('/erasure-requests', requireScope(S.SUPER_ADMIN), erasureRouter);
