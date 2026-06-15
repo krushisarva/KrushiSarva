@@ -157,6 +157,8 @@ export const ADMIN_ACTIONS = {
   TEAM_INVITE:          'ADMIN_TEAM_INVITE',         // promoted a user to ADMIN + assigned scopes
   TEAM_SCOPES_UPDATE:   'ADMIN_TEAM_SCOPES_UPDATE',  // changed an admin's scopes
   TEAM_REVOKE:          'ADMIN_TEAM_REVOKE',         // demoted an admin + forced logout
+  DISPUTE_CREATE:       'ADMIN_DISPUTE_CREATE',      // admin/support opens a dispute case
+  DISPUTE_UPDATE:       'ADMIN_DISPUTE_UPDATE',      // assign / status change / resolution
 };
 
 /**

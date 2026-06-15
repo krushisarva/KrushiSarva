@@ -29,6 +29,7 @@ import { flagsRouter, healthRouter, queuesRouter } from './ops.routes.js';
 import { consentsRouter, erasureRouter, auditRouter } from './compliance.routes.js';
 import settingsRoutes from './settings.routes.js';
 import { teamRouter, meRouter } from './team.routes.js';
+import disputesRoutes from './disputes.routes.js';
 
 const router = Router();
 
@@ -64,6 +65,8 @@ router.use('/bookings', requireScope(S.SUPPORT), bookingsRouter);
 router.use('/posts', requireScope(S.CONTENT_MODERATOR), postsRouter);
 router.use('/comments', requireScope(S.CONTENT_MODERATOR), commentsRouter);
 router.use('/groups', requireScope(S.CONTENT_MODERATOR), groupsRouter);
+// Dispute resolution (WI-6) — gated behind the CONTENT_MODERATOR sub-role scope.
+router.use('/disputes', requireScope(S.CONTENT_MODERATOR), disputesRoutes);
 // AI operations
 router.use('/ai', requireScope(S.OPS), aiRoutes);
 // CMS
