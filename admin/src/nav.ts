@@ -4,7 +4,7 @@ import {
   Beef, Tractor, HardHat, CalendarCheck, MessageSquare, MessagesSquare, UsersRound,
   Cpu, Coins, FlaskConical, Activity, Landmark, IndianRupee, Sprout, Bug, RefreshCw,
   Megaphone, Flag, Fingerprint, ShieldAlert, FileCheck2, Trash2, History,
-  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, type LucideIcon,
+  ToggleRight, HeartPulse, ListChecks, SlidersHorizontal, UserCog, Radar, type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem { label: string; to: string; icon: LucideIcon; keywords?: string; scope?: string }
@@ -17,6 +17,9 @@ export const NAV: NavGroup[] = [
   { title: 'Users & Identity', items: [
     { label: 'Users', to: '/users', icon: Users, keywords: 'farmer seller account' },
     { label: 'KYC / Sellers', to: '/kyc', icon: ShieldCheck, keywords: 'verify aadhaar bank' },
+  ]},
+  { title: 'Activity', items: [
+    { label: 'Activity Feed', to: '/activity', icon: Radar, keywords: 'chat voice diagnosis order booking review 360 support' },
   ]},
   { title: 'Marketplace', items: [
     { label: 'Categories', to: '/categories', icon: Tags },
