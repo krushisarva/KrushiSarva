@@ -10,7 +10,7 @@
  *   node scripts/render-latest-report.mjs <jobId>    # specific job
  */
 // Use the ioredis package already installed in backend/node_modules.
-import Redis from '/Users/shubhamyeljale/Desktop/CROPSETU2/backend/node_modules/ioredis/built/index.js';
+import Redis from '../backend/node_modules/ioredis/built/index.js';
 import { writeFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';

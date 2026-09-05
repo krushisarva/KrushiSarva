@@ -3,7 +3,7 @@
 > **Status:** Design input document (not a spec).
 > **Audience:** An LLM design partner (e.g. Claude Chat) with **no access to the KrushiSarva repository**.
 > **Goal:** Provide enough accurate, file-grounded context about KrushiSarva's three AI services and their current third-party LLM footprint that the reader can propose an **in-house / self-hosted LLM agent architecture** to replace or augment the current dependency on Google Gemini (plus Sarvam for voice, and optional Groq/OpenAI).
-> **Repo root assumed by all paths:** `/Users/shubhamyeljale/Desktop/CROPSETU2`
+> **Repo root assumed by all paths:** `/Users/shubhamyeljale/Desktop/KrushiSarva`
 > **Source:** Distilled from 7 specialist code-reader traces of the live codebase. Where readers could not determine something, it is flagged **[UNKNOWN]**.
 
 ---

@@ -12,7 +12,7 @@ This document is written for a reader — human or model — who has never opene
 
 | Convention | Meaning |
 |---|---|
-| `backend/src/routes/foo.js:123` | Repo-relative path, optionally with a line or line-range. All paths are relative to the repo root (`/Users/shubhamyeljale/Desktop/CROPSETU2`). |
+| `backend/src/routes/foo.js:123` | Repo-relative path, optionally with a line or line-range. All paths are relative to the repo root (`/Users/shubhamyeljale/Desktop/KrushiSarva`). |
 | `${API}` / `/api/v1` | `ENV.API_PREFIX`, default `/api/v1` (`backend/src/config/env.js:194`). Every Express router is mounted under it. |
 | **fails open** / **fails closed** | On dependency failure the control lets traffic through / rejects it. This distinction is load-bearing in this codebase and is stated for every guard. |
 | VERIFIED | The claim was re-checked against source while assembling this document. |
@@ -10776,7 +10776,7 @@ Two further translation layers sit outside `t()`: `frontend/src/data/contentI18n
 ### Build, Deploy, Operations and Cross-Repo Conventions
 
 Everything below was read from the files cited. Repo root is
-`/Users/shubhamyeljale/Desktop/CROPSETU2`; git remote is
+`/Users/shubhamyeljale/Desktop/KrushiSarva`; git remote is
 `https://github.com/krushisarva/CROPSETU2.git` (single repo, no submodules —
 `.gitmodules` absent). 917 tracked files (563 `.js`, 99 `.py`, 99 `.md`, 34
 `.tsx`, 19 `.sql`, 4 `.yml`). No secret or log file is tracked; the only
@@ -11372,7 +11372,7 @@ The only executable check-style scripts in the repo are run by hand:
 | Script | Invocation | What it does |
 | --- | --- | --- |
 | `scripts/admin-smoke.mjs` | `ADMIN_BASE_URL=… ADMIN_PHONE=… node scripts/admin-smoke.mjs` | Logs in via phone OTP (auto-uses the `devOtp` from `/auth/send-otp` in dev), then GETs 16 admin endpoints. **Read-only, safe against production.** `200` = PASS, `403` = SCOPE (expected unless SUPER_ADMIN), anything else = FAIL. Exit 1 on any failure, 2 if `ADMIN_PHONE` is unset |
-| `scripts/render-latest-report.mjs` | `node scripts/render-latest-report.mjs [jobId]` | Pulls the newest `SUCCESS` `celery-task-meta-*` value out of Redis db 1 and renders the diagnosis report as standalone HTML on the Desktop. **Hardcodes `localhost:6379` and an absolute import path `/Users/shubhamyeljale/Desktop/CROPSETU2/backend/node_modules/ioredis/...` (line 13)** — a personal dev tool, not portable |
+| `scripts/render-latest-report.mjs` | `node scripts/render-latest-report.mjs [jobId]` | Pulls the newest `SUCCESS` `celery-task-meta-*` value out of Redis db 1 and renders the diagnosis report as standalone HTML on the Desktop. **Hardcodes `localhost:6379` and an absolute import path `../backend/node_modules/ioredis/...` (line 13)** — a personal dev tool, not portable |
 | `frontend/scripts/check-console-logs.js` | `node scripts/check-console-logs.js` | Fails on `console.log` calls matching sensitive patterns (diagnosis/disease/token/PII) or bare `console.*` in backend code. **`backend/package.json:34` maps `lint:console` to `scripts/check-console-logs.js`, but that file lives in `frontend/scripts/`, so `npm run lint:console` from `backend/` fails** |
 | `frontend/scripts/icon-parse-check.js` | `node frontend/scripts/icon-parse-check.js <files…>` | Babel-parses given files with `babel-preset-expo`; PASS/FAIL per file |
 | `frontend/scripts/seedMandiData.js` | `node scripts/seedMandiData.js [--quick]` | Bulk mandi seeding — but calls the **non-existent** `POST /agripredict/sync/trigger` (see §7.1). `backend/package.json:35-36` also maps `mandi:seed` at this path, which does not exist under `backend/` |
