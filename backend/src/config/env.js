@@ -294,6 +294,9 @@ export const ENV = {
   // Service-account PEM. Stored with literal "\n" in .env / Railway; the admin
   // SDK needs real newlines — firebaseAuth.service.js does that conversion.
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY || '',
+  // How recent the Firebase SMS challenge must be for a token to re-authorise a
+  // destructive action (account deletion, phone change). Not used for login.
+  FIREBASE_REAUTH_MAX_AGE_SECONDS: Number(process.env.FIREBASE_REAUTH_MAX_AGE_SECONDS || 300),
 
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',

@@ -168,7 +168,48 @@ export async function verifyFirebaseIdToken(idToken) {
     throw new Error('Firebase token phone number is not a valid Indian mobile');
   }
 
-  return { phone, firebaseUid: decoded.uid };
+  // auth_time = when the user actually completed the SMS challenge (seconds since
+  // epoch). Distinct from iat: a token refreshed an hour later keeps the ORIGINAL
+  // auth_time, which is exactly what makes it usable as a re-authentication proof.
+  return { phone, firebaseUid: decoded.uid, authTime: decoded.auth_time };
+}
+
+/**
+ * Verify an ID token AND require the SMS challenge behind it to be recent.
+ *
+ * WHY THIS IS NOT verifyFirebaseIdToken():
+ * Logging in and authorising a destructive action are different questions. For
+ * login, "this token is valid" is enough. For deleting an account or moving it to
+ * a new phone, the question is "is the person holding the handset here RIGHT NOW".
+ * A Firebase ID token stays valid for an hour and refreshes indefinitely while
+ * auth_time stays pinned to the original SMS, so accepting any valid token would
+ * silently downgrade re-authentication to "signed in at some point today" — and a
+ * borrowed or briefly-unlocked phone would be enough to erase an account.
+ *
+ * Gating on auth_time restores the intended meaning: the caller proved possession
+ * of the SIM within maxAgeSeconds.
+ *
+ * Throws (never returns false) so callers cannot mistake a rejection for a pass.
+ */
+export async function verifyFirebaseReauth(idToken, { maxAgeSeconds = ENV.FIREBASE_REAUTH_MAX_AGE_SECONDS } = {}) {
+  const { phone, firebaseUid, authTime } = await verifyFirebaseIdToken(idToken);
+
+  if (!Number.isFinite(authTime)) {
+    // No auth_time means we cannot date the SMS challenge, so we cannot make the
+    // guarantee this function exists to make. Refuse rather than assume it is fresh.
+    throw new Error('Firebase token carries no auth_time; cannot be used to re-authenticate');
+  }
+
+  // Allow a little slack for client/server clock skew, but only in the "token looks
+  // slightly future-dated" direction — never to extend the window backwards.
+  const ageSeconds = Math.floor(Date.now() / 1000) - authTime;
+  if (ageSeconds > maxAgeSeconds) {
+    const err = new Error('Please verify your phone number again to continue');
+    err.staleReauth = true;
+    throw err;
+  }
+
+  return { phone, firebaseUid, authTime };
 }
 
 /**

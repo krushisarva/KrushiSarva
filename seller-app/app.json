@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "KrushiSarva Seller",
-    "slug": "cropsetu-seller",
+    "slug": "krushisarva-seller",
     "scheme": "krushisarva-seller",
     "version": "1.0.0",
     "newArchEnabled": true,
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.cropsetu.seller",
+      "bundleIdentifier": "com.krushisarva.seller",
       "infoPlist": {
         "NSCameraUsageDescription": "KrushiSarva Seller needs camera access to photograph the products you list.",
         "NSPhotoLibraryUsageDescription": "KrushiSarva Seller needs photo library access to upload product images."
@@ -26,13 +26,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1B4332"
       },
-      "package": "com.cropsetu.seller",
+      "package": "com.krushisarva.seller",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -47,13 +48,10 @@
         }
       ],
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "7c72a202-c267-49e2-9c73-4f0e613b1da3"
-      }
-    },
-    "owner": "shubhamyeljale2025"
+    "owner": "krushisarva"
   }
 }

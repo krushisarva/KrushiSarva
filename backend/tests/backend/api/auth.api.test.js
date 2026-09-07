@@ -2,10 +2,23 @@
  * API tests for /api/v1/auth/*
  * Tests: OTP flow, token refresh, logout, rate limiting, security
  */
+import { jest } from '@jest/globals';
 import request from 'supertest';
 import { getApp, cleanupTestData, prisma } from '../../fixtures/setup.js';
 import { resetRateLimitStore } from '../../../src/middleware/rateLimit.js';
 import { ENV } from '../../../src/config/env.js';
+
+// /change-phone re-authenticates through a FRESH Firebase challenge on the NEW
+// number, so stub the verifier instead of reaching Google. getApp() imports
+// src/app.js dynamically, so this registers before the route is loaded.
+const mockVerifyReauth = jest.fn();
+jest.unstable_mockModule('../../../src/services/firebaseAuth.service.js', () => ({
+  verifyFirebaseReauth:   mockVerifyReauth,
+  verifyFirebaseIdToken:  jest.fn(),
+  isFirebaseAuthEnabled:  () => true,
+}));
+
+const FAKE_ID_TOKEN = 'f'.repeat(64);
 
 let app;
 
@@ -353,13 +366,14 @@ describe('Token invalidation on phone change', () => {
       .set('Authorization', `Bearer ${oldAccess}`);
     expect(before.status).toBe(200);
 
-    // 2. Change the phone number (OTP proves control of the new number).
+    // 2. Change the phone number (a fresh Firebase token proves control of the
+    //    NEW number — the route rejects a token for any other handset).
     const newPhone = `8${String(Date.now()).slice(-9)}`;
-    await request(app).post('/api/v1/auth/send-otp').send({ phone: newPhone });
+    mockVerifyReauth.mockResolvedValue({ phone: newPhone, firebaseUid: 'uid-test' });
     const change = await request(app)
       .post('/api/v1/auth/change-phone')
       .set('Authorization', `Bearer ${oldAccess}`)
-      .send({ newPhone, otp: '000000' });
+      .send({ newPhone, idToken: FAKE_ID_TOKEN });
     expect(change.status).toBe(200);
     const newAccess = change.body.data.accessToken;
     expect(newAccess).toBeDefined();

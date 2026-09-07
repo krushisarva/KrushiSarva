@@ -44,7 +44,7 @@ import {
 import { maskSensitiveFields } from '../utils/mask.js';
 import logger from '../utils/logger.js';
 import { auditPiiUpdate, auditLog, auditAction, AUDIT_ACTIONS } from '../services/audit.service.js';
-import { verifyOtp } from '../services/otp.service.js';
+import { verifyFirebaseReauth, isFirebaseAuthEnabled } from '../services/firebaseAuth.service.js';
 import { eraseUserAccount } from '../services/erasure.service.js';
 import { signAccessToken, createRefreshToken, enforceSessionLimit } from '../utils/jwt.js';
 import { CONSENT_PURPOSES, CONSENT_POLICY_VERSION } from '../constants/consent.js';
@@ -672,8 +672,12 @@ router.get('/:userId/kyc-documents', requireRole('ADMIN'), async (req, res) => {
 });
 
 // ── DELETE /me — Right to Erasure (DPDP Act §8) ───────────────────────────────
-// Irreversible. The caller must re-verify with an OTP sent to their registered
-// phone (request one first via POST /auth/send-otp). On success we anonymize the
+// Irreversible. The caller must re-prove possession of their registered handset
+// by completing a fresh Firebase SMS challenge and passing the resulting ID
+// token. Fresh is enforced on auth_time, not token validity: an ID token stays
+// usable for an hour and refreshes indefinitely, so "valid token" would mean
+// "signed in earlier today" — far too weak to authorise erasure. On success we
+// anonymize the
 // user row + shared records, hard-delete personal data and purge media, then
 // record an audit entry. The just-deleted sessions + bumped tokenVersion make
 // the caller's current tokens invalid immediately afterwards.
@@ -681,7 +685,8 @@ router.delete(
   '/me',
   profileWriteLimit, // [M1]
   [
-    body('otp').trim().matches(/^\d{6}$/).withMessage('A valid 6-digit OTP is required'),
+    body('idToken').isString().trim().isLength({ min: 20, max: 4096 })
+      .withMessage('A fresh phone verification is required'),
   ],
   validate,
   async (req, res) => {
@@ -692,15 +697,31 @@ router.delete(
       });
       if (!me) return sendNotFound(res, 'User');
 
-      // [verification] OTP must match a live session for THIS user's phone.
-      const result = await verifyOtp(me.phone, req.body.otp);
-      if (!result.success) {
-        const status = result.locked ? 423 : 401;
-        return sendError(res, result.reason || 'OTP verification failed', status);
+      // [verification] A fresh Firebase phone challenge, for THIS user's phone.
+      if (!isFirebaseAuthEnabled()) {
+        return sendError(res, 'Phone verification is not available on this server', 503);
       }
-      if (result.userId && result.userId !== req.user.id) {
-        // Defense-in-depth: the verified phone must belong to the caller.
-        return sendError(res, 'OTP verification failed', 401);
+      let verifiedPhone;
+      try {
+        ({ phone: verifiedPhone } = await verifyFirebaseReauth(req.body.idToken));
+      } catch (err) {
+        if (err.serverFault) {
+          logger.error({ err }, '[Account] erasure re-auth unavailable');
+          return sendError(res, 'Phone verification is temporarily unavailable', 503);
+        }
+        logger.warn({ err: err.message }, '[Account] erasure re-auth rejected');
+        // staleReauth is a distinct, actionable failure: the token was genuine but
+        // the SMS was too long ago. Say so, or the user retries the same stale
+        // token forever and reads it as "the app is broken".
+        return sendError(res, err.staleReauth
+          ? 'Please verify your phone number again to continue'
+          : 'Phone verification failed', 401);
+      }
+      if (verifiedPhone !== me.phone) {
+        // The token proved possession of SOME handset — it must be this account's.
+        // Without this, anyone could erase any account by verifying their own phone.
+        logger.warn({ userId: req.user.id }, '[Account] erasure re-auth phone mismatch');
+        return sendError(res, 'Phone verification failed', 401);
       }
 
       const summary = await eraseUserAccount(req.user.id);

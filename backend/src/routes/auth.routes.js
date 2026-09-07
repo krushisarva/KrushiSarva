@@ -24,7 +24,7 @@ import { generateCsrfToken } from '../middleware/csrf.js';
 import { auditAuthEvent, AUTH_ACTIONS, maskPhone } from '../services/audit.service.js';
 import { normalizeIndianMobile, indianMobileBody } from '../utils/phone.js';
 import { sendOtp, verifyOtp } from '../services/otp.service.js';
-import { verifyFirebaseIdToken, isFirebaseAuthEnabled } from '../services/firebaseAuth.service.js';
+import { verifyFirebaseIdToken, verifyFirebaseReauth, isFirebaseAuthEnabled } from '../services/firebaseAuth.service.js';
 import { issueSessionForVerifiedPhone } from '../services/authSession.service.js';
 import { checkOtpLock, clearOtpLockout } from '../services/otpLockout.service.js';
 import { otpPowGate } from '../services/proofOfWork.service.js';
@@ -350,8 +350,10 @@ router.post(
 );
 
 // ── POST /change-phone ───────────────────────────────────────────────────────
-// Change the account's login phone number. Requires an OTP proving control of
-// the NEW number (client must call /send-otp for it first). On success the
+// Change the account's login phone number. Requires a FRESH Firebase SMS
+// challenge on the NEW number — the ID token proves the caller holds that
+// handset right now, not merely that they signed in earlier (auth_time is
+// checked, not just token validity). On success the
 // number is swapped, the token version is bumped (invalidating every token
 // issued under the old number), all refresh tokens are revoked, and a fresh
 // token pair is returned so the current device stays signed in.
@@ -360,12 +362,13 @@ router.post(
   authenticate,
   [
     indianMobileBody('newPhone'),
-    body('otp').trim().isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
+    body('idToken').isString().trim().isLength({ min: 20, max: 4096 })
+      .withMessage('A fresh verification of the new number is required'),
   ],
   validate,
   async (req, res) => {
     try {
-      const { newPhone, otp } = req.body;
+      const { newPhone, idToken } = req.body;
 
       const me = await prisma.user.findUnique({
         where: { id: req.user.id },
@@ -380,14 +383,28 @@ router.post(
       const taken = await prisma.user.findUnique({ where: { phone: newPhone }, select: { id: true } });
       if (taken) return sendError(res, 'This number is already linked to another account', 409);
 
-      // Prove ownership of the new number.
-      const result = await verifyOtp(newPhone, otp);
-      if (!result.success) {
-        if (result.locked) {
-          res.setHeader('Retry-After', result.retryAfterSec);
-          return sendError(res, result.reason, 423, { retryAfter: result.retryAfterSec });
+      // Prove ownership of the NEW number with a fresh Firebase challenge.
+      if (!isFirebaseAuthEnabled()) {
+        return sendError(res, 'Phone verification is not available on this server', 503);
+      }
+      let verifiedPhone;
+      try {
+        ({ phone: verifiedPhone } = await verifyFirebaseReauth(idToken));
+      } catch (err) {
+        if (err.serverFault) {
+          logger.error({ err }, '[Auth] change-phone re-auth unavailable');
+          return sendError(res, 'Phone verification is temporarily unavailable', 503);
         }
-        return sendError(res, result.reason, 400);
+        logger.warn({ err: err.message }, '[Auth] change-phone re-auth rejected');
+        return sendError(res, err.staleReauth
+          ? 'Please verify the new number again to continue'
+          : 'Phone verification failed', 401);
+      }
+      // The token must prove the NEW number specifically. Verifying the old one
+      // (or any other handset) must not be enough to move the account.
+      if (verifiedPhone !== newPhone) {
+        logger.warn({ userId: me.id }, '[Auth] change-phone token/number mismatch');
+        return sendError(res, 'Phone verification failed', 401);
       }
 
       // Swap the number and bump the token version atomically.

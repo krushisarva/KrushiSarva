@@ -2,12 +2,26 @@
  * API tests for /api/v1/users/*
  * Covers: profile, seller profile, farm details, push tokens, PII masking
  */
+import { jest } from '@jest/globals';
 import request from 'supertest';
 import {
   getApp, createTestUser, createTestSeller,
   cleanupTestData, prisma,
 } from '../../fixtures/setup.js';
 import { XSS_PAYLOADS } from '../../fixtures/factories.js';
+
+// Account erasure re-authenticates through a FRESH Firebase SMS challenge, so the
+// suite stubs the verifier rather than reaching Google. getApp() imports src/app.js
+// dynamically, so registering the mock here still lands before the route loads.
+const mockVerifyReauth = jest.fn();
+jest.unstable_mockModule('../../../src/services/firebaseAuth.service.js', () => ({
+  verifyFirebaseReauth:   mockVerifyReauth,
+  verifyFirebaseIdToken:  jest.fn(),
+  isFirebaseAuthEnabled:  () => true,
+}));
+
+// Any string long enough to clear the validator; the stub decides pass/fail.
+const FAKE_ID_TOKEN = 'f'.repeat(64);
 
 let app;
 let farmer, seller;
@@ -347,37 +361,35 @@ describe('Profile write rate limiting', () => {
 // Each test uses a throwaway user: erasure is irreversible, so reusing the
 // shared `farmer` above would poison every test that runs after it.
 describe('DELETE /api/v1/users/me', () => {
-  // The dev bypass ("000000") still requires a LIVE OtpSession for the phone —
-  // verifyOtp returns early when no session exists. Seed one via the service so
-  // these tests don't depend on the /auth/send-otp rate limiter.
-  const seedOtpSession = async (phone) => {
-    const { sendOtp } = await import('../../../src/services/otp.service.js');
-    await sendOtp(phone);
-  };
+  // The route accepts the erasure only when the token proves THIS user's phone
+  // and the SMS behind it is recent. Each case programmes the stub accordingly.
+  const reauthResolvesTo = (phone) => mockVerifyReauth.mockResolvedValue({ phone, firebaseUid: 'uid-test' });
+  const reauthRejectsWith = (err) => mockVerifyReauth.mockRejectedValue(err);
+  beforeEach(() => mockVerifyReauth.mockReset());
 
   test('401 — unauthenticated', async () => {
-    const res = await request(app).delete('/api/v1/users/me').send({ otp: '000000' });
+    const res = await request(app).delete('/api/v1/users/me').send({ idToken: FAKE_ID_TOKEN });
     expect(res.status).toBe(401);
   });
 
   // The shared `validate` middleware answers malformed input with 400 (several
   // older tests in this file still assert 422 and fail — see the suite notes).
-  test('400 — rejects a missing or malformed OTP', async () => {
+  test('400 — rejects a missing or malformed token', async () => {
     const { headers } = await createTestUser();
-    for (const body of [{}, { otp: '123' }, { otp: 'abcdef' }]) {
+    for (const body of [{}, { idToken: 'short' }, { idToken: 123 }]) {
       const res = await request(app).delete('/api/v1/users/me').set(headers).send(body);
       expect(res.status).toBe(400);
     }
   });
 
-  test('401 — rejects a wrong OTP and leaves the account intact', async () => {
+  test('401 — rejects an invalid token and leaves the account intact', async () => {
     const { user, headers } = await createTestUser();
-    await seedOtpSession(user.phone);
+    reauthRejectsWith(new Error('Firebase token is invalid'));
 
     const res = await request(app)
       .delete('/api/v1/users/me')
       .set(headers)
-      .send({ otp: '999999' });
+      .send({ idToken: FAKE_ID_TOKEN });
 
     expect(res.status).toBe(401);
     const after = await prisma.user.findUnique({ where: { id: user.id } });
@@ -391,12 +403,12 @@ describe('DELETE /api/v1/users/me', () => {
     });
     // Personal rows that must be hard-deleted by the cascade.
     await prisma.pushToken.create({ data: { userId: user.id, token: `ExponentPushToken[${user.id}]`, platform: 'android' } });
-    await seedOtpSession(user.phone);
+    reauthResolvesTo(user.phone);
 
     const res = await request(app)
       .delete('/api/v1/users/me')
       .set(headers)
-      .send({ otp: '000000' });
+      .send({ idToken: FAKE_ID_TOKEN });
 
     expect(res.status).toBe(200);
     expect(res.body.data.erased).toBe(true);
@@ -418,9 +430,9 @@ describe('DELETE /api/v1/users/me', () => {
 
   test('the erased user’s access token no longer authenticates', async () => {
     const { user, headers } = await createTestUser();
-    await seedOtpSession(user.phone);
+    reauthResolvesTo(user.phone);
 
-    await request(app).delete('/api/v1/users/me').set(headers).send({ otp: '000000' });
+    await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
 
     // Same token, now stale: tokenVersion was bumped and the account deactivated.
     const res = await request(app).get('/api/v1/users/me').set(headers);
@@ -430,9 +442,9 @@ describe('DELETE /api/v1/users/me', () => {
   test('the freed phone number can register a new account', async () => {
     const { user, headers } = await createTestUser();
     const originalPhone = user.phone;
-    await seedOtpSession(originalPhone);
+    reauthResolvesTo(originalPhone);
 
-    await request(app).delete('/api/v1/users/me').set(headers).send({ otp: '000000' });
+    await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
 
     // The sentinel released the unique constraint on the real number.
     const reborn = await prisma.user.create({ data: { phone: originalPhone, name: 'New Owner' } });

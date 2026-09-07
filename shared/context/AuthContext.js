@@ -274,9 +274,32 @@ export function AuthProvider({ children, phoneAuth = null }) {
     }
   }, []);
 
+  /**
+   * Exchange the SMS code for a Firebase ID token WITHOUT minting a session.
+   *
+   * Login and re-authorisation need different things from the same challenge:
+   * verifyOtp() trades the code for OUR session, which is wrong for a user who
+   * is already signed in and is instead proving they still hold the handset
+   * before an irreversible action. This returns the raw token so the caller can
+   * hand it to a route that re-checks it (account erasure, phone change).
+   *
+   * Call sendOtp() first — it stores the confirmation handle this reads.
+   */
+  const confirmReauthCode = useCallback(async (code) => {
+    if (!useFirebase) {
+      throw new Error('Phone re-verification is unavailable in this build.');
+    }
+    try {
+      return await phoneAuth.confirmFirebaseOtp(fbConfirmationRef.current, code);
+    } catch (err) {
+      err.userMessage = phoneAuth.firebaseErrorMessage(err);
+      throw err;
+    }
+  }, [useFirebase, phoneAuth]);
+
   const value = useMemo(
-    () => ({ user, isLoggedIn, loading, sendOtp, verifyOtp, logout, updateUser, refreshUser, markActivity }),
-    [user, isLoggedIn, loading, sendOtp, verifyOtp, logout, updateUser, refreshUser, markActivity]
+    () => ({ user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity }),
+    [user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity]
   );
 
   return (

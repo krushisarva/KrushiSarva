@@ -48,7 +48,7 @@ function errorFor(err, t) {
 }
 
 export default function DeleteAccountModal({ visible, onClose }) {
-  const { user, sendOtp, logout } = useAuth();
+  const { user, sendOtp, confirmReauthCode, logout } = useAuth();
   const { t } = useLanguage();
 
   const [step,      setStep]      = useState('confirm'); // 'confirm' | 'otp' | 'done'
@@ -112,8 +112,12 @@ export default function DeleteAccountModal({ visible, onClose }) {
     if (otp.length !== 6) { setError(t('deleteAccount.errOtpFormat', 'Enter the 6-digit code.')); return; }
     setBusy(true); setError('');
     try {
+      // The server no longer checks the 6-digit code itself — Firebase does, and
+      // returns a signed token proving this handset completed the challenge just
+      // now. Exchange the code for that token, then send the token.
+      const idToken = await confirmReauthCode(otp);
       // axios sends a body on DELETE only via `data`.
-      await api.delete('/users/me', { data: { otp } });
+      await api.delete('/users/me', { data: { idToken } });
       if (!aliveRef.current) return;
       setStep('done');
       // Brief confirmation, then tear down the session. Our tokens are already
@@ -123,7 +127,7 @@ export default function DeleteAccountModal({ visible, onClose }) {
     } catch (err) {
       if (aliveRef.current) { setError(errorFor(err, t)); setBusy(false); }
     }
-  }, [otp, logout, t]);
+  }, [otp, confirmReauthCode, logout, t]);
 
   const dismiss = busy ? () => {} : onClose;
 

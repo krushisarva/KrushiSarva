@@ -28,8 +28,8 @@
       },
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://cropsetu2-production.up.railway.app/api/v1",
-        "EXPO_PUBLIC_SOCKET_URL": "wss://cropsetu2-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL": "https://backend-production-8b23d.up.railway.app/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "wss://backend-production-8b23d.up.railway.app",
         "EXPO_PUBLIC_FIREBASE_AUTH": "true"
       }
     },
@@ -40,8 +40,9 @@
       },
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://cropsetu2-production.up.railway.app/api/v1",
-        "EXPO_PUBLIC_SOCKET_URL": "wss://cropsetu2-production.up.railway.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://backend-production-8b23d.up.railway.app/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "wss://backend-production-8b23d.up.railway.app",
+        "EXPO_PUBLIC_FIREBASE_AUTH": "true"
       }
     }
   },

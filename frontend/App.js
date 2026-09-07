@@ -29,7 +29,7 @@ import OnboardingNavigator from './src/navigation/OnboardingNavigator';
 import { LanguageProvider } from '@krushisarva/shared/context/LanguageContext';
 import { AuthProvider, useAuth } from '@krushisarva/shared/context/AuthContext';
 // Injected rather than imported inside shared/: @react-native-firebase is a native
-// module installed only in this app, and seller-app bundles the same shared/ tree.
+// module, so shared/ stays importable by any app that lacks it (e.g. web).
 import * as phoneAuth from '@krushisarva/shared/services/firebasePhoneAuth';
 import { FarmProvider } from './src/context/FarmContext';
 import { MultiFarmProvider } from './src/context/MultiFarmContext';

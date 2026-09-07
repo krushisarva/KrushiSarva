@@ -1,0 +1,10 @@
+# Railway build context — the backend service builds from repo root and its
+# Dockerfile only reads admin/ and backend/ (see Dockerfile:10,30-36).
+# Everything below is mobile-app or docs weight that would only slow uploads.
+frontend/
+seller-app/
+kendra/
+docs/
+audit/
+Bugs/
+scripts/

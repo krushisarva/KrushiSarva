@@ -181,3 +181,47 @@ describe('verifyFirebaseIdToken', () => {
       .rejects.toThrow(/not configured/i);
   });
 });
+
+// ── verifyFirebaseReauth — freshness gate ────────────────────────────────────
+// Login only needs a valid token. Authorising erasure or a phone move needs
+// proof the SIM is in the caller's hand NOW, so these cases pin the behaviour
+// that separates the two: auth_time, not token validity.
+describe('verifyFirebaseReauth', () => {
+  const nowSec = () => Math.floor(Date.now() / 1000);
+  const tokenAgedSeconds = (age) => ({ ...PHONE_TOKEN, auth_time: nowSec() - age });
+
+  test('accepts a token whose SMS challenge is inside the window', async () => {
+    const { verifyFirebaseReauth } = await loadService({ decodedToken: tokenAgedSeconds(30) });
+    const result = await verifyFirebaseReauth('fresh.id.token');
+    expect(result.phone).toBe('9876543210');
+  });
+
+  test('rejects a still-VALID token whose challenge is too old', async () => {
+    // The token verifies fine — this is exactly the case a plain validity check
+    // would wave through, and the one that would let a borrowed phone erase an
+    // account an hour after it was unlocked.
+    const { verifyFirebaseReauth } = await loadService({ decodedToken: tokenAgedSeconds(3600) });
+    await expect(verifyFirebaseReauth('stale.id.token')).rejects.toMatchObject({ staleReauth: true });
+  });
+
+  test('rejects a token carrying no auth_time rather than assuming it is fresh', async () => {
+    const { verifyFirebaseReauth } = await loadService({ decodedToken: PHONE_TOKEN });
+    await expect(verifyFirebaseReauth('no.authtime.token')).rejects.toThrow(/auth_time/i);
+  });
+
+  test('honours a caller-supplied window', async () => {
+    const { verifyFirebaseReauth } = await loadService({ decodedToken: tokenAgedSeconds(120) });
+    await expect(verifyFirebaseReauth('t', { maxAgeSeconds: 60 }))
+      .rejects.toMatchObject({ staleReauth: true });
+    await expect(verifyFirebaseReauth('t', { maxAgeSeconds: 600 })).resolves.toMatchObject({
+      phone: '9876543210',
+    });
+  });
+
+  test('still enforces the phone-provider check inherited from verifyFirebaseIdToken', async () => {
+    const { verifyFirebaseReauth } = await loadService({
+      decodedToken: { ...tokenAgedSeconds(10), firebase: { sign_in_provider: 'custom' } },
+    });
+    await expect(verifyFirebaseReauth('custom.token')).rejects.toThrow(/phone provider/i);
+  });
+});

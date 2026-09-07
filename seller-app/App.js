@@ -24,6 +24,9 @@ import SellerNavigator from './src/navigation/SellerNavigator';
 import { C } from './src/theme';
 import { LanguageProvider } from '@krushisarva/shared/context/LanguageContext';
 import { AuthProvider, useAuth } from '@krushisarva/shared/context/AuthContext';
+// Injected rather than imported inside shared/: @react-native-firebase is a
+// native module, so shared/ stays importable by any app that lacks it.
+import * as phoneAuth from '@krushisarva/shared/services/firebasePhoneAuth';
 import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 
@@ -103,7 +106,7 @@ export default function App() {
       <SafeAreaProvider>
         <NetworkProvider>
           <LanguageProvider>
-            <AuthProvider>
+            <AuthProvider phoneAuth={phoneAuth}>
               {/* FeedbackProvider sits inside the safe-area + language providers
                   (its toasts need both) but outside the navigator, so a confirm
                   dialog survives the screen that opened it being popped. */}
