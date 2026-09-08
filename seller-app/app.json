@@ -52,6 +52,11 @@
       "@react-native-firebase/app",
       "@react-native-firebase/auth"
     ],
-    "owner": "krushisarva"
+    "owner": "krushisarva",
+    "extra": {
+      "eas": {
+        "projectId": "c9c3335e-0727-4fba-a3eb-dd10f653b50c"
+      }
+    }
   }
 }
