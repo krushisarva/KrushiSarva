@@ -62,6 +62,10 @@ const SORT_OPTIONS = [
 ];
 const GREEN    = COLORS.primary;
 const GREEN_L  = COLORS.primaryPale;
+// One horizontal gutter for the whole screen. This screen had grown five
+// different values (12/14/16/18), so the search field, the section titles and
+// the product grid each started at a different x — visible as a ragged left edge.
+const GUTTER = 16;
 const ORANGE   = COLORS.cta;
 const GOLD     = COLORS.yellowDark2;
 const BG       = COLORS.background;
@@ -714,11 +718,11 @@ export default function AgriStoreHome({ navigation }) {
             </View>
             <View style={S.headerRight}>
               <TouchableOpacity style={S.langBtn} onPress={openLangPicker} activeOpacity={0.8}>
-                <Ionicons name="globe-outline" size={16} color={GREEN} />
+                <Ionicons name="globe-outline" size={14} color={GREEN} />
                 <Text style={S.langBtnTxt}>{language.toUpperCase()}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={S.cartBtn} onPress={() => navigation.navigate('Cart')} activeOpacity={0.8}>
-                <Ionicons name="cart-outline" size={26} color={COLORS.charcoal} />
+                <Ionicons name="cart-outline" size={22} color={COLORS.charcoal} />
                 {cartCount > 0 && <View style={S.cartBadge}><Text style={S.cartBadgeTxt}>{cartCount}</Text></View>}
               </TouchableOpacity>
             </View>
@@ -727,7 +731,7 @@ export default function AgriStoreHome({ navigation }) {
       </Animated.View>
 
       {/* ── Search + Categories (always visible) ── */}
-      <View style={{ backgroundColor: KHET.muted, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 4 }}>
+      <View style={{ backgroundColor: KHET.card, paddingHorizontal: GUTTER, paddingTop: 6, paddingBottom: 10 }}>
         <View style={[S.searchBar, searchFocused && S.searchBarFocused]}>
           <Ionicons
             name="search-outline"
@@ -1015,8 +1019,8 @@ export default function AgriStoreHome({ navigation }) {
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: KHET.muted },
-  scroll: { flex: 1, backgroundColor: KHET.muted },
+  root:   { flex: 1, backgroundColor: KHET.card },
+  scroll: { flex: 1, backgroundColor: KHET.card },
   scrollContent: { flexGrow: 1 },
   // Rounded-top white "sheet" holding the product list — echoes the rounded
   // search card so the list reads as a defined panel, not a flat region.
@@ -1038,7 +1042,7 @@ const S = StyleSheet.create({
 
   // ── Header ──
   header: {
-    paddingBottom: 14, paddingHorizontal: 18,
+    paddingBottom: 14, paddingHorizontal: GUTTER,
     backgroundColor: CARD,
     borderBottomWidth: 1, borderBottomColor: BORDER,
     ...SHADOWS.small,
@@ -1057,7 +1061,7 @@ const S = StyleSheet.create({
   brandLogo:   { width: 180, height: 44 },
 
   // Sort chips — same pill language as the category row above them.
-  sortRow:   { paddingHorizontal: 18, paddingBottom: 12, gap: 8 },
+  sortRow:   { paddingHorizontal: GUTTER, paddingBottom: 12, gap: 8 },
   sortChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 7,
@@ -1071,25 +1075,30 @@ const S = StyleSheet.create({
   // Both controls are sized against the 180x44 brand lockup opposite them: at the
   // old 29dp pill / 20dp cart-ink the right side read as an afterthought. They
   // also now clear the 40dp minimum touch target they previously missed.
+  // Squared to match the search field's 8px radius — a pill next to a square
+  // field is the mismatch that made these read as oversized.
   langBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, height: 36, borderRadius: 18,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 9, height: 30, borderRadius: 8,
     backgroundColor: GREEN_L, borderWidth: 1, borderColor: GREEN + '30',
   },
-  langBtnTxt:  { color: GREEN, fontSize: 12.5, fontWeight: '700' },
-  cartBtn:     { position: 'relative', width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  langBtnTxt:  { color: GREEN, fontSize: 11.5, fontWeight: '700' },
+  cartBtn:     { position: 'relative', width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   cartBadge:   { position: 'absolute', top: 2, right: 0, backgroundColor: COLORS.error, borderRadius: 9, minWidth: 17, height: 17, paddingHorizontal: 3, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: COLORS.white },
   cartBadgeTxt:{ color: COLORS.white, fontSize: 9.5, fontWeight: '900' },
 
   // ── Search ──
-  searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: KHET.card, borderRadius: 16, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: KHET.border, ...KSHADOW.soft },
+  // Flipkart's SHAPE (a filled field, not a raised card) but in our own palette.
+  // A neutral grey reads as foreign here: it sits between a white header and the
+  // green content below and belongs to neither.
+  searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: KHET.muted, borderRadius: 8, paddingHorizontal: 14, height: 46, borderWidth: 1, borderColor: KHET.border },
   // Focus state — green ring + glow so the bar feels interactive when tapped.
-  searchBarFocused: { borderColor: KHET.primary, borderWidth: 2, shadowColor: KHET.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.22, shadowRadius: 14, elevation: 8 },
+  searchBarFocused: { borderColor: KHET.primary, borderWidth: 1.5, backgroundColor: KHET.card },
   searchInput: { flex: 1, fontSize: 15, color: KHET.foreground, padding: 0, fontFamily: KFONT.sansMed },
 
   // ── Category pills ──
-  pillsWrap:     { backgroundColor: KHET.muted, minHeight: 66 },
-  pillsRow:      { paddingHorizontal: 12, paddingVertical: 10, gap: 8, alignItems: 'center' },
+  pillsWrap:     { backgroundColor: KHET.card, minHeight: 66 },
+  pillsRow:      { paddingHorizontal: GUTTER, paddingVertical: 10, gap: 8, alignItems: 'center' },
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingLeft: 6, paddingRight: 12, paddingVertical: 6,
@@ -1104,14 +1113,14 @@ const S = StyleSheet.create({
 
   // ── Sections ──
   section:     { marginTop: 6 },
-  sectionRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
+  sectionRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 10 },
   sectionTitle:{ fontSize: 20, fontFamily: KFONT.displaySemi, color: KHET.foreground, letterSpacing: -0.5 },
   seeAllBtn:   { flexDirection: 'row', alignItems: 'center', gap: 2 },
   seeAllTxt:   { fontSize: 13, color: KHET.primary, fontFamily: KFONT.sansSemi },
   resultCount: { fontSize: 12, color: KHET.mutedForeground, fontFamily: KFONT.sans },
 
   // ── Best sellers ──
-  bsScroll:    { paddingHorizontal: 16, paddingBottom: 4, gap: 12 },
+  bsScroll:    { paddingHorizontal: GUTTER, paddingBottom: 4, gap: 12 },
   bsCard:      { width: 158, backgroundColor: KHET.card, borderRadius: 18, overflow: 'hidden', ...KSHADOW.soft, borderWidth: 1, borderColor: KHET.border },
   bsImgWrap:   { height: 110, backgroundColor: KHET.secondary, position: 'relative' },
   bsImg:       { width: '100%', height: '100%' },
@@ -1126,7 +1135,7 @@ const S = StyleSheet.create({
   bsAddBtn:    { width: 28, height: 28, borderRadius: 14, backgroundColor: KHET.primary, justifyContent: 'center', alignItems: 'center' },
 
   // ── Product grid ──
-  productGrid:   { paddingHorizontal: 12, paddingBottom: 8, gap: 12 },
+  productGrid:   { paddingHorizontal: GUTTER, paddingBottom: 8, gap: 12 },
   gridCard:      { flex: 1, backgroundColor: KHET.card, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: KHET.border, ...KSHADOW.soft },
   gridImgWrap:   { height: 130, backgroundColor: KHET.secondary, position: 'relative' },
   gridImg:           { width: '100%', height: '100%' },

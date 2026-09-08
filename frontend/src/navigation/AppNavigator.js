@@ -27,9 +27,12 @@ const scale  = (v) => Math.round(v * (W / 390));
 // Clamp between min and max
 const clamp  = (v, min, max) => Math.min(Math.max(v, min), max);
 
-const SIDE_GAP   = clamp(scale(10), 8, 14);
-const BAR_RADIUS = clamp(scale(28), 24, 34);
-const ICON_SIZE  = clamp(scale(38), 34, 44);
+// Docked, not floating: the bar is a plain full-bleed strip. No side gap and no
+// corner radius at all — any rounding leaves a wedge of screen showing at the
+// top corners, which is exactly what makes it read as a floating card.
+const SIDE_GAP   = 0;
+const BAR_RADIUS = 0;
+const ICON_SIZE  = clamp(scale(28), 25, 32);
 // The bar clips to its rounded corners, so a glow wider than one cell gets cut
 // in half on the FIRST and LAST tabs. Cap it to the cell so every tab's halo is
 // a full circle, whichever one is focused.
@@ -42,7 +45,7 @@ const GLOW_SIZE  = clamp(scale(72), 50, Math.floor(CELL_W));
 // the glyph shrinks to fit instead of losing characters.
 const LABEL_SIZE = clamp(scale(12), 9.5, 13);
 const PB         = Platform.OS === 'ios' ? clamp(scale(22), 18, 30) : clamp(scale(8), 6, 12);
-const PT         = clamp(scale(12), 10, 16);
+const PT         = clamp(scale(6), 5, 8);
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 function TabItem({ route, options, focused, onPress }) {
@@ -120,15 +123,15 @@ function ImmersiveTabBar({ state, descriptors, navigation }) {
     if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
   };
 
-  // On Android with gesture nav the bottom inset is 0; with 3-button nav it may
-  // also be 0. Either way we add a minimum 8px so the bar never sits flush on
-  // the very bottom edge of the screen.
-  const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : PB);
+  // The bar is docked, so its SURFACE must reach the physical bottom edge while
+  // its CONTENT still clears the gesture bar. Padding the wrapper would leave a
+  // strip of screen showing beneath it, so the inset goes inside the bar instead.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? PB - PT : 0);
 
   return (
-    <View style={[TB.wrap, { paddingBottom: bottomPad }]}>
+    <View style={TB.wrap}>
       <View style={TB.shadow}>
-        <View style={[TB.bar, { paddingTop: PT, paddingBottom: PT - 2 }]}>
+        <View style={[TB.bar, { paddingTop: PT, paddingBottom: PT - 2 + bottomInset }]}>
           <TabBarScenery />
           {state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
@@ -155,11 +158,11 @@ const TB = StyleSheet.create({
   // overflow:'hidden'), and bar owns the clip that keeps the scenery inside
   // the rounded corners.
   wrap: {
-    paddingHorizontal: SIDE_GAP,
     backgroundColor: 'transparent',
   },
   shadow: {
-    borderRadius: BAR_RADIUS,
+    borderTopLeftRadius: BAR_RADIUS,
+    borderTopRightRadius: BAR_RADIUS,
     backgroundColor: '#fff',
     shadowColor: COLORS.primary,
     shadowOpacity: 0.16,
@@ -169,10 +172,13 @@ const TB = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: BAR_RADIUS,
+    borderTopLeftRadius: BAR_RADIUS,
+    borderTopRightRadius: BAR_RADIUS,
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.98)',
-    borderWidth: 1,
+    // Only the top edge is visible on a docked bar; a full border would draw a
+    // hairline down the screen sides and across the very bottom.
+    borderTopWidth: 1,
     borderColor: COLORS.greenPaleBorder,
   },
   tab: {
@@ -183,10 +189,10 @@ const TB = StyleSheet.create({
   tabInner: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: clamp(scale(5), 4, 7),
+    gap: clamp(scale(3), 2, 4),
     position: 'relative',
     paddingHorizontal: clamp(scale(8), 5, 12),
-    paddingVertical: clamp(scale(6), 4, 9),
+    paddingVertical: clamp(scale(3), 2, 5),
   },
   iconWrap: {
     alignItems: 'center',
