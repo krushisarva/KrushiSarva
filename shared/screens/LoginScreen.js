@@ -3,9 +3,11 @@
 // Three steps: WELCOME (pre-login) → PHONE (mobile entry) → OTP (6-digit verify).
 // Real OTP backend logic (sendOtp / verifyOtp) is preserved. The phone field is
 // uncontrolled (ref-based) to dodge the New-Architecture Android caret-reset bug;
-// the OTP uses 6 single-char boxes (each holds ≤1 char, so no caret issue).
+// the OTP uses 6 boxes that each DISPLAY one char (so no caret issue); box 0
+// accepts the full length natively so SMS autofill and paste are not truncated.
+// A complete code verifies itself — the Verify button is the manual fallback.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,14 +28,25 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { isValidPhone, isValidOtp, normalizePhone } from '../utils/validators';
+import { applyOtpInput, isOtpComplete, shouldAutoSubmitOtp, OTP_LENGTH } from '../utils/otp';
 import { KHET, KFONT, KSHADOW } from '../constants/khetTheme';
 
 const HERO = require('../assets/khet/welcome-hero.jpg');
 
 const STEPS = { WELCOME: 'welcome', PHONE: 'phone', OTP: 'otp' };
 const LANGS = ['हिन्दी', 'English', 'मराठी', 'தமிழ்', 'తెలుగు', 'ಕನ್ನಡ', 'বাংলা'];
-const OTP_LEN = 6;
+const OTP_LEN = OTP_LENGTH;
 const RESEND_SECONDS = 30;
+
+// Android's autofill framework wants 'sms-otp'; iOS wants 'one-time-code'.
+// Passing the other platform's value logs a prop warning and disables autofill.
+const OTP_AUTOCOMPLETE = Platform.OS === 'ios' ? 'one-time-code' : 'sms-otp';
+
+// Auto-submit is deliberately not instantaneous: the filled boxes need a beat on
+// screen so the farmer sees WHY the app moved on. Longer when the code arrived by
+// itself, so the "Auto-filled from SMS" banner is readable before it disappears.
+const AUTO_SUBMIT_DELAY_MS = 350;
+const AUTO_SUBMIT_DELAY_AUTOFILLED_MS = 900;
 
 // ── Web viewport lock ────────────────────────────────────────────────────────
 // App.js pins html/body/#root to `height:auto; overflow:visible` so the app uses
@@ -45,6 +58,61 @@ const RESEND_SECONDS = 30;
 function useViewportLock() {
   const { height } = useWindowDimensions();
   return Platform.OS === 'web' ? { height, maxHeight: height, overflow: 'hidden' } : null;
+}
+
+// ── Reveal the focused field above the keyboard ──────────────────────────────
+// This hook deliberately knows NOTHING about how tall the keyboard is. Making
+// room is KeyboardAvoidingView's job on iOS and adjustResize's job on Android
+// (see shared/components/ui/Screen.js:18-22 — computing our own inset and adding
+// it to the padding is how 99bae07's double-inset bug happened, and an earlier
+// version of this file reintroduced it). All this does is scroll, which cannot
+// double-count.
+//
+// Both layout callbacks are wired because the two platforms create the need to
+// scroll in opposite ways: Android shrinks the ScrollView's viewport (onLayout),
+// iOS grows the content via KAV's padding (onContentSizeChange). Scrolling from
+// the layout pass itself means the room already exists, so scrollToEnd lands
+// above the keyboard rather than clamping to the pre-keyboard maximum — no
+// guessing at the keyboard animation duration, which is what made the old fixed
+// 250 ms timeout unreliable on low-end Androids.
+function useRevealOnKeyboard(scrollRef) {
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const openRef = useRef(false);
+  openRef.current = keyboardOpen;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subs = [
+      Keyboard.addListener(showEvent, () => setKeyboardOpen(true)),
+      Keyboard.addListener(hideEvent, () => setKeyboardOpen(false)),
+    ];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
+
+  const reveal = useCallback(() => {
+    if (openRef.current) scrollRef.current?.scrollToEnd({ animated: true });
+  }, [scrollRef]);
+
+  // Android: adjustResize shrinks the window, so the viewport gets shorter.
+  const lastViewport = useRef(0);
+  const onLayout = useCallback((e) => {
+    const h = e.nativeEvent.layout.height;
+    const shrank = h < lastViewport.current - 1;
+    lastViewport.current = h;
+    if (shrank) reveal();
+  }, [reveal]);
+
+  // iOS: KeyboardAvoidingView pads, so the content gets taller.
+  const lastContent = useRef(0);
+  const onContentSizeChange = useCallback((_w, h) => {
+    const grew = h > lastContent.current + 1;
+    lastContent.current = h;
+    // Growth only — content shrinking (keyboard closing) must not yank the view.
+    if (grew) reveal();
+  }, [reveal]);
+
+  return { reveal, onLayout, onContentSizeChange };
 }
 
 // CSS flex children default to `min-height:auto` and refuse to shrink below
@@ -76,8 +144,14 @@ export default function LoginScreen() {
   const [autoFilled, setAutoFilled] = useState(false);
   const otpRefs = useRef([]);
 
+  // Guards a double-submit: `loading` is async state, so the Verify tap and the
+  // auto-submit timer can both pass a `loading` check inside the same tick.
+  const verifyingRef = useRef(false);
+  // Last code the auto-submitter fired for, so a re-render cannot resend it.
+  const autoSubmittedRef = useRef(null);
+
   const code = otpDigits.join('');
-  const otpComplete = code.length === OTP_LEN && otpDigits.every((d) => d !== '');
+  const otpComplete = isOtpComplete(otpDigits, OTP_LEN);
 
   // ── Resend countdown ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -86,9 +160,21 @@ export default function LoginScreen() {
     return () => clearInterval(id);
   }, [resendIn]);
 
-  // NOTE: We deliberately do NOT auto-verify on completion. In dev the server
-  // returns the OTP and we auto-fill it; auto-verifying as well would skip the
-  // OTP screen entirely (it would flash by). The user taps "Verify OTP".
+  // ── Auto-submit on a complete code ─────────────────────────────────────────
+  // Fires for every source — typed, pasted, SMS-autofilled, and the dev fallback
+  // OTP. The Verify button stays for manual retries; shouldAutoSubmitOtp() plus
+  // verifyingRef make sure the two can never both land.
+  useEffect(() => {
+    if (step !== STEPS.OTP) return undefined;
+    if (!shouldAutoSubmitOtp({ digits: otpDigits, verifying: loading, lastSubmitted: autoSubmittedRef.current, len: OTP_LEN })) {
+      return undefined;
+    }
+    autoSubmittedRef.current = code;
+    const delay = autoFilled ? AUTO_SUBMIT_DELAY_AUTOFILLED_MS : AUTO_SUBMIT_DELAY_MS;
+    const id = setTimeout(() => { handleVerify(); }, delay);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, code, otpComplete, loading, autoFilled]);
 
   // ── Step 1: send OTP ───────────────────────────────────────────────────────
   async function handleSendOtp({ isResend = false } = {}) {
@@ -107,6 +193,7 @@ export default function LoginScreen() {
       setResendIn(RESEND_SECONDS);
       setOtpDigits(Array(OTP_LEN).fill(''));
       setAutoFilled(false);
+      autoSubmittedRef.current = null;
       // Demo mode: server returns the OTP when SMS is not configured — auto-fill.
       const devOtp = result?.data?.devOtp ?? result?.devOtp;
       if (devOtp && /^\d{6}$/.test(String(devOtp))) {
@@ -125,7 +212,8 @@ export default function LoginScreen() {
   // ── Step 2: verify OTP ─────────────────────────────────────────────────────
   async function handleVerify() {
     const c = otpDigits.join('');
-    if (!isValidOtp(c) || loading) return;
+    if (!isValidOtp(c) || verifyingRef.current) return;
+    verifyingRef.current = true;
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -135,8 +223,12 @@ export default function LoginScreen() {
       setErrorMsg(err.userMessage || err.response?.data?.error?.message || 'Invalid or expired code.');
       setOtpDigits(Array(OTP_LEN).fill(''));
       setAutoFilled(false);
+      // Clear the guard too: after a wrong code the farmer may well retype the
+      // very same digits, and that attempt must be allowed to auto-submit again.
+      autoSubmittedRef.current = null;
       otpRefs.current[0]?.focus();
     } finally {
+      verifyingRef.current = false;
       setLoading(false);
     }
   }
@@ -154,29 +246,21 @@ export default function LoginScreen() {
 
   function handleOtpChange(i, v) {
     if (errorMsg) setErrorMsg(null);
-    const digits = v.replace(/\D/g, '');
-
-    // Paste or SMS auto-fill drops the whole code into one box — spread the digits
-    // across the boxes from the current index instead of keeping only the last one.
-    if (digits.length > 1) {
-      setOtpDigits((prev) => {
-        const next = [...prev];
-        for (let k = 0; k < digits.length && i + k < OTP_LEN; k++) next[i + k] = digits[k];
-        return next;
-      });
-      const filledTo = Math.min(i + digits.length, OTP_LEN);
-      otpRefs.current[filledTo >= OTP_LEN ? OTP_LEN - 1 : filledTo]?.focus();
-      return;
-    }
-
-    // Single character (typing) or empty string (backspace clears the box).
-    const ch = digits.slice(-1);
-    setOtpDigits((prev) => {
-      const next = [...prev];
-      next[i] = ch;
-      return next;
-    });
-    if (ch && i < OTP_LEN - 1) otpRefs.current[i + 1]?.focus();
+    // applyOtpInput handles the three cases in one place: typing, backspace, and
+    // a paste / SMS autofill that lands the whole code in a single box.
+    // Functional update so two keystrokes landing in one frame don't clobber each
+    // other. The focus target depends only on (i, v), never on the previous
+    // digits, so it is safe to derive outside the updater.
+    setOtpDigits((prev) => applyOtpInput(prev, i, v, OTP_LEN).digits);
+    const { focus } = applyOtpInput(otpDigits, i, v, OTP_LEN);
+    if (focus != null) otpRefs.current[focus]?.focus();
+    // More than one character in a single change means the code arrived whole —
+    // an SMS autofill or a paste, not keystrokes. Flag it so the banner is honest
+    // for real SMS autofill too (not just the dev fallback OTP), and so the
+    // auto-submit waits long enough for that banner to be read.
+    const arrivedWhole = String(v ?? '').replace(/[^0-9]/g, '').length > 1;
+    if (arrivedWhole) setAutoFilled(true);
+    else if (autoFilled) setAutoFilled(false);
   }
 
   function handleOtpKey(i, e) {
@@ -189,6 +273,7 @@ export default function LoginScreen() {
     setStep(STEPS.PHONE);
     setOtpDigits(Array(OTP_LEN).fill(''));
     setAutoFilled(false);
+    autoSubmittedRef.current = null;
     setErrorMsg(null);
   }
 
@@ -337,19 +422,23 @@ function WelcomeView({ insets, onStart }) {
 function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, onBack, onChange, onFocus, onBlur, onSubmit }) {
   const scrollRef = useRef(null);
   const lockViewport = useViewportLock();
-  const scrollDown = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
+  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
   return (
     <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
       <StatusBar style="dark" />
       <Blobs />
-      {/* Android already shrinks the window (adjustResize), so 'padding' would add
-          the keyboard height a second time and squeeze the body off-screen. */}
+      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
+          window there, so padding on top of it applies the keyboard height twice.
+          Same policy as shared/components/ui/Screen.js:178. */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
         <ScrollView
           ref={scrollRef}
           style={[{ flex: 1 }, WEB_SHRINK]}
           contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          onLayout={onLayout}
+          onContentSizeChange={onContentSizeChange}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
@@ -401,7 +490,7 @@ function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneD
                 maxLength={15}
                 defaultValue={phoneDisplay}
                 onChangeText={onChange}
-                onFocus={() => { onFocus(); scrollDown(); }}
+                onFocus={() => { onFocus(); reveal(); }}
                 onBlur={onBlur}
                 returnKeyType="done"
                 onSubmitEditing={onSubmit}
@@ -442,7 +531,7 @@ function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneD
 // ── OTP (verify) ─────────────────────────────────────────────────────────────
 function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, phoneDisplay, resendIn, complete, onBack, onChange, onKey, onVerify, onResend }) {
   const scrollRef = useRef(null);
-  const scrollDown = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
+  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
   // Size the six boxes explicitly from the viewport. (flex:1 + aspectRatio:1 makes
   // react-native-web blow one box up to fill the whole screen.) 48 = body padding,
   // 50 = five 10px gaps; capped at 58 so the boxes don't grow huge on web/tablet.
@@ -460,14 +549,18 @@ function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, ph
     <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
       <StatusBar style="dark" />
       <Blobs />
-      {/* Android already shrinks the window (adjustResize), so 'padding' would add
-          the keyboard height a second time and squeeze the body off-screen. */}
+      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
+          window there, so padding on top of it applies the keyboard height twice.
+          Same policy as shared/components/ui/Screen.js:178. */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
         <ScrollView
           ref={scrollRef}
           style={[{ flex: 1 }, WEB_SHRINK]}
           contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          onLayout={onLayout}
+          onContentSizeChange={onContentSizeChange}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
@@ -509,16 +602,27 @@ function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, ph
                   ref={(el) => { otpRefs.current[i] = el; }}
                   style={[sty.otpBox, { width: otpBoxSize, height: otpBoxSize }, d ? sty.otpBoxFilled : null]}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  // The first box must accept the WHOLE code: maxLength is enforced
+                  // natively, so a 1-char box truncates a 6-digit SMS autofill (or
+                  // paste) to its first digit before onChangeText ever runs — which
+                  // is why autofill silently did nothing. onChange spreads the
+                  // digits back out across the boxes, and `value` keeps each box
+                  // showing a single character.
+                  maxLength={i === 0 ? OTP_LEN : 1}
                   value={d}
                   onChangeText={(v) => onChange(i, v)}
                   onKeyPress={(e) => onKey(i, e)}
-                  onFocus={scrollDown}
+                  onFocus={reveal}
                   autoFocus={i === 0 && !otpDigits[0]}
                   editable={!loading}
                   selectionColor={KHET.primary}
-                  textContentType="oneTimeCode"
-                  autoComplete={i === 0 ? 'sms-otp' : 'off'}
+                  // iOS QuickType reads textContentType; Android's autofill service
+                  // reads autoComplete. 'sms-otp' is Android-only and
+                  // 'one-time-code' iOS-only, so they must not be crossed over.
+                  // Both are set on box 0 alone, so the OS offers the code once.
+                  textContentType={i === 0 ? 'oneTimeCode' : 'none'}
+                  autoComplete={i === 0 ? OTP_AUTOCOMPLETE : 'off'}
+                  importantForAutofill={i === 0 ? 'yes' : 'no'}
                 />
               ))}
             </View>
@@ -766,7 +870,10 @@ const sty = StyleSheet.create({
     textAlign: 'center',
     fontSize: 28,
     color: KHET.foreground,
-    fontFamily: KFONT.displaySemi,
+    // Fraunces ships old-style (non-lining) figures: in a 6-box code field its
+    // 3/4/5/7 dip below the baseline and read as garbage glyphs, not digits.
+    // Plus Jakarta Sans has lining, evenly-weighted numerals.
+    fontFamily: KFONT.sansBold,
     borderWidth: 1,
     borderColor: KHET.border,
     ...KSHADOW.soft,
