@@ -77,7 +77,13 @@ describe('OTP dev bypass — production boot guard (subprocess)', () => {
   const prodEnv = (extra) => ({
     ...process.env,
     NODE_ENV: 'production',
-    // Satisfy the other production-required keys so the bypass is the lever under test.
+    // Satisfy the other production-required keys so the bypass is the lever under
+    // test. This list must stay in lockstep with the production guard at the
+    // bottom of src/config/env.js. It drifted once already: 0625c87 swapped
+    // GROQ_API_KEY for SARVAM_API_KEY in that guard and this list kept seeding
+    // GROQ, which only showed up in CI — locally `import 'dotenv/config'` at
+    // env.js:1 loads backend/.env, so the subprocess found a real SARVAM key on
+    // disk and booted fine.
     DATABASE_URL: process.env.DATABASE_URL || 'postgresql://u:p@localhost:5432/db',
     JWT_SECRET: 'x'.repeat(40),
     FIELD_ENCRYPTION_KEY: 'a'.repeat(64),
@@ -85,7 +91,7 @@ describe('OTP dev bypass — production boot guard (subprocess)', () => {
     FIELD_ENCRYPTION_ACTIVE_KEY_ID: '',
     AI_SHARED_SECRET: 'x'.repeat(24),
     GEMINI_API_KEY: 'test',
-    GROQ_API_KEY: 'test',
+    SARVAM_API_KEY: 'test',
     MSG91_AUTH_KEY: '',
     ...extra,
   });
@@ -101,6 +107,10 @@ describe('OTP dev bypass — production boot guard (subprocess)', () => {
 
   test('boot SUCCEEDS in production when the bypass opt-in is absent', () => {
     const res = importEnv(prodEnv({ OTP_DEV_BYPASS_ENABLED: 'false' }));
+    // Assert the REASON before the status. A bare status check reports
+    // "expected 0, received 1" and hides which key the guard is missing, which
+    // is exactly how the GROQ/SARVAM drift above stayed invisible until CI.
+    expect(`${res.stderr}${res.stdout}`).not.toContain('FATAL: production config invalid');
     expect(res.status).toBe(0);
   });
 });
