@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  KeyboardAvoidingView,
   Keyboard,
   Platform,
   Image,
@@ -28,7 +29,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { isValidPhone, isValidOtp, normalizePhone } from '../utils/validators';
 import { applyOtpInput, isOtpComplete, shouldAutoSubmitOtp, OTP_LENGTH } from '../utils/otp';
-import useKeyboardBottomInset from '../hooks/useKeyboardBottomInset';
 import { KHET, KFONT, KSHADOW } from '../constants/khetTheme';
 
 const HERO = require('../assets/khet/welcome-hero.jpg');
@@ -61,34 +61,58 @@ function useViewportLock() {
 }
 
 // ── Reveal the focused field above the keyboard ──────────────────────────────
-// Driven by the ScrollView's own content-size change rather than a timer fired
-// from onFocus. When the keyboard opens, kbInset grows the contentContainer's
-// paddingBottom by exactly the keyboard height; onContentSizeChange fires only
-// once that extra room actually exists, so scrollToEnd lands above the keyboard
-// instead of clamping to the pre-keyboard maximum. Nothing depends on guessing
-// the keyboard animation duration, which is what made the old fixed 250 ms
-// timeout unreliable on low-end Androids.
+// This hook deliberately knows NOTHING about how tall the keyboard is. Making
+// room is KeyboardAvoidingView's job on iOS and adjustResize's job on Android
+// (see shared/components/ui/Screen.js:18-22 — computing our own inset and adding
+// it to the padding is how 99bae07's double-inset bug happened, and an earlier
+// version of this file reintroduced it). All this does is scroll, which cannot
+// double-count.
 //
-// The viewport itself is never resized, so the keyboard-closed and keyboard-open
-// layouts are the same layout with more scrollable space — no jump either way.
-function useRevealOnKeyboard(scrollRef, kbInset, safeAreaBottom) {
-  const open = kbInset > safeAreaBottom;
-  const openRef = useRef(open);
-  openRef.current = open;
-  const lastHeight = useRef(0);
+// Both layout callbacks are wired because the two platforms create the need to
+// scroll in opposite ways: Android shrinks the ScrollView's viewport (onLayout),
+// iOS grows the content via KAV's padding (onContentSizeChange). Scrolling from
+// the layout pass itself means the room already exists, so scrollToEnd lands
+// above the keyboard rather than clamping to the pre-keyboard maximum — no
+// guessing at the keyboard animation duration, which is what made the old fixed
+// 250 ms timeout unreliable on low-end Androids.
+function useRevealOnKeyboard(scrollRef) {
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const openRef = useRef(false);
+  openRef.current = keyboardOpen;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subs = [
+      Keyboard.addListener(showEvent, () => setKeyboardOpen(true)),
+      Keyboard.addListener(hideEvent, () => setKeyboardOpen(false)),
+    ];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
 
   const reveal = useCallback(() => {
     if (openRef.current) scrollRef.current?.scrollToEnd({ animated: true });
   }, [scrollRef]);
 
+  // Android: adjustResize shrinks the window, so the viewport gets shorter.
+  const lastViewport = useRef(0);
+  const onLayout = useCallback((e) => {
+    const h = e.nativeEvent.layout.height;
+    const shrank = h < lastViewport.current - 1;
+    lastViewport.current = h;
+    if (shrank) reveal();
+  }, [reveal]);
+
+  // iOS: KeyboardAvoidingView pads, so the content gets taller.
+  const lastContent = useRef(0);
   const onContentSizeChange = useCallback((_w, h) => {
-    const grew = h > lastHeight.current + 1;
-    lastHeight.current = h;
-    // Only on growth: shrinking (keyboard closing) must not yank the view down.
+    const grew = h > lastContent.current + 1;
+    lastContent.current = h;
+    // Growth only — content shrinking (keyboard closing) must not yank the view.
     if (grew) reveal();
   }, [reveal]);
 
-  return { reveal, onContentSizeChange };
+  return { reveal, onLayout, onContentSizeChange };
 }
 
 // CSS flex children default to `min-height:auto` and refuse to shrink below
@@ -398,108 +422,108 @@ function WelcomeView({ insets, onStart }) {
 function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, onBack, onChange, onFocus, onBlur, onSubmit }) {
   const scrollRef = useRef(null);
   const lockViewport = useViewportLock();
-  const kbInset = useKeyboardBottomInset(insets.bottom);
-  const { reveal, onContentSizeChange } = useRevealOnKeyboard(scrollRef, kbInset, insets.bottom);
+  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
   return (
     <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
       <StatusBar style="dark" />
       <Blobs />
-      {/* No <KeyboardAvoidingView>: under Expo SDK 54's forced Android edge-to-edge
-          it computes a padding of 0 and does nothing. See shared/utils/keyboard.js.
-          Instead the keyboard's real height is appended to the scroll CONTENT, so
-          the viewport never resizes (no layout jump) and the field can simply be
-          scrolled above the keyboard. */}
-      <ScrollView
-        ref={scrollRef}
-        style={[{ flex: 1 }, WEB_SHRINK]}
-        contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: kbInset + 24 }]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="none"
-        onContentSizeChange={onContentSizeChange}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={sty.surfaceHeader}>
-          <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
-            <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
-          </TouchableOpacity>
-          <View style={sty.brandRow}>
-            <Ionicons name="leaf" size={15} color={KHET.primary} />
-            <Text style={sty.brandTxt}>KrushiSarva</Text>
-          </View>
-          <View style={{ width: 40 }} />
-        </View>
-
-        <View style={{ marginTop: 24 }}>
-          <View style={sty.accentPill}>
-            <Ionicons name="sparkles" size={11} color={KHET.primary} />
-            <Text style={sty.accentPillTxt}>Secure AI verification</Text>
-          </View>
-
-          <View style={sty.progressRow}>
-            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-            <View style={sty.progEmpty} />
-            <Text style={sty.progTxt}>Step 1 of 2</Text>
-          </View>
-
-          <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.iconSquare}>
-            <Ionicons name="call" size={24} color={KHET.primaryForeground} />
-          </LinearGradient>
-
-          <Text style={sty.title}>
-            What's your{'\n'}
-            <Text style={sty.titleItalic}>mobile number?</Text>
-          </Text>
-          <Text style={sty.subtle}>We'll send a 6-digit OTP on your number to verify it's really you.</Text>
-          <Text style={[sty.subtle, { marginTop: 4 }]}>आपका मोबाइल नंबर क्या है?</Text>
-
-          <Text style={sty.fieldLabel}>MOBILE NUMBER</Text>
-          <View style={[sty.inputCard, phoneFocused && sty.inputCardFocused]}>
-            <View style={sty.ccChip}>
-              <Text style={{ fontSize: 16 }}>🇮🇳</Text>
-              <Text style={sty.ccTxt}>+91</Text>
+      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
+          window there, so padding on top of it applies the keyboard height twice.
+          Same policy as shared/components/ui/Screen.js:178. */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
+        <ScrollView
+          ref={scrollRef}
+          style={[{ flex: 1 }, WEB_SHRINK]}
+          contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          onLayout={onLayout}
+          onContentSizeChange={onContentSizeChange}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={sty.surfaceHeader}>
+            <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
+            </TouchableOpacity>
+            <View style={sty.brandRow}>
+              <Ionicons name="leaf" size={15} color={KHET.primary} />
+              <Text style={sty.brandTxt}>KrushiSarva</Text>
             </View>
-            <TextInput
-              style={sty.phoneInput}
-              placeholder="98765 43210"
-              placeholderTextColor="rgba(87,104,90,0.5)"
-              keyboardType="number-pad"
-              maxLength={15}
-              defaultValue={phoneDisplay}
-              onChangeText={onChange}
-              onFocus={() => { onFocus(); reveal(); }}
-              onBlur={onBlur}
-              returnKeyType="done"
-              onSubmitEditing={onSubmit}
-              autoFocus
+            <View style={{ width: 40 }} />
+          </View>
+
+          <View style={{ marginTop: 24 }}>
+            <View style={sty.accentPill}>
+              <Ionicons name="sparkles" size={11} color={KHET.primary} />
+              <Text style={sty.accentPillTxt}>Secure AI verification</Text>
+            </View>
+
+            <View style={sty.progressRow}>
+              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+              <View style={sty.progEmpty} />
+              <Text style={sty.progTxt}>Step 1 of 2</Text>
+            </View>
+
+            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.iconSquare}>
+              <Ionicons name="call" size={24} color={KHET.primaryForeground} />
+            </LinearGradient>
+
+            <Text style={sty.title}>
+              What's your{'\n'}
+              <Text style={sty.titleItalic}>mobile number?</Text>
+            </Text>
+            <Text style={sty.subtle}>We'll send a 6-digit OTP on your number to verify it's really you.</Text>
+            <Text style={[sty.subtle, { marginTop: 4 }]}>आपका मोबाइल नंबर क्या है?</Text>
+
+            <Text style={sty.fieldLabel}>MOBILE NUMBER</Text>
+            <View style={[sty.inputCard, phoneFocused && sty.inputCardFocused]}>
+              <View style={sty.ccChip}>
+                <Text style={{ fontSize: 16 }}>🇮🇳</Text>
+                <Text style={sty.ccTxt}>+91</Text>
+              </View>
+              <TextInput
+                style={sty.phoneInput}
+                placeholder="98765 43210"
+                placeholderTextColor="rgba(87,104,90,0.5)"
+                keyboardType="number-pad"
+                maxLength={15}
+                defaultValue={phoneDisplay}
+                onChangeText={onChange}
+                onFocus={() => { onFocus(); reveal(); }}
+                onBlur={onBlur}
+                returnKeyType="done"
+                onSubmitEditing={onSubmit}
+                autoFocus
+              />
+            </View>
+
+            {errorMsg ? (
+              <View style={sty.errorBox}>
+                <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
+                <Text style={sty.errorTxt}>{errorMsg}</Text>
+              </View>
+            ) : (
+              <View style={sty.privacyBox}>
+                <Ionicons name="shield-checkmark" size={15} color={KHET.primary} />
+                <Text style={sty.privacyTxt}>Your number stays private. Never shared or sold.</Text>
+              </View>
+            )}
+
+            <GradientButton
+              label="Send OTP / OTP भेजें"
+              onPress={onSubmit}
+              loading={loading}
+              disabled={loading || !phoneReady}
+              style={{ marginTop: 28, opacity: !phoneReady && !loading ? 0.65 : 1 }}
             />
           </View>
 
-          {errorMsg ? (
-            <View style={sty.errorBox}>
-              <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
-              <Text style={sty.errorTxt}>{errorMsg}</Text>
-            </View>
-          ) : (
-            <View style={sty.privacyBox}>
-              <Ionicons name="shield-checkmark" size={15} color={KHET.primary} />
-              <Text style={sty.privacyTxt}>Your number stays private. Never shared or sold.</Text>
-            </View>
-          )}
-
-          <GradientButton
-            label="Send OTP / OTP भेजें"
-            onPress={onSubmit}
-            loading={loading}
-            disabled={loading || !phoneReady}
-            style={{ marginTop: 28, opacity: !phoneReady && !loading ? 0.65 : 1 }}
-          />
-        </View>
-
-        <Text style={sty.footerTerms}>
-          By continuing you agree to our <Text style={sty.footerStrong}>Terms</Text> & <Text style={sty.footerStrong}>Privacy Policy</Text>
-        </Text>
-      </ScrollView>
+          <Text style={sty.footerTerms}>
+            By continuing you agree to our <Text style={sty.footerStrong}>Terms</Text> & <Text style={sty.footerStrong}>Privacy Policy</Text>
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
@@ -507,8 +531,7 @@ function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneD
 // ── OTP (verify) ─────────────────────────────────────────────────────────────
 function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, phoneDisplay, resendIn, complete, onBack, onChange, onKey, onVerify, onResend }) {
   const scrollRef = useRef(null);
-  const kbInset = useKeyboardBottomInset(insets.bottom);
-  const { reveal, onContentSizeChange } = useRevealOnKeyboard(scrollRef, kbInset, insets.bottom);
+  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
   // Size the six boxes explicitly from the viewport. (flex:1 + aspectRatio:1 makes
   // react-native-web blow one box up to fill the whole screen.) 48 = body padding,
   // 50 = five 10px gaps; capped at 58 so the boxes don't grow huge on web/tablet.
@@ -526,130 +549,131 @@ function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, ph
     <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
       <StatusBar style="dark" />
       <Blobs />
-      {/* No <KeyboardAvoidingView>: under Expo SDK 54's forced Android edge-to-edge
-          it computes a padding of 0 and does nothing. See shared/utils/keyboard.js.
-          Instead the keyboard's real height is appended to the scroll CONTENT, so
-          the viewport never resizes (no layout jump) and the field can simply be
-          scrolled above the keyboard. */}
-      <ScrollView
-        ref={scrollRef}
-        style={[{ flex: 1 }, WEB_SHRINK]}
-        contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: kbInset + 24 }]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="none"
-        onContentSizeChange={onContentSizeChange}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={sty.surfaceHeader}>
-          <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
-            <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
-          </TouchableOpacity>
-          <View style={sty.brandRow}>
-            <Ionicons name="leaf" size={15} color={KHET.primary} />
-            <Text style={sty.brandTxt}>KrushiSarva</Text>
-          </View>
-          <View style={sty.onlinePill}>
-            <Ionicons name="wifi" size={12} color={KHET.primary} />
-            <Text style={sty.onlinePillTxt}>Online</Text>
-          </View>
-        </View>
-
-        <View style={{ marginTop: 24 }}>
-          <View style={sty.progressRow}>
-            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-            <Text style={sty.progTxt}>Step 2 of 2</Text>
+      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
+          window there, so padding on top of it applies the keyboard height twice.
+          Same policy as shared/components/ui/Screen.js:178. */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
+        <ScrollView
+          ref={scrollRef}
+          style={[{ flex: 1 }, WEB_SHRINK]}
+          contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          onLayout={onLayout}
+          onContentSizeChange={onContentSizeChange}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={sty.surfaceHeader}>
+            <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
+            </TouchableOpacity>
+            <View style={sty.brandRow}>
+              <Ionicons name="leaf" size={15} color={KHET.primary} />
+              <Text style={sty.brandTxt}>KrushiSarva</Text>
+            </View>
+            <View style={sty.onlinePill}>
+              <Ionicons name="wifi" size={12} color={KHET.primary} />
+              <Text style={sty.onlinePillTxt}>Online</Text>
+            </View>
           </View>
 
-          <Text style={sty.title}>
-            Enter the{'\n'}
-            <Text style={sty.titleItalic}>6-digit code</Text>
-          </Text>
-          <Text style={sty.subtle}>
-            Sent to <Text style={sty.subtleStrong}>{masked}</Text>
-            <Text onPress={onBack} style={sty.changeLink}>  Change</Text>
-          </Text>
+          <View style={{ marginTop: 24 }}>
+            <View style={sty.progressRow}>
+              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+              <Text style={sty.progTxt}>Step 2 of 2</Text>
+            </View>
 
-          {/* OTP boxes */}
-          <View style={sty.otpRow}>
-            {otpDigits.map((d, i) => (
-              <TextInput
-                key={i}
-                ref={(el) => { otpRefs.current[i] = el; }}
-                style={[sty.otpBox, { width: otpBoxSize, height: otpBoxSize }, d ? sty.otpBoxFilled : null]}
-                keyboardType="number-pad"
-                // The first box must accept the WHOLE code: maxLength is enforced
-                // natively, so a 1-char box truncates a 6-digit SMS autofill (or
-                // paste) to its first digit before onChangeText ever runs — which
-                // is why autofill silently did nothing. onChange spreads the
-                // digits back out across the boxes, and `value` keeps each box
-                // showing a single character.
-                maxLength={i === 0 ? OTP_LEN : 1}
-                value={d}
-                onChangeText={(v) => onChange(i, v)}
-                onKeyPress={(e) => onKey(i, e)}
-                onFocus={reveal}
-                autoFocus={i === 0 && !otpDigits[0]}
-                editable={!loading}
-                selectionColor={KHET.primary}
-                // iOS QuickType reads textContentType; Android's autofill service
-                // reads autoComplete. 'sms-otp' is Android-only and
-                // 'one-time-code' iOS-only, so they must not be crossed over.
-                // Both are set on box 0 alone, so the OS offers the code once.
-                textContentType={i === 0 ? 'oneTimeCode' : 'none'}
-                autoComplete={i === 0 ? OTP_AUTOCOMPLETE : 'off'}
-                importantForAutofill={i === 0 ? 'yes' : 'no'}
-              />
-            ))}
-          </View>
+            <Text style={sty.title}>
+              Enter the{'\n'}
+              <Text style={sty.titleItalic}>6-digit code</Text>
+            </Text>
+            <Text style={sty.subtle}>
+              Sent to <Text style={sty.subtleStrong}>{masked}</Text>
+              <Text onPress={onBack} style={sty.changeLink}>  Change</Text>
+            </Text>
 
-          {autoFilled && (
-            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.autofillBanner}>
-              <Ionicons name="sparkles" size={13} color={KHET.primaryForeground} />
-              <Text style={sty.autofillTxt}>Auto-filled from SMS</Text>
-            </LinearGradient>
-          )}
+            {/* OTP boxes */}
+            <View style={sty.otpRow}>
+              {otpDigits.map((d, i) => (
+                <TextInput
+                  key={i}
+                  ref={(el) => { otpRefs.current[i] = el; }}
+                  style={[sty.otpBox, { width: otpBoxSize, height: otpBoxSize }, d ? sty.otpBoxFilled : null]}
+                  keyboardType="number-pad"
+                  // The first box must accept the WHOLE code: maxLength is enforced
+                  // natively, so a 1-char box truncates a 6-digit SMS autofill (or
+                  // paste) to its first digit before onChangeText ever runs — which
+                  // is why autofill silently did nothing. onChange spreads the
+                  // digits back out across the boxes, and `value` keeps each box
+                  // showing a single character.
+                  maxLength={i === 0 ? OTP_LEN : 1}
+                  value={d}
+                  onChangeText={(v) => onChange(i, v)}
+                  onKeyPress={(e) => onKey(i, e)}
+                  onFocus={reveal}
+                  autoFocus={i === 0 && !otpDigits[0]}
+                  editable={!loading}
+                  selectionColor={KHET.primary}
+                  // iOS QuickType reads textContentType; Android's autofill service
+                  // reads autoComplete. 'sms-otp' is Android-only and
+                  // 'one-time-code' iOS-only, so they must not be crossed over.
+                  // Both are set on box 0 alone, so the OS offers the code once.
+                  textContentType={i === 0 ? 'oneTimeCode' : 'none'}
+                  autoComplete={i === 0 ? OTP_AUTOCOMPLETE : 'off'}
+                  importantForAutofill={i === 0 ? 'yes' : 'no'}
+                />
+              ))}
+            </View>
 
-          {/* Status */}
-          <View style={{ marginTop: 18, minHeight: 20 }}>
-            {errorMsg ? (
-              <View style={sty.errorBox}>
-                <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
-                <Text style={sty.errorTxt}>{errorMsg}</Text>
-              </View>
-            ) : loading ? (
-              <View style={sty.verifyingBox}>
-                <ActivityIndicator size="small" color={KHET.primary} />
-                <Text style={sty.verifyingTxt}>Verifying code…</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Resend */}
-          <View style={{ marginTop: 8, alignItems: 'center' }}>
-            {resendIn > 0 ? (
-              <Text style={sty.subtle}>
-                Resend OTP in <Text style={sty.subtleStrong}>{mm}:{ss}</Text>
-              </Text>
-            ) : (
-              <TouchableOpacity onPress={onResend} disabled={loading}>
-                <Text style={sty.resendLink}>Resend OTP / दोबारा भेजें</Text>
-              </TouchableOpacity>
+            {autoFilled && (
+              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.autofillBanner}>
+                <Ionicons name="sparkles" size={13} color={KHET.primaryForeground} />
+                <Text style={sty.autofillTxt}>Auto-filled from SMS</Text>
+              </LinearGradient>
             )}
+
+            {/* Status */}
+            <View style={{ marginTop: 18, minHeight: 20 }}>
+              {errorMsg ? (
+                <View style={sty.errorBox}>
+                  <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
+                  <Text style={sty.errorTxt}>{errorMsg}</Text>
+                </View>
+              ) : loading ? (
+                <View style={sty.verifyingBox}>
+                  <ActivityIndicator size="small" color={KHET.primary} />
+                  <Text style={sty.verifyingTxt}>Verifying code…</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Resend */}
+            <View style={{ marginTop: 8, alignItems: 'center' }}>
+              {resendIn > 0 ? (
+                <Text style={sty.subtle}>
+                  Resend OTP in <Text style={sty.subtleStrong}>{mm}:{ss}</Text>
+                </Text>
+              ) : (
+                <TouchableOpacity onPress={onResend} disabled={loading}>
+                  <Text style={sty.resendLink}>Resend OTP / दोबारा भेजें</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <GradientButton
+              label={loading ? 'Verifying…' : 'Verify OTP'}
+              onPress={onVerify}
+              loading={loading}
+              disabled={!complete || loading}
+              style={{ marginTop: 28, opacity: !complete && !loading ? 0.65 : 1 }}
+            />
           </View>
 
-          <GradientButton
-            label={loading ? 'Verifying…' : 'Verify OTP'}
-            onPress={onVerify}
-            loading={loading}
-            disabled={!complete || loading}
-            style={{ marginTop: 28, opacity: !complete && !loading ? 0.65 : 1 }}
-          />
-        </View>
-
-        <Text style={sty.footerTerms}>Didn't get the code? Check your SMS inbox or try again in a moment.</Text>
-      </ScrollView>
+          <Text style={sty.footerTerms}>Didn't get the code? Check your SMS inbox or try again in a moment.</Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
