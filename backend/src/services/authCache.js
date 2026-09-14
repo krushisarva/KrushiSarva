@@ -32,7 +32,7 @@
  */
 import { BoundedMap } from '../utils/boundedMap.js';
 import redis from '../config/redis.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 import { ENV } from '../config/env.js';
 
 // 15 s. Short enough that a revocation missed by both the hook and pub/sub still
@@ -90,7 +90,7 @@ export async function initAuthCacheSubscriber() {
   if (_subscriber) return;
   try {
     const sub = redis.duplicate();
-    sub.on('error', (err) => logger.warn('[AuthCache] subscriber error: %s', err.message));
+    sub.on('error', (err) => logger.warn('[AuthCache] subscriber error: %s', errorText(err)));
     sub.on('message', (channel, message) => {
       if (channel !== CHANNEL) return;
       _cache.delete(message);

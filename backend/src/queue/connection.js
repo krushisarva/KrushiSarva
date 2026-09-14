@@ -14,7 +14,7 @@
 import Redis from 'ioredis';
 import { ENV } from '../config/env.js';
 import { reconnectDelay } from '../config/redis.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 
 /** A new ioredis connection configured for BullMQ. */
 export function createQueueConnection() {
@@ -27,7 +27,7 @@ export function createQueueConnection() {
   // Without a listener, ioredis throws 'error' as an unhandled exception during
   // an outage. The queue's own fail-open logic handles unavailability; here we
   // just keep the process alive and leave a breadcrumb.
-  conn.on('error', (err) => logger.warn('[Queue] redis connection error: %s', err.message));
+  conn.on('error', (err) => logger.warn('[Queue] redis connection error: %s', errorText(err)));
   return conn;
 }
 

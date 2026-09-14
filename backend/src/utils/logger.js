@@ -14,6 +14,8 @@
  * convention errors must not carry PII).
  */
 
+import { format } from 'node:util';
+
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Fully redacted — value is never useful and always sensitive.
@@ -74,12 +76,46 @@ export function redact(value, seen = new WeakSet(), depth = 0) {
 
 const scrub = (args) => args.map((a) => redact(a));
 
+/**
+ * The console arguments for one log call, with the level tag ON the message.
+ *
+ * Call sites use pino's two shapes:
+ *   logger.warn('[Queue] redis connection error: %s', err.message)
+ *   logger.error({ err, requestId }, '[LeaderLock] %s: job threw', jobName)
+ *
+ * Node's console only substitutes %s / %d / %o when the format string is its
+ * FIRST argument. The tag used to be passed first on its own, so every
+ * printf-style call (200+ of them) printed a literal "%s" and tacked the values
+ * on the end — "[Worker] %s worker error: %s notifications". Prefixing the tag
+ * onto the message puts the format string back in first position.
+ *
+ * Object-first calls print the message first and the object after it. The
+ * message is formatted with its own arguments beforehand and any leftover `%` is
+ * escaped, so an unfilled "%s" can never swallow the context object (which would
+ * print "{ err: [Error] }" instead of the stack). Everything is redacted before
+ * formatting, so PII in an object passed to %o/%j is masked too.
+ *
+ * Exported for tests.
+ */
+export function toConsoleArgs(tag, args) {
+  const clean = scrub(args);
+  if (typeof clean[0] === 'string') {
+    return [`${tag} ${clean[0]}`, ...clean.slice(1)];
+  }
+  if (clean.length >= 2 && clean[0] !== null && typeof clean[0] === 'object' && typeof clean[1] === 'string') {
+    const [context, message, ...rest] = clean;
+    const text = format(`${tag} ${message}`, ...rest).replace(/%/g, '%%');
+    return [text, context];
+  }
+  return [tag, ...clean];
+}
+
 const logger = {
   debug: (...args) => {
-    if (isDev) console.log('[DEBUG]', ...scrub(args)); // eslint-disable-line no-console
+    if (isDev) console.log(...toConsoleArgs('[DEBUG]', args)); // eslint-disable-line no-console
   },
   info: (...args) => {
-    console.log('[INFO]', ...scrub(args)); // eslint-disable-line no-console
+    console.log(...toConsoleArgs('[INFO]', args)); // eslint-disable-line no-console
   },
   warn: (...args) => {
     // Warnings ALWAYS log. This channel carries every fail-open degradation
@@ -87,12 +123,26 @@ const logger = {
     // running inline, cache failures, candidate-scan truncation. Gating it on
     // isDev meant production degraded silently and an operator only learned of
     // it through customer reports. Redaction still strips PII, as for errors.
-    console.warn('[WARN]', ...scrub(args)); // eslint-disable-line no-console
+    console.warn(...toConsoleArgs('[WARN]', args)); // eslint-disable-line no-console
   },
   error: (...args) => {
     // Errors always log; redaction still strips any PII passed alongside them.
-    console.error('[ERROR]', ...scrub(args)); // eslint-disable-line no-console
+    console.error(...toConsoleArgs('[ERROR]', args)); // eslint-disable-line no-console
   },
 };
+
+/**
+ * Text for an error in a log line. Connection failures from ioredis on a
+ * dual-stack host (localhost → ::1 and 127.0.0.1) arrive as an AggregateError
+ * whose `message` is empty, which is why "redis connection error:" printed
+ * nothing after the colon; its `code` (ECONNREFUSED) is the useful part.
+ */
+export function errorText(err) {
+  if (err == null) return 'unknown error';
+  if (typeof err !== 'object') return String(err);
+  const parts = [err.code, err.message].filter((p) => typeof p === 'string' && p.length > 0);
+  if (!parts.length && Array.isArray(err.errors) && err.errors.length) return errorText(err.errors[0]);
+  return [...new Set(parts)].join(': ') || err.name || 'unknown error';
+}
 
 export default logger;

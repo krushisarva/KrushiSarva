@@ -15,7 +15,7 @@
 import { Queue } from 'bullmq';
 import { ENV } from '../config/env.js';
 import redis from '../config/redis.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 import { getProducerConnection } from './connection.js';
 import { QUEUE_NAMES, runJobInline, isBestEffort } from './processors.js';
 
@@ -33,7 +33,7 @@ function getQueue(name) {
   let q = _queues.get(name);
   if (!q) {
     q = new Queue(name, { connection: getProducerConnection(), defaultJobOptions: DEFAULT_JOB_OPTIONS });
-    q.on('error', (err) => logger.warn('[Queue] %s error: %s', name, err.message));
+    q.on('error', (err) => logger.warn('[Queue] %s error: %s', name, errorText(err)));
     _queues.set(name, q);
   }
   return q;

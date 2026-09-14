@@ -12,7 +12,7 @@
  */
 import prisma from '../config/db.js';
 import redis from '../config/redis.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 
 // ── AI kill switches ──────────────────────────────────────────────────────────
 // Every LLM-backed route is gated by one of these. They exist so a spend spike,
@@ -135,7 +135,7 @@ export async function initFlagInvalidationSubscriber() {
   if (_subscriber) return;
   try {
     const sub = redis.duplicate();
-    sub.on('error', (err) => logger.warn('[FeatureFlags] subscriber error: %s', err.message));
+    sub.on('error', (err) => logger.warn('[FeatureFlags] subscriber error: %s', errorText(err)));
     sub.on('message', (channel, message) => {
       if (channel !== FLAG_CHANNEL) return;
       clearLocalCache();
