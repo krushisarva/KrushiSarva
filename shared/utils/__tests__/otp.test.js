@@ -1,79 +1,80 @@
-import { applyOtpInput, isOtpComplete, shouldAutoSubmitOtp, OTP_LENGTH } from '../otp';
+import {
+  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
+} from '../otp';
 
-const empty = () => Array(OTP_LENGTH).fill('');
-
-describe('applyOtpInput — typing', () => {
-  test('writes one digit and advances focus', () => {
-    expect(applyOtpInput(empty(), 0, '4')).toEqual({
-      digits: ['4', '', '', '', '', ''], focus: 1,
-    });
+describe('sanitizeOtp', () => {
+  test('keeps digits', () => {
+    expect(sanitizeOtp('482913')).toBe('482913');
   });
-  test('does not advance past the last box', () => {
-    const prev = ['1', '2', '3', '4', '5', ''];
-    expect(applyOtpInput(prev, 5, '6')).toEqual({
-      digits: ['1', '2', '3', '4', '5', '6'], focus: null,
-    });
+  test('strips the spaces and dashes an SMS app or clipboard may include', () => {
+    expect(sanitizeOtp('482 913')).toBe('482913');
+    expect(sanitizeOtp('482-913')).toBe('482913');
+    expect(sanitizeOtp('Your code: 482913')).toBe('482913');
   });
-  test('backspace clears the box and leaves focus alone', () => {
-    expect(applyOtpInput(['1', '2', '', '', '', ''], 1, '')).toEqual({
-      digits: ['1', '', '', '', '', ''], focus: null,
-    });
+  test('caps at the code length', () => {
+    expect(sanitizeOtp('4829137')).toBe('482913');
   });
-  test('ignores non-digits', () => {
-    expect(applyOtpInput(empty(), 0, 'a').digits).toEqual(empty());
-  });
-  test('ignores an out-of-range index instead of growing the array', () => {
-    expect(applyOtpInput(empty(), 9, '1')).toEqual({ digits: empty(), focus: null });
+  test('handles empty and missing input', () => {
+    expect(sanitizeOtp('')).toBe('');
+    expect(sanitizeOtp(null)).toBe('');
+    expect(sanitizeOtp(undefined)).toBe('');
   });
 });
 
-describe('applyOtpInput — paste / SMS autofill', () => {
-  test('a full code landing in box 0 spreads across all six boxes', () => {
-    expect(applyOtpInput(empty(), 0, '482913')).toEqual({
-      digits: ['4', '8', '2', '9', '1', '3'], focus: OTP_LENGTH - 1,
-    });
+describe('arrivedWhole', () => {
+  test('a keystroke is not an autofill', () => {
+    expect(arrivedWhole('48', '482')).toBe(false);
+    expect(arrivedWhole('', '4')).toBe(false);
   });
-  test('strips formatting an SMS app may include', () => {
-    expect(applyOtpInput(empty(), 0, '482 913').digits).toEqual(['4', '8', '2', '9', '1', '3']);
+  test('backspace is not an autofill', () => {
+    expect(arrivedWhole('482', '48')).toBe(false);
   });
-  test('a partial paste fills from the current box and focuses the next empty one', () => {
-    expect(applyOtpInput(['4', '', '', '', '', ''], 1, '891')).toEqual({
-      digits: ['4', '8', '9', '1', '', ''], focus: 4,
-    });
+  test('a whole code at once is', () => {
+    expect(arrivedWhole('', '482913')).toBe(true);
+    expect(arrivedWhole('4', '482 913')).toBe(true);
   });
-  test('drops overflow rather than writing past the last box', () => {
-    expect(applyOtpInput(empty(), 3, '482913').digits).toEqual(['', '', '', '4', '8', '2']);
+});
+
+describe('activeOtpCell', () => {
+  test('points at the next empty cell', () => {
+    expect(activeOtpCell('')).toBe(0);
+    expect(activeOtpCell('482')).toBe(3);
+  });
+  test('stays on the last cell once full', () => {
+    expect(activeOtpCell('482913')).toBe(OTP_LENGTH - 1);
   });
 });
 
 describe('isOtpComplete', () => {
-  test('true only when all six boxes hold a digit', () => {
+  test('true only for exactly six digits', () => {
+    expect(isOtpComplete('482913')).toBe(true);
+    expect(isOtpComplete('48291')).toBe(false);
+    expect(isOtpComplete('48291a')).toBe(false);
+    expect(isOtpComplete('')).toBe(false);
+    expect(isOtpComplete(null)).toBe(false);
+  });
+  test('still accepts a digit array', () => {
     expect(isOtpComplete(['4', '8', '2', '9', '1', '3'])).toBe(true);
     expect(isOtpComplete(['4', '8', '2', '9', '1', ''])).toBe(false);
-    expect(isOtpComplete(['4', '8', '2', '9', '1'])).toBe(false);
-    expect(isOtpComplete(null)).toBe(false);
   });
 });
 
 describe('shouldAutoSubmitOtp', () => {
-  const full = ['4', '8', '2', '9', '1', '3'];
+  const full = '482913';
 
   test('fires once the code is complete', () => {
-    expect(shouldAutoSubmitOtp({ digits: full, verifying: false, lastSubmitted: null })).toBe(true);
+    expect(shouldAutoSubmitOtp({ code: full, verifying: false, lastSubmitted: null })).toBe(true);
   });
   test('does not fire on a partial code', () => {
-    expect(shouldAutoSubmitOtp({ digits: ['4', '8', '', '', '', ''], verifying: false, lastSubmitted: null })).toBe(false);
+    expect(shouldAutoSubmitOtp({ code: '48', verifying: false, lastSubmitted: null })).toBe(false);
   });
   test('does not fire while a verify is already in flight', () => {
-    expect(shouldAutoSubmitOtp({ digits: full, verifying: true, lastSubmitted: null })).toBe(false);
+    expect(shouldAutoSubmitOtp({ code: full, verifying: true, lastSubmitted: null })).toBe(false);
   });
   test('does not re-fire for a code it already submitted', () => {
-    expect(shouldAutoSubmitOtp({ digits: full, verifying: false, lastSubmitted: '482913' })).toBe(false);
-  });
-  test('fires again for the same digits once the guard is cleared after a failure', () => {
-    expect(shouldAutoSubmitOtp({ digits: full, verifying: false, lastSubmitted: null })).toBe(true);
+    expect(shouldAutoSubmitOtp({ code: full, verifying: false, lastSubmitted: full })).toBe(false);
   });
   test('fires for a different code even if one was submitted before', () => {
-    expect(shouldAutoSubmitOtp({ digits: full, verifying: false, lastSubmitted: '111111' })).toBe(true);
+    expect(shouldAutoSubmitOtp({ code: full, verifying: false, lastSubmitted: '111111' })).toBe(true);
   });
 });

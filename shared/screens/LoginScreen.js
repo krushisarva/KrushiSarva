@@ -1,11 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth flow — KrushiSarva design (ported from the Lovable "dharti-connect-hub" project).
 // Three steps: WELCOME (pre-login) → PHONE (mobile entry) → OTP (6-digit verify).
+// Shared by the farmer app and the seller app.
+//
 // Real OTP backend logic (sendOtp / verifyOtp) is preserved. The phone field is
-// uncontrolled (ref-based) to dodge the New-Architecture Android caret-reset bug;
-// the OTP uses 6 boxes that each DISPLAY one char (so no caret issue); box 0
-// accepts the full length natively so SMS autofill and paste are not truncated.
+// uncontrolled (ref-based) to dodge the New-Architecture Android caret-reset bug.
 // A complete code verifies itself — the Verify button is the manual fallback.
+//
+// WHAT THIS FILE GUARANTEES, AND WHY EACH ONE BROKE BEFORE
+//   Keyboard. Android runs edge-to-edge on Expo SDK 54, so the window is not
+//     resized for the keyboard and the phone field sat under it. AuthSurface
+//     now shrinks the scroll viewport by the covered height and scrolls the
+//     field + its button into view (shared/utils/keyboardInset.js has the full
+//     history). It stays mounted from PHONE to OTP, so a keyboard that is
+//     already open when the code screen appears is still accounted for.
+//   OTP cells. The code is ONE TextInput laid over six drawn cells. Six real
+//     inputs had two faults: Android pads a TextInput by default, which clipped
+//     a 28px digit inside a 43px box; and SMS autofill targets the focused
+//     field, which after the first digit was a box with autofill switched off.
+//   Autofill. iOS reads textContentType, Android reads autoComplete, the web
+//     reads autocomplete="one-time-code" — all on the one input.
+//   One spinner. "Verifying…" lives in the button only; the status box that
+//     spun alongside it is gone.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -27,8 +43,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { isValidPhone, isValidOtp, normalizePhone } from '../utils/validators';
-import { applyOtpInput, isOtpComplete, shouldAutoSubmitOtp, OTP_LENGTH } from '../utils/otp';
+import { isValidPhone, normalizePhone } from '../utils/validators';
+import {
+  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
+} from '../utils/otp';
+import { androidKeyboardInset, revealScrollOffset } from '../utils/keyboardInset';
 import { KHET, KFONT, KSHADOW } from '../constants/khetTheme';
 
 const HERO = require('../assets/khet/welcome-hero.jpg');
@@ -38,15 +57,29 @@ const LANGS = ['हिन्दी', 'English', 'मराठी', 'தமிழ
 const OTP_LEN = OTP_LENGTH;
 const RESEND_SECONDS = 30;
 
-// Android's autofill framework wants 'sms-otp'; iOS wants 'one-time-code'.
-// Passing the other platform's value logs a prop warning and disables autofill.
-const OTP_AUTOCOMPLETE = Platform.OS === 'ios' ? 'one-time-code' : 'sms-otp';
+// Each platform reads a different hint; passing another platform's value logs
+// a prop warning and switches autofill off.
+const OTP_AUTOCOMPLETE = Platform.select({ ios: 'one-time-code', android: 'sms-otp', default: 'one-time-code' });
 
-// Auto-submit is deliberately not instantaneous: the filled boxes need a beat on
+// Auto-submit is deliberately not instantaneous: the filled cells need a beat on
 // screen so the farmer sees WHY the app moved on. Longer when the code arrived by
 // itself, so the "Auto-filled from SMS" banner is readable before it disappears.
 const AUTO_SUBMIT_DELAY_MS = 350;
 const AUTO_SUBMIT_DELAY_AUTOFILLED_MS = 900;
+
+// Space kept between the revealed field/button block and the keyboard edge.
+// Generous because Android reports the keyboard height once, when it opens: a
+// suggestion strip appearing later makes the keyboard taller than reported.
+const REVEAL_MARGIN = 24;
+
+const IS_ANDROID = Platform.OS === 'android';
+const IS_WEB = Platform.OS === 'web';
+
+// Fully see-through, but NOT 'transparent'. On Android 'transparent' is the
+// integer 0, which React Native's renderer also uses to mean "no colour set"
+// (HostPlatformColor::UndefinedColor), so the text fell back to the theme's
+// black and the hidden OTP input showed its digits over the cells.
+const INVISIBLE = 'rgba(255,255,255,0)';
 
 // ── Web viewport lock ────────────────────────────────────────────────────────
 // App.js pins html/body/#root to `height:auto; overflow:visible` so the app uses
@@ -57,72 +90,77 @@ const AUTO_SUBMIT_DELAY_AUTOFILLED_MS = 900;
 // scroll surface. No-op on native, where flex:1 already resolves to the screen.
 function useViewportLock() {
   const { height } = useWindowDimensions();
-  return Platform.OS === 'web' ? { height, maxHeight: height, overflow: 'hidden' } : null;
+  return IS_WEB ? { height, maxHeight: height, overflow: 'hidden' } : null;
 }
 
-// ── Reveal the focused field above the keyboard ──────────────────────────────
-// This hook deliberately knows NOTHING about how tall the keyboard is. Making
-// room is KeyboardAvoidingView's job on iOS and adjustResize's job on Android
-// (see shared/components/ui/Screen.js:18-22 — computing our own inset and adding
-// it to the padding is how 99bae07's double-inset bug happened, and an earlier
-// version of this file reintroduced it). All this does is scroll, which cannot
-// double-count.
-//
-// Both layout callbacks are wired because the two platforms create the need to
-// scroll in opposite ways: Android shrinks the ScrollView's viewport (onLayout),
-// iOS grows the content via KAV's padding (onContentSizeChange). Scrolling from
-// the layout pass itself means the room already exists, so scrollToEnd lands
-// above the keyboard rather than clamping to the pre-keyboard maximum — no
-// guessing at the keyboard animation duration, which is what made the old fixed
-// 250 ms timeout unreliable on low-end Androids.
-function useRevealOnKeyboard(scrollRef) {
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const openRef = useRef(false);
-  openRef.current = keyboardOpen;
+// ── Keyboard room ────────────────────────────────────────────────────────────
+// iOS: KeyboardAvoidingView pads (below). Android: this hook computes the strip
+// the keyboard covers, net of anything the window itself gave back — see
+// shared/utils/keyboardInset.js. Web: the browser handles it; nothing fires.
+function initialKeyboardHeight() {
+  if (IS_WEB || !Keyboard.isVisible?.()) return 0;
+  const h = Keyboard.metrics?.()?.height;
+  return Number.isFinite(h) ? h : 0;
+}
+
+function useKeyboardRoom(bottomInset) {
+  const [keyboard, setKeyboard] = useState(() => {
+    const height = initialKeyboardHeight();
+    return { visible: height > 0, height };
+  });
+  const visibleRef = useRef(keyboard.visible);
+  const [root, setRoot] = useState({ rest: 0, current: 0 });
 
   useEffect(() => {
+    if (IS_WEB) return undefined;
+    // iOS fires *Will* in step with the keyboard animation; Android only has
+    // *Did*, which it emits from the layout pass that follows the IME change.
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const subs = [
-      Keyboard.addListener(showEvent, () => setKeyboardOpen(true)),
-      Keyboard.addListener(hideEvent, () => setKeyboardOpen(false)),
+      Keyboard.addListener(showEvent, (e) => {
+        visibleRef.current = true;
+        const h = e?.endCoordinates?.height;
+        setKeyboard({ visible: true, height: Number.isFinite(h) ? h : 0 });
+      }),
+      Keyboard.addListener(hideEvent, () => {
+        visibleRef.current = false;
+        setKeyboard({ visible: false, height: 0 });
+      }),
     ];
     return () => subs.forEach((sub) => sub.remove());
   }, []);
 
-  const reveal = useCallback(() => {
-    if (openRef.current) scrollRef.current?.scrollToEnd({ animated: true });
-  }, [scrollRef]);
-
-  // Android: adjustResize shrinks the window, so the viewport gets shorter.
-  const lastViewport = useRef(0);
-  const onLayout = useCallback((e) => {
+  // The root view's height with the keyboard closed is the reference: if the
+  // window shrinks while it is open, that shrink is room already made.
+  const onRootLayout = useCallback((e) => {
     const h = e.nativeEvent.layout.height;
-    const shrank = h < lastViewport.current - 1;
-    lastViewport.current = h;
-    if (shrank) reveal();
-  }, [reveal]);
+    setRoot((prev) => {
+      const rest = !visibleRef.current || prev.rest === 0 ? h : prev.rest;
+      return prev.rest === rest && prev.current === h ? prev : { rest, current: h };
+    });
+  }, []);
 
-  // iOS: KeyboardAvoidingView pads, so the content gets taller.
-  const lastContent = useRef(0);
-  const onContentSizeChange = useCallback((_w, h) => {
-    const grew = h > lastContent.current + 1;
-    lastContent.current = h;
-    // Growth only — content shrinking (keyboard closing) must not yank the view.
-    if (grew) reveal();
-  }, [reveal]);
+  const inset = IS_ANDROID
+    ? androidKeyboardInset({
+      keyboardHeight: keyboard.height,
+      bottomInset,
+      restHeight: root.rest,
+      height: root.current,
+    })
+    : 0;
 
-  return { reveal, onLayout, onContentSizeChange };
+  return { inset, visible: keyboard.visible, visibleRef, onRootLayout };
 }
 
 // CSS flex children default to `min-height:auto` and refuse to shrink below
 // their content, which defeats overflow:auto on the ScrollView. No-op on native.
-const WEB_SHRINK = Platform.OS === 'web' ? { minHeight: 0 } : null;
+const WEB_SHRINK = IS_WEB ? { minHeight: 0 } : null;
 
 // `flexGrow:1` on the scroll content makes it exactly fill the parent on web —
 // no overflow, so react-native-web never enables scrolling. Native still needs
 // it so the footer text is pushed to the bottom on tall screens.
-const SCROLL_GROW = Platform.OS === 'web' ? { flexGrow: 0 } : null;
+const SCROLL_GROW = IS_WEB ? { flexGrow: 0 } : null;
 
 export default function LoginScreen() {
   const { sendOtp, verifyOtp } = useAuth();
@@ -139,97 +177,132 @@ export default function LoginScreen() {
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [phoneDisplay, setPhoneDisplay] = useState(''); // STABLE snapshot for the field + OTP labels
 
-  // OTP — six single-char boxes.
-  const [otpDigits, setOtpDigits] = useState(Array(OTP_LEN).fill(''));
+  // OTP — one string, drawn as six cells.
+  const [code, setCode] = useState('');
   const [autoFilled, setAutoFilled] = useState(false);
-  const otpRefs = useRef([]);
+  const otpInputRef = useRef(null);
+
+  // The block (field + button) AuthSurface keeps above the keyboard.
+  const revealRef = useRef(null);
+
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const phoneDisplayRef = useRef(phoneDisplay);
+  phoneDisplayRef.current = phoneDisplay;
 
   // Guards a double-submit: `loading` is async state, so the Verify tap and the
   // auto-submit timer can both pass a `loading` check inside the same tick.
   const verifyingRef = useRef(false);
   // Last code the auto-submitter fired for, so a re-render cannot resend it.
   const autoSubmittedRef = useRef(null);
+  // Only the newest OTP request may update this screen.
+  const sendAttemptRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
-  const code = otpDigits.join('');
-  const otpComplete = isOtpComplete(otpDigits, OTP_LEN);
+  const otpComplete = isOtpComplete(code, OTP_LEN);
 
   // ── Resend countdown ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (resendIn <= 0) return;
+    if (resendIn <= 0) return undefined;
     const id = setInterval(() => setResendIn((n) => Math.max(0, n - 1)), 1000);
     return () => clearInterval(id);
   }, [resendIn]);
 
-  // ── Auto-submit on a complete code ─────────────────────────────────────────
-  // Fires for every source — typed, pasted, SMS-autofilled, and the dev fallback
-  // OTP. The Verify button stays for manual retries; shouldAutoSubmitOtp() plus
-  // verifyingRef make sure the two can never both land.
-  useEffect(() => {
-    if (step !== STEPS.OTP) return undefined;
-    if (!shouldAutoSubmitOtp({ digits: otpDigits, verifying: loading, lastSubmitted: autoSubmittedRef.current, len: OTP_LEN })) {
-      return undefined;
-    }
-    autoSubmittedRef.current = code;
-    const delay = autoFilled ? AUTO_SUBMIT_DELAY_AUTOFILLED_MS : AUTO_SUBMIT_DELAY_MS;
-    const id = setTimeout(() => { handleVerify(); }, delay);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, code, otpComplete, loading, autoFilled]);
-
-  // ── Step 1: send OTP ───────────────────────────────────────────────────────
-  async function handleSendOtp({ isResend = false } = {}) {
-    if (loading || resendIn > 0) return;
-    const phone = phoneValueRef.current;
-    if (!isValidPhone(phone)) {
-      setErrorMsg('Enter a valid 10-digit mobile number.');
-      return;
-    }
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const result = await sendOtp(phone);
-      setPhoneDisplay(phone);
-      if (!isResend) setStep(STEPS.OTP);
-      setResendIn(RESEND_SECONDS);
-      setOtpDigits(Array(OTP_LEN).fill(''));
-      setAutoFilled(false);
-      autoSubmittedRef.current = null;
-      // Demo mode: server returns the OTP when SMS is not configured — auto-fill.
-      const devOtp = result?.data?.devOtp ?? result?.devOtp;
-      if (devOtp && /^\d{6}$/.test(String(devOtp))) {
-        setOtpDigits(String(devOtp).split(''));
-        setAutoFilled(true);
-      }
-    } catch (err) {
-      const retryAfter = Number(err?.response?.headers?.['retry-after']);
-      if (Number.isFinite(retryAfter) && retryAfter > 0) setResendIn(Math.min(Math.ceil(retryAfter), 300));
-      setErrorMsg(err.userMessage || err.response?.data?.error?.message || 'Could not send OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const resetCode = useCallback(() => {
+    setCode('');
+    setAutoFilled(false);
+    autoSubmittedRef.current = null;
+  }, []);
 
   // ── Step 2: verify OTP ─────────────────────────────────────────────────────
-  async function handleVerify() {
-    const c = otpDigits.join('');
-    if (!isValidOtp(c) || verifyingRef.current) return;
+  const verify = useCallback(async () => {
+    const submitted = codeRef.current;
+    if (verifyingRef.current) return;
+    if (!isOtpComplete(submitted, OTP_LEN)) return;
     verifyingRef.current = true;
     setLoading(true);
     setErrorMsg(null);
     try {
-      await verifyOtp(phoneDisplay || phoneValueRef.current, c);
-      // RootNavigator routes on success.
+      await verifyOtp(phoneDisplayRef.current || phoneValueRef.current, submitted);
+      // RootNavigator routes on success and this screen unmounts.
     } catch (err) {
+      if (!mountedRef.current) return;
       setErrorMsg(err.userMessage || err.response?.data?.error?.message || 'Invalid or expired code.');
-      setOtpDigits(Array(OTP_LEN).fill(''));
+      // Clear only the code that failed — it may have been replaced while the
+      // request was in flight.
+      setCode((current) => (current === submitted ? '' : current));
       setAutoFilled(false);
       // Clear the guard too: after a wrong code the farmer may well retype the
       // very same digits, and that attempt must be allowed to auto-submit again.
       autoSubmittedRef.current = null;
-      otpRefs.current[0]?.focus();
+      requestAnimationFrame(() => otpInputRef.current?.focus());
     } finally {
       verifyingRef.current = false;
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [verifyOtp]);
+
+  // ── Auto-submit on a complete code ─────────────────────────────────────────
+  // Fires for every source — typed, pasted, SMS-autofilled and the dev fallback
+  // OTP. shouldAutoSubmitOtp() plus verifyingRef make sure it and the Verify
+  // button can never both land.
+  useEffect(() => {
+    if (step !== STEPS.OTP) return undefined;
+    if (!shouldAutoSubmitOtp({ code, verifying: loading, lastSubmitted: autoSubmittedRef.current, len: OTP_LEN })) {
+      return undefined;
+    }
+    const delay = autoFilled ? AUTO_SUBMIT_DELAY_AUTOFILLED_MS : AUTO_SUBMIT_DELAY_MS;
+    const id = setTimeout(() => {
+      autoSubmittedRef.current = code;
+      verify();
+    }, delay);
+    return () => clearTimeout(id);
+  }, [step, code, loading, autoFilled, verify]);
+
+  // ── Step 1: send OTP ───────────────────────────────────────────────────────
+  async function handleSendOtp({ isResend = false } = {}) {
+    if (loading) return;
+    const phone = phoneValueRef.current || phoneDisplay;
+    if (!isValidPhone(phone)) {
+      setErrorMsg('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (resendIn > 0) {
+      // Same number, code still fresh: go back to it instead of silently
+      // ignoring the tap (the button used to do nothing for up to 30 s after
+      // "Change").
+      if (!isResend && phone === phoneDisplay) {
+        setErrorMsg(null);
+        setStep(STEPS.OTP);
+        return;
+      }
+      if (isResend) return;
+    }
+
+    const attempt = ++sendAttemptRef.current;
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const result = await sendOtp(phone);
+      if (!mountedRef.current || attempt !== sendAttemptRef.current) return;
+      setPhoneDisplay(phone);
+      setStep(STEPS.OTP);
+      setResendIn(RESEND_SECONDS);
+      resetCode();
+      // Demo mode: server returns the OTP when SMS is not configured — auto-fill.
+      const devOtp = result?.data?.devOtp ?? result?.devOtp;
+      if (devOtp && /^\d{6}$/.test(String(devOtp))) {
+        setCode(String(devOtp));
+        setAutoFilled(true);
+      }
+    } catch (err) {
+      if (!mountedRef.current || attempt !== sendAttemptRef.current) return;
+      const retryAfter = Number(err?.response?.headers?.['retry-after']);
+      if (Number.isFinite(retryAfter) && retryAfter > 0) setResendIn(Math.min(Math.ceil(retryAfter), 300));
+      setErrorMsg(err.userMessage || err.response?.data?.error?.message || 'Could not send OTP. Please try again.');
+    } finally {
+      if (mountedRef.current && attempt === sendAttemptRef.current) setLoading(false);
     }
   }
 
@@ -244,86 +317,114 @@ export default function LoginScreen() {
     if (errorMsg) setErrorMsg(null);
   }
 
-  function handleOtpChange(i, v) {
+  function handleCodeChange(text) {
+    const next = sanitizeOtp(text, OTP_LEN);
+    const whole = arrivedWhole(codeRef.current, next, OTP_LEN);
     if (errorMsg) setErrorMsg(null);
-    // applyOtpInput handles the three cases in one place: typing, backspace, and
-    // a paste / SMS autofill that lands the whole code in a single box.
-    // Functional update so two keystrokes landing in one frame don't clobber each
-    // other. The focus target depends only on (i, v), never on the previous
-    // digits, so it is safe to derive outside the updater.
-    setOtpDigits((prev) => applyOtpInput(prev, i, v, OTP_LEN).digits);
-    const { focus } = applyOtpInput(otpDigits, i, v, OTP_LEN);
-    if (focus != null) otpRefs.current[focus]?.focus();
-    // More than one character in a single change means the code arrived whole —
-    // an SMS autofill or a paste, not keystrokes. Flag it so the banner is honest
-    // for real SMS autofill too (not just the dev fallback OTP), and so the
-    // auto-submit waits long enough for that banner to be read.
-    const arrivedWhole = String(v ?? '').replace(/[^0-9]/g, '').length > 1;
-    if (arrivedWhole) setAutoFilled(true);
+    setCode(next);
+    // More than one digit in a single change means the code arrived whole — an
+    // SMS autofill, a keyboard suggestion or a paste. Flag it so the banner is
+    // honest and the auto-submit waits long enough for it to be read.
+    if (whole) setAutoFilled(true);
     else if (autoFilled) setAutoFilled(false);
   }
 
-  function handleOtpKey(i, e) {
-    if (e.nativeEvent.key === 'Backspace' && !otpDigits[i] && i > 0) {
-      otpRefs.current[i - 1]?.focus();
-    }
+  function backToPhone() {
+    // Abandoning the code screen abandons its pending send, so a late response
+    // cannot drop someone who is now typing a different number back on it.
+    sendAttemptRef.current += 1;
+    // A resend still in flight now belongs to nobody and will not clear the
+    // spinner itself — without this the Send button stayed disabled.
+    if (!verifyingRef.current) setLoading(false);
+    setStep(STEPS.PHONE);
+    resetCode();
+    setErrorMsg(null);
   }
 
-  function backToPhone() {
-    setStep(STEPS.PHONE);
-    setOtpDigits(Array(OTP_LEN).fill(''));
-    setAutoFilled(false);
-    autoSubmittedRef.current = null;
+  function backToWelcome() {
+    // Same rule as backToPhone: leaving the step abandons its pending request.
+    sendAttemptRef.current += 1;
+    if (!verifyingRef.current) setLoading(false);
     setErrorMsg(null);
+    setStep(STEPS.WELCOME);
   }
 
   if (step === STEPS.WELCOME) {
     return <WelcomeView insets={insets} onStart={() => setStep(STEPS.PHONE)} />;
   }
 
-  if (step === STEPS.PHONE) {
-    return (
-      <PhoneView
-        insets={insets}
-        loading={loading}
-        errorMsg={errorMsg}
-        phoneReady={phoneReady}
-        phoneFocused={phoneFocused}
-        phoneDisplay={phoneDisplay}
-        resendIn={resendIn}
-        onBack={() => setStep(STEPS.WELCOME)}
-        onChange={handlePhoneChange}
-        onFocus={() => setPhoneFocused(true)}
-        onBlur={() => setPhoneFocused(false)}
-        onSubmit={() => handleSendOtp()}
-      />
-    );
-  }
+  const onOtp = step === STEPS.OTP;
 
+  // One surface for PHONE and OTP: same element type in the same place, so it
+  // stays mounted across the step change and keeps its keyboard state.
   return (
-    <OtpView
+    <AuthSurface
       insets={insets}
-      loading={loading}
-      errorMsg={errorMsg}
-      otpDigits={otpDigits}
-      otpRefs={otpRefs}
-      autoFilled={autoFilled}
-      phoneDisplay={phoneDisplay}
-      resendIn={resendIn}
-      complete={otpComplete}
-      onBack={backToPhone}
-      onChange={handleOtpChange}
-      onKey={handleOtpKey}
-      onVerify={handleVerify}
-      onResend={() => handleSendOtp({ isResend: true })}
-    />
+      revealRef={revealRef}
+      onBack={onOtp ? backToPhone : backToWelcome}
+      headerRight={onOtp ? (
+        <View style={sty.onlinePill}>
+          <Ionicons name="wifi" size={12} color={KHET.primary} />
+          <Text style={sty.onlinePillTxt}>Online</Text>
+        </View>
+      ) : <View style={{ width: 40 }} />}
+      footer={onOtp
+        ? <Text style={sty.footerTerms}>Didn't get the code? Check your SMS inbox or try again in a moment.</Text>
+        : (
+          <Text style={sty.footerTerms}>
+            By continuing you agree to our <Text style={sty.footerStrong}>Terms</Text> & <Text style={sty.footerStrong}>Privacy Policy</Text>
+          </Text>
+        )}
+    >
+      {({ reveal }) => (onOtp ? (
+        <OtpStep
+          key="otp"
+          loading={loading}
+          errorMsg={errorMsg}
+          code={code}
+          inputRef={otpInputRef}
+          revealRef={revealRef}
+          autoFilled={autoFilled}
+          phoneDisplay={phoneDisplay}
+          resendIn={resendIn}
+          complete={otpComplete}
+          onBack={backToPhone}
+          onChangeCode={handleCodeChange}
+          onVerify={() => verify()}
+          onResend={() => handleSendOtp({ isResend: true })}
+          onFocusField={reveal}
+        />
+      ) : (
+        <PhoneStep
+          key="phone"
+          loading={loading}
+          errorMsg={errorMsg}
+          phoneReady={phoneReady}
+          phoneFocused={phoneFocused}
+          phoneDisplay={phoneDisplay}
+          revealRef={revealRef}
+          onChange={handlePhoneChange}
+          onFocus={() => { setPhoneFocused(true); reveal(); }}
+          onBlur={() => setPhoneFocused(false)}
+          onSubmit={() => handleSendOtp()}
+        />
+      ))}
+    </AuthSurface>
   );
 }
 
 // ── Reusable bits ────────────────────────────────────────────────────────────
 function GradientButton({ label, sublabel, onPress, disabled, loading, style }) {
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress} disabled={disabled} style={[{ borderRadius: 18 }, style]}>
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      disabled={disabled}
+      style={[{ borderRadius: 18 }, style]}
+      accessibilityRole="button"
+      accessibilityLabel={sublabel ? `${label} ${sublabel}` : label}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+    >
       <LinearGradient
         colors={KHET.gradPrimary}
         start={{ x: 0, y: 0 }}
@@ -353,6 +454,112 @@ function Blobs() {
       <View style={[sty.blob, { backgroundColor: KHET.primaryGlow, top: -96, left: -96 }]} />
       <View style={[sty.blob, { backgroundColor: KHET.primary, top: 160, right: -80, opacity: 0.1 }]} />
     </View>
+  );
+}
+
+// ── Surface shared by PHONE and OTP ──────────────────────────────────────────
+function AuthSurface({ insets, revealRef, onBack, headerRight, footer, children }) {
+  const scrollRef = useRef(null);
+  const lockViewport = useViewportLock();
+  const keyboard = useKeyboardRoom(insets.bottom);
+  const viewportRef = useRef(0);
+  const scrollYRef = useRef(0);
+
+  // Bring the step's field + button block into view above the keyboard. Only
+  // while the keyboard is up; scrolls only if part of the block is hidden.
+  const reveal = useCallback(() => {
+    if (IS_WEB) return;
+    requestAnimationFrame(() => {
+      const block = revealRef.current;
+      const scroller = scrollRef.current;
+      if (!block || !scroller || !keyboard.visibleRef.current) return;
+      const inner = scroller.getInnerViewRef?.();
+      if (!inner || typeof block.measureLayout !== 'function') return;
+      block.measureLayout(
+        inner,
+        (_x, y, _w, h) => {
+          const target = revealScrollOffset({
+            blockTop: y,
+            blockHeight: h,
+            viewportHeight: viewportRef.current,
+            scrollY: scrollYRef.current,
+            margin: REVEAL_MARGIN,
+          });
+          if (target != null) scroller.scrollTo({ y: target, animated: true });
+        },
+        () => {},
+      );
+    });
+  }, [revealRef, keyboard.visibleRef]);
+
+  // The viewport shrinks when room is made for the keyboard (Android padding
+  // below, iOS KeyboardAvoidingView) — that is the moment the block can move.
+  const onViewportLayout = useCallback((e) => {
+    const h = e.nativeEvent.layout.height;
+    const shrank = viewportRef.current > 0 && h < viewportRef.current - 1;
+    viewportRef.current = h;
+    if (shrank) reveal();
+  }, [reveal]);
+
+  const onScroll = useCallback((e) => {
+    scrollYRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  return (
+    <LinearGradient
+      colors={KHET.gradSurface}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0.7, y: 1 }}
+      style={[sty.root, lockViewport]}
+      onLayout={keyboard.onRootLayout}
+    >
+      <StatusBar style="dark" />
+      <Blobs />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[{ flex: 1 }, WEB_SHRINK, IS_ANDROID ? { paddingBottom: keyboard.inset } : null]}
+      >
+        <ScrollView
+          ref={scrollRef}
+          style={[{ flex: 1 }, WEB_SHRINK]}
+          contentContainerStyle={[
+            sty.surfaceBody,
+            SCROLL_GROW,
+            // With the keyboard up the navigation bar is behind it, so the
+            // bottom inset would only be dead space.
+            { paddingTop: insets.top + 8, paddingBottom: keyboard.visible ? 16 : insets.bottom + 24 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          onLayout={onViewportLayout}
+          onScroll={onScroll}
+          scrollEventThrottle={32}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={sty.surfaceHeader}>
+            <TouchableOpacity
+              onPress={onBack}
+              style={sty.backCircle}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
+            </TouchableOpacity>
+            <View style={sty.brandRow}>
+              <Ionicons name="leaf" size={15} color={KHET.primary} />
+              <Text style={sty.brandTxt}>KrushiSarva</Text>
+            </View>
+            {headerRight}
+          </View>
+
+          {children({ reveal })}
+
+          {footer}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
@@ -419,264 +626,221 @@ function WelcomeView({ insets, onStart }) {
 }
 
 // ── Phone (mobile entry) ─────────────────────────────────────────────────────
-function PhoneView({ insets, loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, onBack, onChange, onFocus, onBlur, onSubmit }) {
-  const scrollRef = useRef(null);
-  const lockViewport = useViewportLock();
-  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
+function PhoneStep({ loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, revealRef, onChange, onFocus, onBlur, onSubmit }) {
   return (
-    <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
-      <StatusBar style="dark" />
-      <Blobs />
-      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
-          window there, so padding on top of it applies the keyboard height twice.
-          Same policy as shared/components/ui/Screen.js:178. */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
-        <ScrollView
-          ref={scrollRef}
-          style={[{ flex: 1 }, WEB_SHRINK]}
-          contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          onLayout={onLayout}
-          onContentSizeChange={onContentSizeChange}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={sty.surfaceHeader}>
-            <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
-              <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
-            </TouchableOpacity>
-            <View style={sty.brandRow}>
-              <Ionicons name="leaf" size={15} color={KHET.primary} />
-              <Text style={sty.brandTxt}>KrushiSarva</Text>
-            </View>
-            <View style={{ width: 40 }} />
+    <View style={{ marginTop: 24 }}>
+      <View style={sty.accentPill}>
+        <Ionicons name="sparkles" size={11} color={KHET.primary} />
+        <Text style={sty.accentPillTxt}>Secure AI verification</Text>
+      </View>
+
+      <View style={sty.progressRow}>
+        <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+        <View style={sty.progEmpty} />
+        <Text style={sty.progTxt}>Step 1 of 2</Text>
+      </View>
+
+      <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.iconSquare}>
+        <Ionicons name="call" size={24} color={KHET.primaryForeground} />
+      </LinearGradient>
+
+      <Text style={sty.title} accessibilityRole="header">
+        What's your{'\n'}
+        <Text style={sty.titleItalic}>mobile number?</Text>
+      </Text>
+      <Text style={sty.subtle}>We'll send a 6-digit OTP on your number to verify it's really you.</Text>
+      <Text style={[sty.subtle, { marginTop: 4 }]}>आपका मोबाइल नंबर क्या है?</Text>
+
+      <Text style={sty.fieldLabel}>MOBILE NUMBER</Text>
+      {/* Kept above the keyboard as one block: the field, its message, and the
+          button that sends the code. */}
+      <View ref={revealRef} collapsable={false}>
+        <View style={[sty.inputCard, phoneFocused && sty.inputCardFocused]}>
+          <View style={sty.ccChip}>
+            <Text style={{ fontSize: 16 }}>🇮🇳</Text>
+            <Text style={sty.ccTxt}>+91</Text>
           </View>
+          <TextInput
+            style={sty.phoneInput}
+            placeholder="98765 43210"
+            placeholderTextColor="rgba(87,104,90,0.5)"
+            keyboardType="number-pad"
+            maxLength={15}
+            defaultValue={phoneDisplay}
+            onChangeText={onChange}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            returnKeyType="done"
+            onSubmitEditing={onSubmit}
+            accessibilityLabel="Mobile number"
+            autoFocus
+          />
+        </View>
 
-          <View style={{ marginTop: 24 }}>
-            <View style={sty.accentPill}>
-              <Ionicons name="sparkles" size={11} color={KHET.primary} />
-              <Text style={sty.accentPillTxt}>Secure AI verification</Text>
-            </View>
-
-            <View style={sty.progressRow}>
-              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-              <View style={sty.progEmpty} />
-              <Text style={sty.progTxt}>Step 1 of 2</Text>
-            </View>
-
-            <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.iconSquare}>
-              <Ionicons name="call" size={24} color={KHET.primaryForeground} />
-            </LinearGradient>
-
-            <Text style={sty.title}>
-              What's your{'\n'}
-              <Text style={sty.titleItalic}>mobile number?</Text>
-            </Text>
-            <Text style={sty.subtle}>We'll send a 6-digit OTP on your number to verify it's really you.</Text>
-            <Text style={[sty.subtle, { marginTop: 4 }]}>आपका मोबाइल नंबर क्या है?</Text>
-
-            <Text style={sty.fieldLabel}>MOBILE NUMBER</Text>
-            <View style={[sty.inputCard, phoneFocused && sty.inputCardFocused]}>
-              <View style={sty.ccChip}>
-                <Text style={{ fontSize: 16 }}>🇮🇳</Text>
-                <Text style={sty.ccTxt}>+91</Text>
-              </View>
-              <TextInput
-                style={sty.phoneInput}
-                placeholder="98765 43210"
-                placeholderTextColor="rgba(87,104,90,0.5)"
-                keyboardType="number-pad"
-                maxLength={15}
-                defaultValue={phoneDisplay}
-                onChangeText={onChange}
-                onFocus={() => { onFocus(); reveal(); }}
-                onBlur={onBlur}
-                returnKeyType="done"
-                onSubmitEditing={onSubmit}
-                autoFocus
-              />
-            </View>
-
-            {errorMsg ? (
-              <View style={sty.errorBox}>
-                <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
-                <Text style={sty.errorTxt}>{errorMsg}</Text>
-              </View>
-            ) : (
-              <View style={sty.privacyBox}>
-                <Ionicons name="shield-checkmark" size={15} color={KHET.primary} />
-                <Text style={sty.privacyTxt}>Your number stays private. Never shared or sold.</Text>
-              </View>
-            )}
-
-            <GradientButton
-              label="Send OTP / OTP भेजें"
-              onPress={onSubmit}
-              loading={loading}
-              disabled={loading || !phoneReady}
-              style={{ marginTop: 28, opacity: !phoneReady && !loading ? 0.65 : 1 }}
-            />
+        {errorMsg ? (
+          <View style={sty.errorBox} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
+            <Text style={sty.errorTxt}>{errorMsg}</Text>
           </View>
+        ) : (
+          <View style={sty.privacyBox}>
+            <Ionicons name="shield-checkmark" size={15} color={KHET.primary} />
+            <Text style={sty.privacyTxt}>Your number stays private. Never shared or sold.</Text>
+          </View>
+        )}
 
-          <Text style={sty.footerTerms}>
-            By continuing you agree to our <Text style={sty.footerStrong}>Terms</Text> & <Text style={sty.footerStrong}>Privacy Policy</Text>
-          </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+        <GradientButton
+          label="Send OTP / OTP भेजें"
+          onPress={onSubmit}
+          loading={loading}
+          disabled={loading || !phoneReady}
+          style={{ marginTop: 28, opacity: !phoneReady && !loading ? 0.65 : 1 }}
+        />
+      </View>
+    </View>
   );
 }
 
 // ── OTP (verify) ─────────────────────────────────────────────────────────────
-function OtpView({ insets, loading, errorMsg, otpDigits, otpRefs, autoFilled, phoneDisplay, resendIn, complete, onBack, onChange, onKey, onVerify, onResend }) {
-  const scrollRef = useRef(null);
-  const { reveal, onLayout, onContentSizeChange } = useRevealOnKeyboard(scrollRef);
-  // Size the six boxes explicitly from the viewport. (flex:1 + aspectRatio:1 makes
-  // react-native-web blow one box up to fill the whole screen.) 48 = body padding,
-  // 50 = five 10px gaps; capped at 58 so the boxes don't grow huge on web/tablet.
+function OtpStep({
+  loading, errorMsg, code, inputRef, revealRef, autoFilled, phoneDisplay,
+  resendIn, complete, onBack, onChangeCode, onVerify, onResend, onFocusField,
+}) {
+  // Six cells across the body width (48 = body padding, 5 gaps), capped so they
+  // don't balloon on web/tablet and floored so a digit always fits.
   const { width } = useWindowDimensions();
-  const lockViewport = useViewportLock();
-  const otpBoxSize = Math.min(58, Math.floor((width - 48 - 50) / 6));
-  // Once all six digits are in (auto-fill or manual), no more typing is needed —
-  // hide the keyboard so the Verify button is revealed.
+  const cellSize = Math.max(40, Math.min(56, Math.floor((width - 48 - OTP_GAP * (OTP_LEN - 1)) / OTP_LEN)));
+  const [focused, setFocused] = useState(false);
+
+  // Once all six digits are in (typed, pasted or auto-filled), no more typing is
+  // needed — hide the keyboard so the Verify button is in view.
   useEffect(() => { if (complete) Keyboard.dismiss(); }, [complete]);
+
   const masked = phoneDisplay ? `+91 ${phoneDisplay.slice(0, 5)} ${phoneDisplay.slice(5)}` : '+91 ••••• •••••';
   const mm = Math.floor(resendIn / 60).toString();
   const ss = (resendIn % 60).toString().padStart(2, '0');
+  const active = activeOtpCell(code, OTP_LEN);
 
   return (
-    <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.root, lockViewport]}>
-      <StatusBar style="dark" />
-      <Blobs />
-      {/* iOS pads, Android does nothing — adjustResize has already shrunk the
-          window there, so padding on top of it applies the keyboard height twice.
-          Same policy as shared/components/ui/Screen.js:178. */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[{ flex: 1 }, WEB_SHRINK]}>
-        <ScrollView
-          ref={scrollRef}
-          style={[{ flex: 1 }, WEB_SHRINK]}
-          contentContainerStyle={[sty.surfaceBody, SCROLL_GROW, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          onLayout={onLayout}
-          onContentSizeChange={onContentSizeChange}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={sty.surfaceHeader}>
-            <TouchableOpacity onPress={onBack} style={sty.backCircle} activeOpacity={0.8}>
-              <Ionicons name="arrow-back" size={16} color={KHET.foreground} />
-            </TouchableOpacity>
-            <View style={sty.brandRow}>
-              <Ionicons name="leaf" size={15} color={KHET.primary} />
-              <Text style={sty.brandTxt}>KrushiSarva</Text>
-            </View>
-            <View style={sty.onlinePill}>
-              <Ionicons name="wifi" size={12} color={KHET.primary} />
-              <Text style={sty.onlinePillTxt}>Online</Text>
-            </View>
-          </View>
+    <View style={{ marginTop: 24 }}>
+      <View style={sty.progressRow}>
+        <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+        <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
+        <Text style={sty.progTxt}>Step 2 of 2</Text>
+      </View>
 
-          <View style={{ marginTop: 24 }}>
-            <View style={sty.progressRow}>
-              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={sty.progFill} />
-              <Text style={sty.progTxt}>Step 2 of 2</Text>
-            </View>
+      <Text style={sty.title} accessibilityRole="header">
+        Enter the{'\n'}
+        <Text style={sty.titleItalic}>6-digit code</Text>
+      </Text>
+      <Text style={sty.subtle}>
+        Sent to <Text style={sty.subtleStrong}>{masked}</Text>
+        <Text onPress={onBack} style={sty.changeLink} accessibilityRole="link">  Change</Text>
+      </Text>
 
-            <Text style={sty.title}>
-              Enter the{'\n'}
-              <Text style={sty.titleItalic}>6-digit code</Text>
-            </Text>
-            <Text style={sty.subtle}>
-              Sent to <Text style={sty.subtleStrong}>{masked}</Text>
-              <Text onPress={onBack} style={sty.changeLink}>  Change</Text>
-            </Text>
-
-            {/* OTP boxes */}
-            <View style={sty.otpRow}>
-              {otpDigits.map((d, i) => (
-                <TextInput
+      <View ref={revealRef} collapsable={false}>
+        {/* The cells only DRAW the code. The real input is laid over them, so a
+            tap anywhere on the row focuses it and the OS autofill sees one
+            field that takes the whole code. */}
+        <View style={[sty.otpRow, { height: cellSize + 8 }]}>
+          <View
+            style={sty.otpCells}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+          >
+            {Array.from({ length: OTP_LEN }, (_, i) => {
+              const digit = code[i] || '';
+              const isActive = focused && !loading && i === active && (!complete || i === OTP_LEN - 1);
+              return (
+                <View
                   key={i}
-                  ref={(el) => { otpRefs.current[i] = el; }}
-                  style={[sty.otpBox, { width: otpBoxSize, height: otpBoxSize }, d ? sty.otpBoxFilled : null]}
-                  keyboardType="number-pad"
-                  // The first box must accept the WHOLE code: maxLength is enforced
-                  // natively, so a 1-char box truncates a 6-digit SMS autofill (or
-                  // paste) to its first digit before onChangeText ever runs — which
-                  // is why autofill silently did nothing. onChange spreads the
-                  // digits back out across the boxes, and `value` keeps each box
-                  // showing a single character.
-                  maxLength={i === 0 ? OTP_LEN : 1}
-                  value={d}
-                  onChangeText={(v) => onChange(i, v)}
-                  onKeyPress={(e) => onKey(i, e)}
-                  onFocus={reveal}
-                  autoFocus={i === 0 && !otpDigits[0]}
-                  editable={!loading}
-                  selectionColor={KHET.primary}
-                  // iOS QuickType reads textContentType; Android's autofill service
-                  // reads autoComplete. 'sms-otp' is Android-only and
-                  // 'one-time-code' iOS-only, so they must not be crossed over.
-                  // Both are set on box 0 alone, so the OS offers the code once.
-                  textContentType={i === 0 ? 'oneTimeCode' : 'none'}
-                  autoComplete={i === 0 ? OTP_AUTOCOMPLETE : 'off'}
-                  importantForAutofill={i === 0 ? 'yes' : 'no'}
-                />
-              ))}
-            </View>
-
-            {autoFilled && (
-              <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.autofillBanner}>
-                <Ionicons name="sparkles" size={13} color={KHET.primaryForeground} />
-                <Text style={sty.autofillTxt}>Auto-filled from SMS</Text>
-              </LinearGradient>
-            )}
-
-            {/* Status */}
-            <View style={{ marginTop: 18, minHeight: 20 }}>
-              {errorMsg ? (
-                <View style={sty.errorBox}>
-                  <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
-                  <Text style={sty.errorTxt}>{errorMsg}</Text>
+                  style={[
+                    sty.otpCell,
+                    { width: cellSize, height: cellSize + 8 },
+                    digit ? sty.otpCellFilled : null,
+                    isActive ? sty.otpCellActive : null,
+                    errorMsg ? sty.otpCellError : null,
+                  ]}
+                >
+                  {digit ? (
+                    <Text style={sty.otpDigit}>{digit}</Text>
+                  ) : isActive ? (
+                    <View style={sty.otpCaret} />
+                  ) : (
+                    <View style={sty.otpDot} />
+                  )}
                 </View>
-              ) : loading ? (
-                <View style={sty.verifyingBox}>
-                  <ActivityIndicator size="small" color={KHET.primary} />
-                  <Text style={sty.verifyingTxt}>Verifying code…</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Resend */}
-            <View style={{ marginTop: 8, alignItems: 'center' }}>
-              {resendIn > 0 ? (
-                <Text style={sty.subtle}>
-                  Resend OTP in <Text style={sty.subtleStrong}>{mm}:{ss}</Text>
-                </Text>
-              ) : (
-                <TouchableOpacity onPress={onResend} disabled={loading}>
-                  <Text style={sty.resendLink}>Resend OTP / दोबारा भेजें</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <GradientButton
-              label={loading ? 'Verifying…' : 'Verify OTP'}
-              onPress={onVerify}
-              loading={loading}
-              disabled={!complete || loading}
-              style={{ marginTop: 28, opacity: !complete && !loading ? 0.65 : 1 }}
-            />
+              );
+            })}
           </View>
 
-          <Text style={sty.footerTerms}>Didn't get the code? Check your SMS inbox or try again in a moment.</Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+          <TextInput
+            ref={inputRef}
+            value={code}
+            onChangeText={onChangeCode}
+            onFocus={() => { setFocused(true); onFocusField?.(); }}
+            onBlur={() => setFocused(false)}
+            editable={!loading}
+            keyboardType="number-pad"
+            // Slack above six so a pasted "482 913" reaches onChangeText whole;
+            // sanitizeOtp() trims it back to the digits.
+            maxLength={OTP_LEN + 6}
+            autoFocus={!code}
+            caretHidden
+            selectionColor={INVISIBLE}
+            underlineColorAndroid="transparent"
+            textContentType="oneTimeCode"
+            autoComplete={OTP_AUTOCOMPLETE}
+            importantForAutofill="yes"
+            autoCorrect={false}
+            spellCheck={false}
+            accessibilityLabel={`Verification code, ${OTP_LEN} digits`}
+            accessibilityHint={code ? `${code.length} of ${OTP_LEN} entered` : undefined}
+            style={sty.otpInput}
+          />
+        </View>
+
+        {autoFilled ? (
+          <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.autofillBanner}>
+            <Ionicons name="sparkles" size={13} color={KHET.primaryForeground} />
+            <Text style={sty.autofillTxt}>Auto-filled from SMS</Text>
+          </LinearGradient>
+        ) : null}
+
+        {errorMsg ? (
+          <View style={sty.errorBox} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Ionicons name="alert-circle" size={15} color={KHET.destructive} />
+            <Text style={sty.errorTxt}>{errorMsg}</Text>
+          </View>
+        ) : null}
+
+        {/* Resend */}
+        <View style={{ marginTop: 18, alignItems: 'center' }}>
+          {resendIn > 0 ? (
+            <Text style={sty.subtle}>
+              Resend OTP in <Text style={sty.subtleStrong}>{mm}:{ss}</Text>
+            </Text>
+          ) : (
+            <TouchableOpacity onPress={onResend} disabled={loading} accessibilityRole="button">
+              <Text style={[sty.resendLink, loading && { opacity: 0.5 }]}>Resend OTP / दोबारा भेजें</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* The only progress indicator while verifying. */}
+        <GradientButton
+          label={loading ? 'Verifying…' : 'Verify OTP'}
+          onPress={onVerify}
+          loading={loading}
+          disabled={!complete || loading}
+          style={{ marginTop: 24, opacity: !complete && !loading ? 0.65 : 1 }}
+        />
+      </View>
+    </View>
   );
 }
+
+const OTP_GAP = 8;
 
 const sty = StyleSheet.create({
   // overflow:hidden clips the decorative <Blobs/>, which sit at left:-96 / right:-80.
@@ -829,7 +993,7 @@ const sty = StyleSheet.create({
     fontFamily: KFONT.sansSemi,
     letterSpacing: 1,
     // The input card border shows focus; kill the web default outline.
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null),
+    ...(IS_WEB ? { outlineStyle: 'none' } : null),
   },
 
   privacyBox: {
@@ -857,30 +1021,53 @@ const sty = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(223,34,37,0.25)',
   },
-  errorTxt: { flex: 1, color: KHET.destructive, fontSize: 13, lineHeight: 18, fontFamily: KFONT.sansMed },
+  errorTxt: { flex: 1, color: KHET.destructiveInk, fontSize: 13, lineHeight: 18, fontFamily: KFONT.sansMed },
 
   footerTerms: { textAlign: 'center', color: KHET.mutedForeground, fontSize: 11, marginTop: 40, fontFamily: KFONT.sans, lineHeight: 16 },
   footerStrong: { color: KHET.foreground, fontFamily: KFONT.sansSemi },
 
-  // ── OTP boxes ──
-  otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 36 },
-  otpBox: {
-    borderRadius: 16,
+  // ── OTP cells ──
+  otpRow: { marginTop: 32, justifyContent: 'center' },
+  otpCells: { flexDirection: 'row', justifyContent: 'center', gap: OTP_GAP },
+  otpCell: {
+    borderRadius: 14,
     backgroundColor: KHET.card,
-    textAlign: 'center',
-    fontSize: 28,
-    color: KHET.foreground,
-    // Fraunces ships old-style (non-lining) figures: in a 6-box code field its
-    // 3/4/5/7 dip below the baseline and read as garbage glyphs, not digits.
-    // Plus Jakarta Sans has lining, evenly-weighted numerals.
-    fontFamily: KFONT.sansBold,
-    borderWidth: 1,
-    borderColor: KHET.border,
+    // A visible edge on the pale green surface: the old 1px KHET.border was
+    // close to invisible there, so an empty code field read as blank space.
+    borderWidth: 1.5,
+    borderColor: 'rgba(6,33,13,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
     ...KSHADOW.soft,
-    // The box border shows fill/focus; kill the web default outline.
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null),
   },
-  otpBoxFilled: { borderColor: KHET.primary, borderWidth: 2 },
+  otpCellFilled: { borderColor: KHET.primary, backgroundColor: '#f3fbef' },
+  otpCellActive: { borderColor: KHET.primary, borderWidth: 2.5 },
+  otpCellError: { borderColor: KHET.destructive },
+  // Plus Jakarta Sans for lining numerals (Fraunces' old-style 3/4/5/7 dip below
+  // the baseline). A Text in a View has no input padding to clip it, and
+  // includeFontPadding:false keeps Android from adding its own above the glyph.
+  otpDigit: {
+    color: KHET.foreground,
+    fontSize: 26,
+    lineHeight: 32,
+    fontFamily: KFONT.sansBold,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  otpCaret: { width: 2, height: 24, borderRadius: 1, backgroundColor: KHET.primary },
+  otpDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(6,33,13,0.18)' },
+  // Laid exactly over the cells: taps focus it, its text is invisible, and it
+  // is still an ordinary on-screen field as far as autofill is concerned
+  // (opacity 0 or an off-screen input is skipped by some autofill services).
+  otpInput: {
+    ...StyleSheet.absoluteFillObject,
+    color: INVISIBLE,
+    backgroundColor: 'transparent',
+    textAlign: 'center',
+    fontSize: 16,
+    padding: 0,
+    ...(IS_WEB ? { outlineStyle: 'none', caretColor: 'transparent' } : null),
+  },
   autofillBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -892,18 +1079,5 @@ const sty = StyleSheet.create({
     ...KSHADOW.soft,
   },
   autofillTxt: { color: KHET.primaryForeground, fontSize: 12, fontFamily: KFONT.sansMed },
-  verifyingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: KHET.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: KHET.border,
-  },
-  verifyingTxt: { color: KHET.mutedForeground, fontSize: 14, fontFamily: KFONT.sans },
   resendLink: { color: KHET.primary, fontSize: 14, fontFamily: KFONT.sansBold },
 });

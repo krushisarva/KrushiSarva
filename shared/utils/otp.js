@@ -1,42 +1,44 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// OTP box logic — pure, so the six-box field's paste / SMS-autofill / backspace
-// behaviour can be tested without a renderer.
+// OTP entry logic — pure, so paste / SMS autofill / auto-submit behaviour can be
+// tested without a renderer.
+//
+// The code field is ONE text input laid over six display cells (see
+// shared/screens/LoginScreen.js). It used to be six inputs, which is what broke
+// autofill: Android offers an SMS code to the FOCUSED field, and after the first
+// digit focus had moved to a box marked autoComplete="off". With one input a
+// typed digit, a paste, a keyboard suggestion and an SMS autofill all arrive the
+// same way — as the input's whole text.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const OTP_LENGTH = 6;
 
+const asString = (value) => (Array.isArray(value) ? value.join('') : String(value ?? ''));
+
 /**
- * Fold one box's raw onChangeText into the whole code.
- *
- * A paste or an SMS autofill drops the ENTIRE code into a single box, so the
- * multi-character case spreads the digits across the boxes from `index`
- * onwards. (This is also why box 0 must carry maxLength = OTP_LENGTH rather
- * than 1: maxLength is enforced natively, so a 1-char box truncates a 6-digit
- * autofill to its first digit before onChangeText ever fires.)
- *
- * Returns the next digit array and the box that should take focus, or
- * `focus: null` when focus should stay put (backspace clearing a box).
+ * Digits only, capped at `len`. An SMS app or clipboard may hand over "482 913"
+ * or "482-913"; the input's maxLength has slack for that, and this strips it.
  */
-export function applyOtpInput(prev, index, raw, len = OTP_LENGTH) {
-  const next = Array.isArray(prev) ? [...prev] : Array(len).fill('');
-  if (!Number.isInteger(index) || index < 0 || index >= len) return { digits: next, focus: null };
-
-  const digits = String(raw ?? '').replace(/\D/g, '');
-
-  if (digits.length > 1) {
-    for (let k = 0; k < digits.length && index + k < len; k++) next[index + k] = digits[k];
-    const filledTo = Math.min(index + digits.length, len);
-    return { digits: next, focus: filledTo >= len ? len - 1 : filledTo };
-  }
-
-  // Single character (typing) or empty string (backspace clears the box).
-  const ch = digits.slice(-1);
-  next[index] = ch;
-  return { digits: next, focus: ch && index < len - 1 ? index + 1 : null };
+export function sanitizeOtp(raw, len = OTP_LENGTH) {
+  return asString(raw).replace(/\D/g, '').slice(0, len);
 }
 
-export function isOtpComplete(digits, len = OTP_LENGTH) {
-  return Array.isArray(digits) && digits.length === len && digits.every((d) => /^[0-9]$/.test(d));
+/**
+ * True when one change added more than one digit — an SMS autofill, a keyboard
+ * code suggestion or a paste, never a keystroke. Drives the "Auto-filled" banner
+ * and the slightly longer pause before auto-submit.
+ */
+export function arrivedWhole(prev, next, len = OTP_LENGTH) {
+  return sanitizeOtp(next, len).length - sanitizeOtp(prev, len).length > 1;
+}
+
+/** Index of the cell that shows the caret: the next empty one, or the last. */
+export function activeOtpCell(code, len = OTP_LENGTH) {
+  return Math.min(sanitizeOtp(code, len).length, len - 1);
+}
+
+export function isOtpComplete(code, len = OTP_LENGTH) {
+  const s = asString(code);
+  return s.length === len && /^\d+$/.test(s);
 }
 
 /**
@@ -48,8 +50,8 @@ export function isOtpComplete(digits, len = OTP_LENGTH) {
  * request. `lastSubmitted` is reset by the caller on error / resend / going
  * back, so a farmer retyping the same code by hand is still allowed through.
  */
-export function shouldAutoSubmitOtp({ digits, verifying, lastSubmitted, len = OTP_LENGTH }) {
-  if (!isOtpComplete(digits, len)) return false;
+export function shouldAutoSubmitOtp({ code, verifying, lastSubmitted, len = OTP_LENGTH }) {
+  if (!isOtpComplete(code, len)) return false;
   if (verifying) return false;
-  return digits.join('') !== lastSubmitted;
+  return asString(code) !== lastSubmitted;
 }
