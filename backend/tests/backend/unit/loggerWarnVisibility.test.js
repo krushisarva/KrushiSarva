@@ -30,12 +30,16 @@ describe('logger.warn in production', () => {
   test('emits — a fail-open path must not degrade silently', () => {
     logger.warn('[RateLimit] Redis check failed, using in-memory fallback: %s', 'ECONNREFUSED');
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toBe('[WARN]');
+    // The tag rides on the format string so console can fill in %s.
+    expect(warnSpy.mock.calls[0]).toEqual([
+      '[WARN] [RateLimit] Redis check failed, using in-memory fallback: %s',
+      'ECONNREFUSED',
+    ]);
   });
 
   test('still redacts PII passed alongside the message', () => {
     logger.warn('[Auth] suspicious login', { phone: '9876543210', token: 'eyJabc' });
-    const [, , payload] = warnSpy.mock.calls[0];
+    const [, payload] = warnSpy.mock.calls[0];
     expect(payload.phone).toBe('••••••3210');
     expect(payload.token).toBe('***REDACTED***');
   });

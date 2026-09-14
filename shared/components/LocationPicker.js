@@ -1,11 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity,
-  TouchableWithoutFeedback, TextInput, FlatList, Platform,
+  TouchableWithoutFeedback, TextInput, FlatList, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, RADIUS, SHADOWS } from '../constants/colors';
 import { useLanguage } from '../context/LanguageContext';
+
+// While searching, the sheet moves to the top and takes at most this share of
+// the window, so the results stay above the keyboard. The keyboard's real
+// height is not available here: Android reports keyboard changes from the
+// activity's root view, not from the dialog window a Modal opens, and the
+// dialog is edge-to-edge, so it is not resized for the keyboard either.
+const SEARCH_SHEET_SHARE = 0.5;
 
 /**
  * Reusable searchable modal picker.
@@ -16,11 +24,18 @@ import { useLanguage } from '../context/LanguageContext';
  *   onSelect   — (value: string) => void
  *   placeholder— placeholder for the trigger button
  *   disabled   — grey out the button
+ *   triggerStyle / triggerTextStyle — optional, to match the form's own inputs
  */
-export default function LocationPicker({ title, items = [], selected, onSelect, placeholder, disabled = false }) {
+export default function LocationPicker({
+  title, items = [], selected, onSelect, placeholder, disabled = false,
+  triggerStyle, triggerTextStyle,
+}) {
   const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const { height: winHeight } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   const placeholderText = placeholder ?? t('locationPicker.selectPlaceholder');
 
   const filtered = useMemo(() => {
@@ -29,34 +44,45 @@ export default function LocationPicker({ title, items = [], selected, onSelect, 
     return items.filter((it) => it.toLowerCase().includes(q));
   }, [items, query]);
 
-  function handleSelect(val) {
-    onSelect(val);
+  function close() {
     setOpen(false);
     setQuery('');
+    setSearching(false);
   }
+
+  function handleSelect(val) {
+    onSelect(val);
+    close();
+  }
+
+  const sheetPlacement = searching
+    ? [s.sheetTop, { top: insets.top + 8, maxHeight: Math.round(winHeight * SEARCH_SHEET_SHARE) }]
+    // The navigation bar is drawn over the app (edge-to-edge), so the Cancel
+    // button needs the bottom inset or it sits under the system buttons.
+    : { bottom: 0, paddingBottom: insets.bottom + 16 };
 
   return (
     <>
       {/* Trigger Button */}
       <TouchableOpacity
-        style={[s.btn, disabled && s.btnDisabled]}
+        style={[s.btn, triggerStyle, disabled && s.btnDisabled]}
         onPress={() => !disabled && setOpen(true)}
         activeOpacity={disabled ? 1 : 0.75}
       >
-        <Text style={[s.btnTxt, !selected && s.btnPlaceholder]} numberOfLines={1}>
+        <Text style={[s.btnTxt, triggerTextStyle, !selected && s.btnPlaceholder]} numberOfLines={1}>
           {selected || placeholderText}
         </Text>
         <Ionicons name="chevron-down" size={18} color={disabled ? COLORS.gray175 : COLORS.gray550} />
       </TouchableOpacity>
 
       {/* Modal Sheet */}
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => { setOpen(false); setQuery(''); }}>
-        <TouchableWithoutFeedback onPress={() => { setOpen(false); setQuery(''); }}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
+        <TouchableWithoutFeedback onPress={close}>
           <View style={s.backdrop} />
         </TouchableWithoutFeedback>
 
-        <View style={s.sheet}>
-          <View style={s.handle} />
+        <View style={[s.sheet, sheetPlacement]}>
+          {searching ? null : <View style={s.handle} />}
           <Text style={s.sheetTitle}>{title}</Text>
 
           {/* Search */}
@@ -68,6 +94,8 @@ export default function LocationPicker({ title, items = [], selected, onSelect, 
               placeholderTextColor={COLORS.gray350}
               value={query}
               onChangeText={setQuery}
+              onFocus={() => setSearching(true)}
+              onBlur={() => setSearching(false)}
               autoFocus={false}
             />
             {query.length > 0 && (
@@ -102,9 +130,13 @@ export default function LocationPicker({ title, items = [], selected, onSelect, 
             />
           )}
 
-          <TouchableOpacity style={s.cancelBtn} onPress={() => { setOpen(false); setQuery(''); }}>
-            <Text style={s.cancelTxt}>{t('cancel')}</Text>
-          </TouchableOpacity>
+          {/* Hidden while searching: it would sit under the keyboard, and the
+              backdrop and the back button still close the sheet. */}
+          {searching ? null : (
+            <TouchableOpacity style={s.cancelBtn} onPress={close}>
+              <Text style={s.cancelTxt}>{t('cancel')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </Modal>
     </>
@@ -124,13 +156,17 @@ const s = StyleSheet.create({
   btnPlaceholder: { color: COLORS.gray350 },
 
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
+  // Vertical placement (bottom sheet, or top while searching) is set inline.
   sheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    position: 'absolute', left: 0, right: 0,
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     maxHeight: '80%',
     ...SHADOWS.large,
+  },
+  sheetTop: {
+    borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
+    paddingBottom: 8,
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.gray175, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: COLORS.textDark, textAlign: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.grayBg },
@@ -144,7 +180,8 @@ const s = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.textDark },
 
-  list: { maxHeight: 320 },
+  // flexShrink lets the list give way when the sheet is capped while searching.
+  list: { maxHeight: 320, flexGrow: 0, flexShrink: 1 },
   item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14 },
   itemActive: { backgroundColor: COLORS.primary + '08' },
   itemTxt: { fontSize: 15, color: COLORS.textDark },

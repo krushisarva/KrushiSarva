@@ -32,7 +32,13 @@ import { C, E, F, HIT, R, SP, T, alpha } from '../../theme';
 
 // ── Field wrapper ────────────────────────────────────────────────────────────
 
-export function Field({
+/**
+ * The ref resolves to the field's outer view, so a form can measure it against
+ * its ScrollView (or call scrollIntoView on web) to reveal the first error.
+ * `onLayoutY` reports y relative to the field's PARENT, which is only the scroll
+ * offset when the field sits directly in the ScrollView.
+ */
+export const Field = forwardRef(function Field({
   label,
   required,
   hint,
@@ -50,13 +56,20 @@ export function Field({
   /** (y:number) => void — lets the parent scroll to this field on error. */
   onLayoutY,
   testID,
-}) {
+}, ref) {
   const handleLayout = useCallback((e) => {
     onLayoutY?.(e.nativeEvent.layout.y);
   }, [onLayoutY]);
 
   return (
-    <View style={[fs.wrap, style]} onLayout={onLayoutY ? handleLayout : undefined} testID={testID}>
+    <View
+      ref={ref}
+      // A measured view must not be flattened away by Fabric.
+      collapsable={ref ? false : undefined}
+      style={[fs.wrap, style]}
+      onLayout={onLayoutY ? handleLayout : undefined}
+      testID={testID}
+    >
       {label ? (
         <View style={fs.labelRow}>
           <Text style={fs.label}>
@@ -84,7 +97,7 @@ export function Field({
       ) : null}
     </View>
   );
-}
+});
 
 // ── Text input ───────────────────────────────────────────────────────────────
 
@@ -109,6 +122,9 @@ export const TextField = forwardRef(function TextField({
   accessibilityHint,
   returnKeyType,
   onSubmitEditing,
+  /** Pass 'off' for identity and bank numbers so autofill doesn't offer or keep them. */
+  autoComplete,
+  importantForAutofill,
   testID,
 }, ref) {
   const [focused, setFocused] = useState(false);
@@ -144,6 +160,8 @@ export const TextField = forwardRef(function TextField({
         editable={editable}
         returnKeyType={returnKeyType}
         onSubmitEditing={onSubmitEditing}
+        autoComplete={autoComplete}
+        importantForAutofill={importantForAutofill}
         testID={testID}
         accessibilityLabel={accessibilityLabel || label || placeholder}
         accessibilityHint={accessibilityHint}

@@ -40,7 +40,17 @@ export default function OnboardingIntroScreen({ navigation }) {
   const last = index === SLIDES.length - 1;
   const go = () => {
     if (last) return navigation.replace('OnboardingLanguage');
-    listRef.current?.scrollToIndex({ index: index + 1, animated: true });
+    // Move the index now. onMomentumScrollEnd reports swipes, but a
+    // programmatic scroll does not reliably fire it, so the dots and the button
+    // label stayed on the old slide and the next tap scrolled to the same one.
+    const next = index + 1;
+    setIndex(next);
+    listRef.current?.scrollToIndex({ index: next, animated: true });
+  };
+
+  const onSwipeEnd = (e) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / width);
+    setIndex(Math.min(SLIDES.length - 1, Math.max(0, i)));
   };
 
   return (
@@ -58,7 +68,7 @@ export default function OnboardingIntroScreen({ navigation }) {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={e => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+        onMomentumScrollEnd={onSwipeEnd}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
         renderItem={({ item }) => (
           <View style={[S.slide, { width }]}>

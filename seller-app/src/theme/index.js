@@ -254,6 +254,22 @@ export function riskMeta(level) {
   return RISK[String(level || '').toUpperCase()] || RISK_FALLBACK;
 }
 
+/**
+ * Seller KYC states, keyed by `kycState(user).key` from utils/businessProfile.
+ * Same contract as ORDER_STATUS: hue, icon and label travel together so the
+ * profile row and the business profile banner can't show one state two ways.
+ */
+const KYC_STATUS = {
+  verified:   { color: P.moss600,  tint: P.moss50,  icon: 'checkmark-circle',     tKey: 'sellerProfile.verified',       fallback: 'Verified' },
+  pending:    { color: P.amber600, tint: P.amber50, icon: 'hourglass-outline',    tKey: 'sellerProfile.pending',        fallback: 'Pending' },
+  rejected:   { color: P.rust600,  tint: P.rust50,  icon: 'close-circle',         tKey: 'sellerProfile.kycRejected',    fallback: 'Rejected' },
+  notStarted: { color: P.stone600, tint: P.stone50, icon: 'alert-circle-outline', tKey: 'sellerProfile.kycNotSubmitted', fallback: 'Not submitted' },
+};
+
+export function kycStatusMeta(key) {
+  return KYC_STATUS[key] || KYC_STATUS.notStarted;
+}
+
 // ── Spacing (8px grid, with 4px half-steps) ──────────────────────────────────
 export const SP = {
   xxs: 2,

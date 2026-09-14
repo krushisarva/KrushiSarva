@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 import { ENV } from './env.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 import { CACHE_SCHEMA_VERSION } from '../constants/cacheVersion.js';
 
 // ── Reconnect backoff ─────────────────────────────────────────────────────────
@@ -116,12 +116,16 @@ function markUp() {
 redis.on('connect', () => logger.info('[Redis] Connected'));
 redis.on('ready', markUp);
 redis.on('error', (err) => {
-  _health.lastError = err.message;
+  // errorText, not err.message: a refused connection to a dual-stack host is an
+  // AggregateError with an empty message, which made the alert read
+  // "UNAVAILABLE — ." and left /readyz's lastError blank.
+  const reason = errorText(err);
+  _health.lastError = reason;
   _health.lastErrorAt = Date.now();
   // 'error' can fire while a connection is still usable; only treat it as an
   // outage once the client is no longer ready (the de-dup in markDown handles
   // the burst of errors ioredis emits while retrying).
-  if (redis.status !== 'ready') markDown(err.message);
+  if (redis.status !== 'ready') markDown(reason);
 });
 redis.on('close', () => { if (!_intentionalClose && _health.everReady) markDown('connection closed'); });
 redis.on('end',   () => { if (!_intentionalClose) markDown('connection ended (no reconnects left)'); });

@@ -26,6 +26,8 @@ const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 const AADHAAR_RE = /^\d{12}$/;
 // PAN, e.g. ABCDE1234F.
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+// Indian bank account numbers run from 9 to 18 digits depending on the bank.
+const BANK_ACCOUNT_RE = /^\d{9,18}$/;
 
 /**
  * Reduce raw phone input to a bare 10-digit national number. Strips non-digits,
@@ -73,4 +75,58 @@ export function isValidAadhaar(value) {
 /** True for a valid PAN (case-insensitive). */
 export function isValidPan(value) {
   return PAN_RE.test(String(value ?? '').trim().toUpperCase());
+}
+
+/** True for a 9–18 digit bank account number. */
+export function isValidBankAccount(value) {
+  return BANK_ACCOUNT_RE.test(String(value ?? '').trim());
+}
+
+// ── Check digits ─────────────────────────────────────────────────────────────
+// The format predicates above mirror the backend and accept any string of the
+// right shape. The two below go further and catch typos: a single wrong digit or
+// two swapped neighbours in an Aadhaar number or GSTIN fails its check digit.
+// Only use them for fresh input, never to reject a value the server returned.
+
+// Verhoeff dihedral-group tables (UIDAI uses this scheme for Aadhaar).
+const VERHOEFF_D = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+  [2, 3, 4, 0, 1, 7, 8, 9, 5, 6], [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+  [4, 0, 1, 2, 3, 9, 5, 6, 7, 8], [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+  [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+  [8, 7, 6, 5, 9, 3, 2, 1, 0, 4], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+];
+const VERHOEFF_P = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+  [5, 8, 0, 3, 7, 9, 6, 1, 4, 2], [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+  [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
+];
+
+/**
+ * True when a 12-digit Aadhaar number passes UIDAI's rules: it cannot start
+ * with 0 or 1, and its last digit is a Verhoeff check digit.
+ */
+export function isAadhaarChecksumValid(value) {
+  const s = String(value ?? '').trim();
+  if (!/^[2-9]\d{11}$/.test(s)) return false;
+  let c = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    c = VERHOEFF_D[c][VERHOEFF_P[i % 8][Number(s[s.length - 1 - i])]];
+  }
+  return c === 0;
+}
+
+const GST_CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/** True when a GSTIN's 15th character matches its mod-36 check character. */
+export function isGstChecksumValid(value) {
+  const s = String(value ?? '').trim().toUpperCase();
+  if (!GST_RE.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 14; i += 1) {
+    const product = GST_CHARSET.indexOf(s[i]) * ((i % 2) + 1);
+    sum += Math.floor(product / 36) + (product % 36);
+  }
+  return GST_CHARSET[(36 - (sum % 36)) % 36] === s[14];
 }

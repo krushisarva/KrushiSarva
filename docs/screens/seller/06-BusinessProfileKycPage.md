@@ -1,62 +1,50 @@
 # Business Profile & KYC
 
-> **Tab:** Account/Profile · **Stack:** SellerStack · **Route name:** `BusinessProfile` · **File:** `frontend/src/screens/Seller/BusinessProfileScreen.js`
+> **App:** seller-app · **Stack:** SellerNavigator (single stack) · **Route name:** `BusinessProfile` · **File:** `seller-app/src/screens/BusinessProfileScreen.js` · **Logic:** `seller-app/src/utils/businessProfile.js`
 
 ## Purpose
-The seller onboarding / KYC form. Captures business identity (type), location, GST details, bank account, and KYC documents (Aadhaar, PAN). Submitting it is the explicit consent that authorises a FARMER→SELLER role promotion. Used both by existing sellers to update their details and by farmers becoming sellers for the first time (the Profile screen deep-links non-sellers straight here).
+The seller onboarding / KYC form. Captures display name, business type, location, GST, bank account and KYC identifiers (Aadhaar, PAN), and shows the account's KYC status. Submitting it is the explicit consent that authorises a FARMER→SELLER role promotion. Used by existing sellers to update their details and by accounts that are not sellers yet as the app's first screen.
 
 ## Where it sits / how you reach it
 - **Reached from:**
-  - Seller Profile — completion card, location/business/GST/bank rows, and "Business Profile & KYC" quick action all navigate here
-  - Account tab → Profile screen "Seller Portal" entry when the user is **not** yet a seller deep-links to `{ screen: 'BusinessProfile' }`
-- **Navigates to:** `navigation.goBack()` automatically after a successful save (fired from the success-toast completion callback).
-- **Route params in:** none
+  - App start, when the account's role is not a seller role (`hasSellerRole` in `shared/utils/roles.js`: SELLER, VERIFIED_FARMER, ADMIN). Role only — a FARMER with a business type on file used to be sent to a dashboard where every seller endpoint 403s.
+  - Seller Profile — completion card, location / business type / GST / bank / KYC status rows, and the "Business profile & KYC" row.
+- **Navigates to:** after a successful save, `goBack()` when there is a screen behind, otherwise `replace('SellerDashboard')`. If the save succeeds but the account is still not a seller role, it stays and explains why.
+- **Route params in:** none. Not deep-linkable (see `navigation/linking.js`).
 
 ## How it works
-Pre-fills a single `form` state from `user` and `user.sellerProfile` (`sp`). Plain-text fields (business type, location, GST, bank holder/name/IFSC) are re-displayed; encrypted PII (bank account number, Aadhaar, PAN) is never re-displayed — those inputs start blank, with "on file" hints/placeholders when a value already exists (`hasAadhaar`/`hasPan`/`hasBankAcc`). A `set(key)` curried updater also clears taluka whenever district changes. `calcCompletion` shows a live completion badge over ten fields. `handleSave` validates required location fields and, when provided, GST/IFSC/Aadhaar/PAN formats (via `validators` util), surfacing failures through an inline error toast. The payload always sets `sellerConsent: true` (the SELLER_ONBOARDING consent) and `state: 'Maharashtra'`; encrypted fields are included **only** when the user typed a fresh value (sending `''` would overwrite the stored value). It `PUT`s `/users/me`; if the backend returns fresh tokens (role upgraded to SELLER) it persists them via `saveTokens` so subsequent SELLER-only routes don't 403, then `updateUser` and shows a green success toast that slides in and triggers `goBack`.
+1. **Wait for the full profile.** `useProfileSync` fetches `GET /users/me` on focus when the account in AuthContext is incomplete or older than 30 s. Straight after an OTP login AuthContext holds only the login response (id, phone, name, role); the form is not mounted until the full profile arrives, with a skeleton meanwhile and an error state with Retry if it can't load.
+2. **Start values** come from `initialFormFromUser`. Encrypted fields (account number, Aadhaar, PAN) start blank; the API returns them masked and the mask is shown as the placeholder with an "On file" badge. No business type is pre-selected for a new seller. A stored district or taluka the picker can't show (renamed district, a location set in the buyer app) starts empty instead of being resubmitted unseen; Dharashiv / Chhatrapati Sambhajinagar / Ahilyanagar map to the list's names.
+3. **Editing.** `applyFieldChange` strips spaces and separators from pasted ID numbers and uppercases PAN / IFSC / GST. Changing district clears taluka; ticking "no GST" clears the number and unticking restores the stored one. A new account number reveals a "Re-enter account number" field.
+4. **Validation** (`validateBusinessProfile`) reports every problem at once. Errors appear on blur for fields with something typed, and on Save; a flagged field re-checks as it is edited. Save scrolls to the first error (measured against the ScrollView; `scrollIntoView` on web).
+5. **Save** sends `PUT /users/me` with `buildBusinessProfilePayload`. Holder name, bank name, IFSC and GST are sent only when they change what is stored (or nothing is stored yet), and Aadhaar / PAN / account number only when typed.
+6. **After save:** fresh tokens (role upgrade) are persisted with `saveTokens` and kept out of the user object; the context user is updated; the form resets to the saved values.
 
 ## UI elements
 
-| Element | Type | Description / action |
-|---|---|---|
-| Toast | Animated.View | Single slot; green success (then goBack) or red error |
-| Completion badge | View | Live % with complete/almost/incomplete label, colored by threshold |
-| Business Identity section | SectionHeader | Storefront header |
-| Business type chips | Chip row (required) | Single-select from `BUSINESS_TYPES` |
-| Location section | SectionHeader | Location header |
-| State field | Read-only View | Hardcoded "Maharashtra" |
-| District picker | LocationPicker modal (required) | Searchable district list; resets taluka |
-| Taluka picker | LocationPicker modal (required) | Disabled until district chosen |
-| Village/Town input | TextInput (required) | Free text primary location |
-| GST section | SectionHeader | GST header |
-| "No GST" checkbox row | TouchableOpacity checkbox | Toggles `gstOptOut`; hides the GST input |
-| GST Number input | TextInput | Shown only when not opted out; uppercase, maxLength 15 |
-| Bank Account section | SectionHeader | Bank header + hint |
-| Holder Name input | TextInput | Plain text |
-| Bank Name input | TextInput | Plain text |
-| Account Number input | TextInput (number-pad) | Encrypted; "on file" hint/placeholder if present; maxLength 18 |
-| IFSC input | TextInput | Uppercase; maxLength 11 |
-| KYC Documents section | SectionHeader | KYC header + hint |
-| Aadhaar input | TextInput (number-pad) | Encrypted; "on file" hint if present; maxLength 12 |
-| PAN input | TextInput | Uppercase; "on file" hint if present; maxLength 10 |
-| Data-security notice | View | Lock icon + reassurance copy |
-| Save button (footer) | TouchableOpacity | Validates + PUT `/users/me`; spinner while saving |
+| Element | Description / action |
+|---|---|
+| Intro card | Purpose + security line, completion meter (10 fields, same formula as the API), KYC status badge with explanation. A rejection shows the admin's reason. Accounts with nothing behind this screen also get "Signed in with the wrong number? Log out". |
+| Notices | Minor account (Save disabled), saved-but-not-promoted, "fix the highlighted fields" summary |
+| 01 Business identity | Display name (required, 2–80), business type chips (required, none pre-selected) |
+| 02 Location | State (fixed Maharashtra), district picker, taluka picker (disabled until district), village / town (required) |
+| 03 GST | "I don't have a GST number" checkbox; GST number (required when unticked, format + check character) |
+| 04 Bank account | Holder name, bank name, account number (9–18 digits, masked placeholder when on file), re-enter account number, IFSC. An account typed or on file requires IFSC and holder name; bank details without an account number ask for it. |
+| 05 KYC | Aadhaar (12 digits, cannot start with 0/1, Verhoeff check digit), PAN (format) |
+| Save (action bar) | Validates, re-checks a stale offline flag, then saves. Back is blocked while a save is in flight. |
 
 ## Services, APIs & data
-- **API endpoints (via `services/api`):**
-  - `PUT /users/me` — submits the whole business/KYC payload (including `sellerConsent: true`); may return upgraded role + fresh tokens
-- **Other service calls:** `saveTokens(...)` from `services/api` to persist new access/refresh tokens after a role upgrade
-- **Backend route/service:** users/me update route (records SELLER_ONBOARDING consent and flips FARMER→SELLER role)
-- **State / context:** `useAuth` (`user`, `updateUser`), `useLanguage` (`t`); local `form` + `saving` + `toast` state; `toastAnim` Animated.Value
-- **Local / static data:** `DISTRICT_LIST`, `getTalukas`, `BUSINESS_TYPES` from `constants/locations`; `isValidGst`/`isValidIfsc`/`isValidAadhaar`/`isValidPan` from `utils/validators`; `LocationPicker` component
+- `GET /users/me` — full profile, via `useProfileSync` (shared across screens, one request at a time).
+- `PUT /users/me` — the business/KYC payload with `sellerConsent: true`. May return an upgraded role and `tokens`.
+- A 400 from the validator middleware (`error.details[].path`) is mapped to inline field errors via `serverFieldErrorKeys` / `serverFieldMessage`.
+- The API rate-limits requests carrying non-empty sensitive fields to 5 per hour per user (`backend/src/constants/pii.js`); the diffed payload is what keeps ordinary edits out of that budget.
 
 ## Languages / i18n
-i18n via `useLanguage().t` under the `sellerBizProfile.*` namespace (with inline English default values), e.g. `sellerBizProfile.bizIdentity`, `sellerBizProfile.district`, `sellerBizProfile.gstDetails`, `sellerBizProfile.noGst`, `sellerBizProfile.bankAccountSection`, `sellerBizProfile.kycDocs`, `sellerBizProfile.aadhaar`, `sellerBizProfile.saved`, `sellerBizProfile.invalidGstMsg`, `sellerBizProfile.securityNote`, `sellerBizProfile.saveBizProfile`. Business-type labels use `biz.*`. The "Maharashtra" state value and several placeholders are literal strings.
+`sellerBizProfile.*` and `sellerProfile.*`, with native Hindi and Marathi for every string this screen uses. `seller-app/src/utils/__tests__/sellerProfileI18n.test.js` fails if a bare `t()` key on this screen is missing in en/hi/mr.
 
 ## Notes, edge cases & gaps
-- Encrypted PII fields (account number, Aadhaar, PAN) are deliberately never re-displayed; blank-and-saved keeps the existing stored value, a fresh value replaces it.
-- Validation only runs format checks when a field is non-empty (except district/taluka/village which are strictly required).
-- GST is uppercased; IFSC and PAN are uppercased; Aadhaar/PAN/IFSC/GST formats validated client-side via `validators`.
-- Toast is the only feedback channel — success auto-navigates back after ~1.6s; errors stay ~2.4s.
-- Persisting the returned tokens is critical: without it, SELLER-only endpoints (dashboard stats, inbox) keep returning 403 after a first-time promotion.
-- `state` is hardcoded to `'Maharashtra'`.
+- **KYC documents and Kendra licences have no upload UI here.** The API has `POST /users/me/kyc-documents` and `/me/licence-documents`; admins review the stored images, but the seller app never sends any.
+- **A rejected seller who fixes their details stays `REJECTED`.** `PUT /users/me` does not move `kycStatus` back to `PENDING`, so the admin queue's PENDING filter will not show the resubmission.
+- `PUT /users/me` only promotes FARMER. LABOUR_PROVIDER and MACHINERY_OWNER accounts, and minors, get the "not switched to a seller account" notice.
+- `PUT /users/me` is not behind `blockMinors` (unlike `/me/seller-profile`); the form disables Save for `isMinor` accounts, but the API itself would accept the data.
+- `state` is hardcoded to Maharashtra, and the district list is Maharashtra-only.

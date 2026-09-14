@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import LocationPicker from '@krushisarva/shared/components/LocationPicker';
@@ -28,8 +29,16 @@ import api from '@krushisarva/shared/services/api';
 import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import { s, vs, fs, ms } from '../../utils/responsive';
 import { webScreenContainer, useAbsoluteBarScrollStyle } from '../../utils/webScrollFix';
+import { acresOrNull, cleanAcres, cleanPincode, findCrop, PINCODE_LENGTH } from '../../utils/onboardingForm';
+import { useKeyboardRoom } from '@krushisarva/shared/hooks/useKeyboardRoom';
+import { revealScrollOffset } from '@krushisarva/shared/utils/keyboardInset';
 
 const PLACEHOLDER = 'rgba(87,104,90,0.5)';
+const IS_ANDROID = Platform.OS === 'android';
+// Space kept between the focused field and the top of the keyboard.
+const REVEAL_MARGIN = 24;
+// Soil and crop grids: four cards per row (see sty.gridGutter).
+const GRID_COLUMNS = 4;
 
 const SOILS = [
   { key: 'BLACK_COTTON', label: 'Black Cotton', tKey: 'crops.soilBlack', sk: 'black', bg: ['#3E3631', '#1A1512'] },
@@ -78,8 +87,80 @@ function Rise({ delay = 0, children, style }) {
 export default function OnboardingProfileScreen({ navigation }) {
   const { t } = useLanguage();
   const { updateUser } = useAuth();
+  const insets = useSafeAreaInsets();
   const scrollStyle = useAbsoluteBarScrollStyle();
   const scrollRef = useRef(null);
+
+  // ── Keyboard ──────────────────────────────────────────────────────────────
+  // Android is edge-to-edge on Expo SDK 54: the window is not resized for the
+  // keyboard, so Village, Pincode, Farm name, Land size and the "Other" crop
+  // field sat under it. The scroll viewport is padded by the covered strip and
+  // the focused field is scrolled into view (same approach as the login screen).
+  const keyboard = useKeyboardRoom(insets.bottom);
+  const viewportRef = useRef(0);
+  const scrollYRef = useRef(0);
+  const focusedRef = useRef(null);
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
+  const talukaRef = useRef(null);
+  const villageRef = useRef(null);
+  const pincodeRef = useRef(null);
+  const farmNameRef = useRef(null);
+  const landSizeRef = useRef(null);
+  const customCropRef = useRef(null);
+
+  const revealField = useCallback((fieldRef) => {
+    if (Platform.OS === 'web') return;
+    requestAnimationFrame(() => {
+      const field = fieldRef?.current;
+      const scroller = scrollRef.current;
+      if (!field || !scroller || !keyboard.visibleRef.current) return;
+      const inner = scroller.getInnerViewRef?.();
+      if (!inner || typeof field.measureLayout !== 'function') return;
+      field.measureLayout(
+        inner,
+        (_x, y, _w, h) => {
+          const target = revealScrollOffset({
+            blockTop: y,
+            blockHeight: h,
+            viewportHeight: viewportRef.current,
+            scrollY: scrollYRef.current,
+            margin: REVEAL_MARGIN,
+          });
+          if (target != null) scroller.scrollTo({ y: target, animated: true });
+        },
+        () => {},
+      );
+    });
+  }, [keyboard.visibleRef]);
+
+  // The viewport shrinks when room is made for the keyboard (Android padding,
+  // iOS KeyboardAvoidingView) — that is when the focused field can move.
+  const onViewportLayout = useCallback((e) => {
+    const h = e.nativeEvent.layout.height;
+    const shrank = viewportRef.current > 0 && h < viewportRef.current - 1;
+    viewportRef.current = h;
+    if (shrank && focusedRef.current) revealField(focusedRef.current);
+  }, [revealField]);
+
+  const onScroll = useCallback((e) => {
+    scrollYRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  // Moving between fields with the keyboard already open changes no layout, so
+  // focus reveals too.
+  const fieldProps = (ref) => ({
+    ref,
+    onFocus: () => { focusedRef.current = ref; revealField(ref); },
+  });
+
+  // The bottom bar floats over the form; its height depends on the navigation
+  // bar inset and the phone's font size, so the end spacer is measured.
+  const [barHeight, setBarHeight] = useState(vs(110));
+  const onBarLayout = useCallback((e) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setBarHeight((prev) => (prev === h ? prev : h));
+  }, []);
 
   // Profile photo
   const [avatarUri, setAvatarUri] = useState(null);
@@ -122,9 +203,12 @@ export default function OnboardingProfileScreen({ navigation }) {
   const [showCustom, setShowCustom] = useState(false);
   const customCrops = Array.from(selectedCrops).filter((c) => !CROPS.includes(c));
   const addCustomCrop = () => {
-    const name = customCrop.trim();
+    const name = customCrop.trim().replace(/\s+/g, ' ');
     if (!name) return;
-    setSelectedCrops((p) => new Set(p).add(name));
+    // "rice" selects the Rice card, and a crop already added is not added again
+    // under a different case.
+    const existing = findCrop(name, [...CROPS, ...selectedCrops]);
+    setSelectedCrops((p) => new Set(p).add(existing ?? name));
     setCustomCrop('');
   };
 
@@ -194,7 +278,7 @@ export default function OnboardingProfileScreen({ navigation }) {
         farmName: farmName.trim() || `${firstName.trim()}'s Farm`,
         state, district, taluka, village, pincode,
         latitude: lat, longitude: lng,
-        landSizeAcres: landSize ? parseFloat(landSize) : null,
+        landSizeAcres: acresOrNull(landSize),
         soilType: soilType || 'UNKNOWN',
         irrigationType: irrigation || 'RAINFED',
         cropTypes: Array.from(selectedCrops),
@@ -231,20 +315,33 @@ export default function OnboardingProfileScreen({ navigation }) {
     selectedCrops.size > 0,
   ].filter(Boolean).length;
 
-  const initials = firstName ? firstName[0].toUpperCase() : '?';
+  const initials = firstName.trim() ? firstName.trim()[0].toUpperCase() : '?';
 
   return (
-    <LinearGradient colors={KHET.gradSurface} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 1 }} style={[sty.container, webScreenContainer]}>
+    <LinearGradient
+      colors={KHET.gradSurface}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0.7, y: 1 }}
+      style={[sty.container, webScreenContainer]}
+      onLayout={keyboard.onRootLayout}
+    >
       <View style={[sty.blob, { backgroundColor: KHET.primaryGlow, top: -90, right: -90 }]} pointerEvents="none" />
-      {/* Android already shrinks the window (adjustResize), so 'padding' would add
-          the keyboard height a second time and squeeze the form off-screen. */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, minHeight: 0 }}>
+      {/* iOS: KeyboardAvoidingView pads. Android: the window is not resized for
+          the keyboard (edge-to-edge), so pad by the strip it covers. The inset
+          subtracts anything the window did give back, so it never counts twice. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[{ flex: 1, minHeight: 0 }, IS_ANDROID ? { paddingBottom: keyboard.inset } : null]}
+      >
         <ScrollView
           ref={scrollRef}
           style={scrollStyle}
-          contentContainerStyle={sty.scroll}
+          contentContainerStyle={[sty.scroll, { paddingTop: insets.top + vs(12) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onLayout={onViewportLayout}
+          onScroll={onScroll}
+          scrollEventThrottle={32}
         >
 
           {/* ── Header with back ─────────────────────────────────────────── */}
@@ -292,12 +389,14 @@ export default function OnboardingProfileScreen({ navigation }) {
             </View>
             <View style={sty.row}>
               <View style={{ flex: 1 }}>
-                <TextInput style={sty.input} value={firstName} onChangeText={setFirstName}
-                  placeholder={t('onboarding.firstName')} placeholderTextColor={PLACEHOLDER} maxLength={50} />
+                <TextInput {...fieldProps(firstNameRef)} style={sty.input} value={firstName} onChangeText={setFirstName}
+                  placeholder={t('onboarding.firstName')} placeholderTextColor={PLACEHOLDER} maxLength={50}
+                  autoCapitalize="words" />
               </View>
               <View style={{ flex: 1 }}>
-                <TextInput style={sty.input} value={lastName} onChangeText={setLastName}
-                  placeholder={t('onboarding.lastName')} placeholderTextColor={PLACEHOLDER} maxLength={50} />
+                <TextInput {...fieldProps(lastNameRef)} style={sty.input} value={lastName} onChangeText={setLastName}
+                  placeholder={t('onboarding.lastName')} placeholderTextColor={PLACEHOLDER} maxLength={50}
+                  autoCapitalize="words" />
               </View>
             </View>
           </Rise>
@@ -313,32 +412,39 @@ export default function OnboardingProfileScreen({ navigation }) {
             <Text style={sty.fieldLabel}>{t('farmProfile.selectState')}</Text>
             <LocationPicker title={t('farmProfile.selectState')} items={STATE_LIST} selected={state}
               onSelect={v => { setState(v); setDistrict(''); setTaluka(''); }}
-              placeholder={t('farmProfile.selectStatePlaceholder')} />
+              placeholder={t('farmProfile.selectStatePlaceholder')}
+              triggerStyle={sty.pickerTrigger} triggerTextStyle={sty.pickerText} />
 
             <Text style={sty.fieldLabel}>{t('onboarding.selectDistrict')} *</Text>
             <LocationPicker title={t('onboarding.selectDistrict')} items={getDistrictsForState(state)} selected={district}
               onSelect={v => { setDistrict(v); setTaluka(''); }}
-              placeholder={t('onboarding.selectDistrictPlaceholder')} disabled={!state} />
+              placeholder={t('onboarding.selectDistrictPlaceholder')} disabled={!state}
+              triggerStyle={sty.pickerTrigger} triggerTextStyle={sty.pickerText} />
 
             <Text style={sty.fieldLabel}>{t('farmProfile.taluka')}</Text>
             {state === 'Maharashtra' ? (
               <LocationPicker title={t('onboarding.selectTaluka')} items={getTalukas(district)} selected={taluka}
-                onSelect={setTaluka} placeholder={t('onboarding.selectTalukaPlaceholder')} disabled={!district} />
+                onSelect={setTaluka} placeholder={t('onboarding.selectTalukaPlaceholder')} disabled={!district}
+                triggerStyle={sty.pickerTrigger} triggerTextStyle={sty.pickerText} />
             ) : (
-              <TextInput style={sty.input} value={taluka} onChangeText={setTaluka}
+              <TextInput {...fieldProps(talukaRef)} style={sty.input} value={taluka} onChangeText={setTaluka}
                 placeholder={t('onboarding.talukaPlaceholder')} placeholderTextColor={PLACEHOLDER} />
             )}
 
             <View style={sty.row}>
               <View style={{ flex: 1 }}>
                 <Text style={sty.fieldLabel}>{t('farmProfile.village')}</Text>
-                <TextInput style={sty.input} value={village} onChangeText={setVillage}
+                <TextInput {...fieldProps(villageRef)} style={sty.input} value={village} onChangeText={setVillage}
                   placeholder={t('onboarding.enterVillage')} placeholderTextColor={PLACEHOLDER} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={sty.fieldLabel}>{t('farmProfile.pincode')}</Text>
-                <TextInput style={sty.input} value={pincode} onChangeText={setPincode}
-                  placeholder={t('onboarding.pincodePlaceholder')} keyboardType="numeric" maxLength={6} placeholderTextColor={PLACEHOLDER} />
+                {/* number-pad has no "." or "-", and cleanPincode drops anything a
+                    paste or suggestion brings in. */}
+                <TextInput {...fieldProps(pincodeRef)} style={sty.input} value={pincode}
+                  onChangeText={(v) => setPincode(cleanPincode(v))}
+                  placeholder={t('onboarding.pincodePlaceholder')} keyboardType="number-pad"
+                  maxLength={PINCODE_LENGTH} placeholderTextColor={PLACEHOLDER} />
               </View>
             </View>
 
@@ -358,25 +464,30 @@ export default function OnboardingProfileScreen({ navigation }) {
             </View>
 
             <Text style={sty.fieldLabel}>{t('farmProfile.farmName')}</Text>
-            <TextInput style={sty.input} value={farmName} onChangeText={setFarmName}
+            <TextInput {...fieldProps(farmNameRef)} style={sty.input} value={farmName} onChangeText={setFarmName}
               placeholder={t('onboarding.farmNamePlaceholderOwner', { owner: firstName.trim() || 'My' })} placeholderTextColor={PLACEHOLDER} maxLength={60} />
 
             <Text style={[sty.fieldLabel, { marginTop: vs(14) }]}>{t('onboarding.landSize')}</Text>
-            <TextInput style={[sty.input, { textAlign: 'center', fontSize: fs(18), fontFamily: KFONT.sansBold }]}
-              value={landSize} onChangeText={setLandSize}
+            <TextInput {...fieldProps(landSizeRef)} style={[sty.input, { textAlign: 'center', fontSize: fs(18), fontFamily: KFONT.sansBold }]}
+              value={landSize} onChangeText={(v) => setLandSize(cleanAcres(v))}
               placeholder={t('farmProfile.landSizePlaceholder')} keyboardType="decimal-pad" placeholderTextColor={PLACEHOLDER} />
 
             <Text style={[sty.fieldLabel, { marginTop: vs(14) }]}>{t('farmProfile.soilType')}</Text>
             <View style={sty.soilGrid}>
-              {SOILS.map(soil => {
+              {SOILS.map((soil, i) => {
                 const sel = soilType === soil.key;
                 return (
-                  <TouchableOpacity key={soil.key} style={sty.soilCard} onPress={() => setSoilType(soil.key)} activeOpacity={0.8}>
+                  <TouchableOpacity key={soil.key} style={[sty.soilCard, i % GRID_COLUMNS !== GRID_COLUMNS - 1 && sty.gridGutter]}
+                    onPress={() => setSoilType(soil.key)} activeOpacity={0.8}
+                    accessibilityRole="radio" accessibilityState={{ selected: sel }}>
                     <LinearGradient colors={soil.bg} style={[sty.soilSquare, sel && sty.soilSquareSel]}>
-                      {soil.sk ? <SoilIcon type={soil.sk} size={24} /> : <Ionicons name="help-circle" size={24} color={KHET.gold} />}
+                      {soil.sk ? <SoilIcon type={soil.sk} size={30} /> : <Ionicons name="help-circle" size={30} color={KHET.gold} />}
                       {sel && <View style={sty.soilCheck}><Ionicons name="checkmark" size={10} color="#FFF" /></View>}
                     </LinearGradient>
-                    <Text style={[sty.soilLabel, sel && sty.soilLabelSel]}>{t(soil.tKey, soil.label)}</Text>
+                    <Text style={[sty.soilLabel, sel && sty.soilLabelSel]} numberOfLines={2}
+                      adjustsFontSizeToFit minimumFontScale={0.8}>
+                      {t(soil.tKey, soil.label)}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -409,38 +520,54 @@ export default function OnboardingProfileScreen({ navigation }) {
               )}
             </View>
             <View style={sty.cropGrid}>
-              {CROPS.map(crop => {
+              {CROPS.map((crop, i) => {
                 const sel = selectedCrops.has(crop);
                 return (
-                  <TouchableOpacity key={crop} style={[sty.cropCard, sel && sty.cropCardSel]} onPress={() => toggleCrop(crop)} activeOpacity={0.8}>
+                  <TouchableOpacity key={crop}
+                    style={[sty.cropCard, i % GRID_COLUMNS !== GRID_COLUMNS - 1 && sty.gridGutter, sel && sty.cropCardSel]}
+                    onPress={() => toggleCrop(crop)} activeOpacity={0.8}
+                    accessibilityRole="checkbox" accessibilityState={{ checked: sel }}>
                     <PhotoIcon set="crop" name={crop} size={40} radius={8}
                       fallback={<CropIcon crop={crop} size={28} />} />
-                    <Text style={[sty.cropName, sel && sty.cropNameSel]} numberOfLines={1}>{t('crops.' + crop.toLowerCase(), crop)}</Text>
-                    {sel && <Ionicons name="checkmark-circle" size={13} color={KHET.primary} style={{ position: 'absolute', top: 3, right: 3 }} />}
+                    {/* One word ("Pomegranate") cannot wrap, so it shrinks to fit
+                        instead of being cut to "Pomegra…". */}
+                    <Text style={[sty.cropName, sel && sty.cropNameSel]} numberOfLines={1}
+                      adjustsFontSizeToFit minimumFontScale={0.7}>
+                      {t('crops.' + crop.toLowerCase(), crop)}
+                    </Text>
+                    {sel && <Ionicons name="checkmark-circle" size={14} color={KHET.primary} style={{ position: 'absolute', top: 3, right: 3 }} />}
                   </TouchableOpacity>
                 );
               })}
 
-              {/* "Other" — add a crop manually */}
-              <TouchableOpacity style={[sty.cropCard, showCustom && sty.cropCardSel]} onPress={() => setShowCustom(v => !v)} activeOpacity={0.8}>
+              {/* "Other" — add a crop manually. It is the 25th card, so it starts a row. */}
+              <TouchableOpacity style={[sty.cropCard, showCustom && sty.cropCardSel]} onPress={() => setShowCustom(v => !v)} activeOpacity={0.8}
+                accessibilityRole="button" accessibilityState={{ expanded: showCustom }}>
                 <View style={sty.otherIcon}>
-                  <Ionicons name="add" size={20} color={KHET.primary} />
+                  <Ionicons name="add" size={22} color={KHET.primary} />
                 </View>
-                <Text style={[sty.cropName, showCustom && sty.cropNameSel]} numberOfLines={1}>{t('common.other', 'Other')}</Text>
+                <Text style={[sty.cropName, showCustom && sty.cropNameSel]} numberOfLines={1}
+                  adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {t('common.other', 'Other')}
+                </Text>
               </TouchableOpacity>
             </View>
 
             {/* Manual crop entry */}
             {showCustom && (
               <View style={sty.customRow}>
+                {/* scrollToEnd used to run here, which scrolled the end SPACER into
+                    view and left this field under the keyboard. */}
                 <TextInput
+                  {...fieldProps(customCropRef)}
                   style={sty.customInput}
                   value={customCrop}
                   onChangeText={setCustomCrop}
                   placeholder={t('onboarding.typeCropName', 'Type crop name')}
                   placeholderTextColor={PLACEHOLDER}
-                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250)}
                   onSubmitEditing={addCustomCrop}
+                  // Keep the keyboard up so several crops can be added in a row.
+                  submitBehavior="submit"
                   returnKeyType="done"
                   maxLength={30}
                   autoFocus
@@ -469,13 +596,15 @@ export default function OnboardingProfileScreen({ navigation }) {
             )}
           </Rise>
 
-          <View style={{ height: vs(180) }} />
+          <View style={{ height: barHeight + vs(20) }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* ── Fixed Bottom Bar ──────────────────────────────────────────── */}
-      <View style={sty.bottomBar}>
-        <TouchableOpacity style={sty.skipBtn} onPress={handleSkip} disabled={saving} activeOpacity={0.8}>
+      {/* The navigation bar is drawn over the app (edge-to-edge): without the
+          inset, Skip and Complete sat under the system back/home buttons. */}
+      <View style={[sty.bottomBar, { paddingBottom: insets.bottom + vs(12) }]} onLayout={onBarLayout}>
+        <TouchableOpacity style={[sty.skipBtn, saving && { opacity: 0.5 }]} onPress={handleSkip} disabled={saving} activeOpacity={0.8}>
           <Text style={sty.skipTxt}>{t('onboarding.skip')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -487,7 +616,11 @@ export default function OnboardingProfileScreen({ navigation }) {
           <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.submitGrad}>
             {saving ? <ActivityIndicator color="#FFF" /> : (
               <>
-                <Text style={sty.submitTxt}>{canSubmit ? t('onboarding.completeSetup') : t('onboarding.fillNameDistrict')}</Text>
+                {/* Up to two lines: "Fill name & district" runs long in Tamil and
+                    Malayalam and was cut off beside the Skip button. */}
+                <Text style={sty.submitTxt} numberOfLines={2}>
+                  {canSubmit ? t('onboarding.completeSetup') : t('onboarding.fillNameDistrict')}
+                </Text>
                 {canSubmit && (
                   <View style={sty.submitArrow}><Ionicons name="checkmark" size={16} color={KHET.primaryForeground} /></View>
                 )}
@@ -502,7 +635,8 @@ export default function OnboardingProfileScreen({ navigation }) {
 
 const sty = StyleSheet.create({
   container: { flex: 1, backgroundColor: KHET.background },
-  scroll: { paddingHorizontal: s(20), paddingTop: vs(54) },
+  // paddingTop is the top safe-area inset + vs(12), set inline.
+  scroll: { paddingHorizontal: s(20) },
   blob: { position: 'absolute', width: s(260), height: s(260), borderRadius: s(130), opacity: 0.16 },
 
   // Header
@@ -559,6 +693,14 @@ const sty = StyleSheet.create({
     fontSize: fs(15), color: KHET.foreground, backgroundColor: KHET.input, fontFamily: KFONT.sans,
   },
   fieldLabel: { fontSize: fs(12), fontFamily: KFONT.sansSemi, color: KHET.mutedForeground, marginBottom: vs(6), marginTop: vs(8), letterSpacing: 0.2 },
+  // State / district / taluka pickers look like the text inputs beside them
+  // (the picker's own default is the older white, 1px-border style).
+  pickerTrigger: {
+    borderWidth: 1.5, borderColor: KHET.border, borderRadius: s(12),
+    paddingHorizontal: s(14), paddingVertical: vs(12),
+    backgroundColor: KHET.input, elevation: 0, shadowOpacity: 0,
+  },
+  pickerText: { fontSize: fs(15), color: KHET.foreground, fontFamily: KFONT.sans },
 
   // GPS
   gpsBtn: {
@@ -569,19 +711,22 @@ const sty = StyleSheet.create({
   },
   gpsTxt: { fontSize: fs(13), color: KHET.primary, fontFamily: KFONT.sansSemi },
 
-  // Soil grid — 7 cards in one row. 7 x 13% = 91%, and space-between spreads the
-  // remaining 9% across the six gutters. A fixed `gap` here would push the row
-  // past 100% of the card's content box and wrap the last soil onto its own line.
-  soilGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: vs(8) },
-  soilCard: { width: '13%', alignItems: 'center' },
+  // Soil and crop grids — four cards per row. Seven soils in one row made each
+  // square ~37dp (under the 48dp tap minimum) with an 8px label, and crop names
+  // were 9px. Each card is 23.5% wide with a 2% gutter after all but the last in
+  // a row: 4 × 23.5 + 3 × 2 = 100%, so a short last row still lines up under the
+  // columns above (space-between would spread it across the width instead).
+  gridGutter: { marginRight: '2%' },
+  soilGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: vs(10) },
+  soilCard: { width: '23.5%', alignItems: 'center' },
   soilSquare: {
-    width: '100%', aspectRatio: 1, borderRadius: 12,
+    width: '100%', aspectRatio: 1, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: 'transparent',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0)',
   },
   soilSquareSel: { borderColor: KHET.primary, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3 },
-  soilCheck: { position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: KHET.primary, justifyContent: 'center', alignItems: 'center' },
-  soilLabel: { fontSize: fs(8), color: KHET.mutedForeground, marginTop: vs(2), textAlign: 'center', fontFamily: KFONT.sans },
+  soilCheck: { position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: KHET.primary, justifyContent: 'center', alignItems: 'center' },
+  soilLabel: { fontSize: fs(11), lineHeight: fs(14), color: KHET.mutedForeground, marginTop: vs(4), textAlign: 'center', fontFamily: KFONT.sans },
   soilLabelSel: { color: KHET.primary, fontFamily: KFONT.sansBold },
 
   // Irrigation chips
@@ -600,16 +745,17 @@ const sty = StyleSheet.create({
   // Crops
   cropBadge: { backgroundColor: KHET.primary, borderRadius: 10, paddingHorizontal: s(8), paddingVertical: vs(2) },
   cropBadgeText: { color: '#FFF', fontSize: fs(11), fontFamily: KFONT.sansBold },
-  cropGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: s(6) },
+  cropGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: s(8) },
   cropCard: {
-    width: '22%', backgroundColor: KHET.card, borderRadius: 12,
-    padding: s(6), alignItems: 'center',
+    width: '23.5%', backgroundColor: KHET.card, borderRadius: 12,
+    paddingVertical: s(8), paddingHorizontal: s(4), alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: KHET.border, position: 'relative',
   },
   cropCardSel: { borderColor: KHET.primary, borderWidth: 2, backgroundColor: KHET.accent },
-  cropName: { fontSize: fs(9), color: KHET.mutedForeground, textAlign: 'center', marginTop: vs(2), fontFamily: KFONT.sans },
+  cropName: { fontSize: fs(11), lineHeight: fs(14), color: KHET.mutedForeground, textAlign: 'center', marginTop: vs(4), fontFamily: KFONT.sans, alignSelf: 'stretch' },
   cropNameSel: { color: KHET.primary, fontFamily: KFONT.sansBold },
-  otherIcon: { width: s(28), height: s(28), borderRadius: s(8), backgroundColor: KHET.accent, justifyContent: 'center', alignItems: 'center' },
+  // Same footprint as a crop photo (40), so the "Other" card is as tall as the rest.
+  otherIcon: { width: 40, height: 40, borderRadius: 8, backgroundColor: KHET.accent, justifyContent: 'center', alignItems: 'center' },
 
   // Custom ("Other") crop entry
   customRow: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: vs(12) },
@@ -628,10 +774,11 @@ const sty = StyleSheet.create({
   customChipTxt: { fontSize: fs(13), fontFamily: KFONT.sansSemi, color: KHET.primary },
 
   // Bottom bar
+  // paddingBottom is the bottom safe-area inset + vs(12), set inline.
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', gap: s(10),
-    paddingHorizontal: s(20), paddingTop: vs(12), paddingBottom: vs(34),
+    paddingHorizontal: s(20), paddingTop: vs(12),
     backgroundColor: KHET.card,
     borderTopWidth: 1, borderTopColor: KHET.border, ...KSHADOW.soft,
   },
@@ -643,8 +790,8 @@ const sty = StyleSheet.create({
   submitBtn: { flex: 1, borderRadius: 18, overflow: 'hidden' },
   submitGrad: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: s(8), paddingVertical: vs(15), ...KSHADOW.elegant,
+    gap: s(8), paddingVertical: vs(15), paddingHorizontal: s(12), ...KSHADOW.elegant,
   },
-  submitTxt: { color: KHET.primaryForeground, fontSize: fs(15), fontFamily: KFONT.sansSemi },
+  submitTxt: { color: KHET.primaryForeground, fontSize: fs(15), fontFamily: KFONT.sansSemi, textAlign: 'center', flexShrink: 1 },
   submitArrow: { width: s(26), height: s(26), borderRadius: s(13), backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
 });

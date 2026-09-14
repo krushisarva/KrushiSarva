@@ -31,8 +31,19 @@
  *     a fully-onboarded seller was permanently shown as incomplete.
  *   - Name editing has a length limit, trim feedback, and reports failures
  *     through a toast rather than an Alert that is invisible on web.
+ *   - KYC status read `user.kycStatus === 'verified'`, but the API sends the
+ *     uppercase enum, so every seller — verified or not — was shown "Pending".
+ *     A rejected seller also saw "Pending", with no reason and no way to act.
+ *     The row now shows all four states and opens the form to fix a rejection.
+ *   - A GST number showed a "Verified" badge. Nobody verifies GST numbers; it
+ *     says "Added", like the bank row.
+ *   - Straight after an OTP login this screen had only the login response to
+ *     read, so a fully set-up seller saw "Not added" everywhere. Business rows
+ *     now wait for the full profile (useProfileSync) instead of guessing.
+ *   - Completion is the same ten-field figure the business profile form and
+ *     the API compute; this screen counted eight, so the two screens disagreed.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
@@ -40,43 +51,26 @@ import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 import { BUSINESS_TYPES } from '@krushisarva/shared/constants/locations';
 
-import { C, E, HIT, R, SP, T, alpha, useResponsive } from '../theme';
+import { C, E, HIT, R, SP, T, alpha, kycStatusMeta, useResponsive } from '../theme';
 import { useNetwork } from '../hooks/useNetwork';
+import useProfileSync, { noteProfileWrite } from '../hooks/useProfileSync';
+import { NAME_MAX, NAME_MIN, completionFromUser, kycState } from '../utils/businessProfile';
 import {
   Screen, Button, IconButton, PressableRow, TextField, Rule,
-  Card, Avatar, Badge, ProgressBar, useConfirm, useToast,
+  Card, Avatar, Badge, ProgressBar, Skeleton, InlineNotice, useConfirm, useToast,
 } from '../components/ui';
 
 const TERMS_URL = 'https://cropsetu.app/terms';
 const PRIVACY_URL = 'https://cropsetu.app/privacy';
-const MAX_NAME = 60;
-
-/**
- * Completion, counted against the fields the KYC form actually writes.
- * `sellerProfile` is the source of truth for bank details.
- */
-function calcCompletion(user) {
-  const sp = user?.sellerProfile;
-  const checks = [
-    user?.name,
-    user?.businessType,
-    user?.district,
-    user?.taluka,
-    user?.village,
-    user?.gstNumber || user?.gstOptOut,
-    sp?.bankAccountNumber,
-    sp?.bankIfsc,
-  ];
-  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-}
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 
-function Row({ icon, label, value, onPress, badge, hint, last }) {
+/** `loading` holds the row's place while the full profile is still arriving. */
+function Row({ icon, label, value, onPress, badge, hint, last, loading }) {
   return (
     <PressableRow
-      onPress={onPress}
-      accessibilityLabel={value ? `${label}: ${value}` : label}
+      onPress={loading ? undefined : onPress}
+      accessibilityLabel={value && !loading ? `${label}: ${value}` : label}
       accessibilityHint={hint}
       style={[r.row, !last && r.rowRuled]}
     >
@@ -85,9 +79,13 @@ function Row({ icon, label, value, onPress, badge, hint, last }) {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={r.rowLabel} numberOfLines={1}>{label}</Text>
-        {value ? <Text style={r.rowValue} numberOfLines={2}>{value}</Text> : null}
+        {loading ? (
+          <Skeleton width="55%" height={12} style={{ marginTop: SP.xs }} />
+        ) : value ? (
+          <Text style={r.rowValue} numberOfLines={3}>{value}</Text>
+        ) : null}
       </View>
-      {badge ? (
+      {loading ? null : badge ? (
         <Badge label={badge.text} color={badge.color} icon={badge.icon} />
       ) : onPress ? (
         <Ionicons name="chevron-forward" size={18} color={C.textFaint} />
@@ -112,24 +110,45 @@ export default function SellerProfileScreen({ navigation }) {
   const { t } = useLanguage();
   const toast = useToast();
   const confirm = useConfirm();
-  const { isOffline } = useNetwork();
+  const { isOffline, recheck } = useNetwork();
   const { gutter, isExpanded, contentMaxWidth } = useResponsive();
+  const { hydrated, syncing, error: syncError, retry: retrySync } = useProfileSync();
+  const loading = !hydrated;
 
   const [editMode, setEditMode] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [nameError, setNameError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const completion = calcCompletion(user);
+  // Tapping "edit" should put the cursor in the box, not make the seller tap
+  // a second time to find it.
+  const nameInputRef = useRef(null);
+  useEffect(() => {
+    if (editMode) nameInputRef.current?.focus?.();
+  }, [editMode]);
+
+  const completion = completionFromUser(user);
   const completionColor = completion >= 80 ? C.success : completion >= 50 ? C.warning : C.danger;
 
   const bizType = useMemo(
     () => BUSINESS_TYPES.find((b) => b.key === user?.businessType),
     [user?.businessType],
   );
-  const bizTypeLabel = bizType ? t('biz.' + bizType.tKey) : t('notSet', 'Not set');
+  const bizTypeLabel = bizType ? t('biz.' + bizType.tKey, bizType.label) : t('notSet', 'Not set');
 
   const locationStr = [user?.village, user?.taluka, user?.district].filter(Boolean).join(', ') || null;
+
+  const kyc = kycState(user);
+  const kycMeta = kycStatusMeta(kyc.key);
+  const kycValue = kyc.key === 'verified'
+    ? t('sellerProfile.verified', 'Verified')
+    : kyc.key === 'pending'
+      ? t('sellerProfile.pendingVerification', 'Pending verification')
+      : kyc.key === 'rejected'
+        ? (kyc.reason
+          ? t('sellerProfile.kycRejectedValue', { reason: kyc.reason, defaultValue: 'Rejected: {{reason}}' })
+          : t('sellerProfile.kycRejectedNoReason', 'Rejected — tap to update your details'))
+        : t('sellerProfile.kycNotSubmittedValue', 'Not submitted — tap to add Aadhaar or PAN');
 
   const startEdit = useCallback(() => {
     setName(user?.name || '');
@@ -149,18 +168,23 @@ export default function SellerProfileScreen({ navigation }) {
       setNameError(t('sellerProfile.nameRequired', 'Please enter your name.'));
       return;
     }
+    // The API refuses a one-letter name with a generic "Invalid request".
+    if (trimmed.length < NAME_MIN) {
+      setNameError(t('sellerProfile.nameTooShort', 'Name must have at least 2 letters.'));
+      return;
+    }
     if (trimmed === (user?.name || '')) {
       setEditMode(false);
       return;
     }
-    if (isOffline) {
-      toast.warning(t('common.offlineAction', 'You are offline. Reconnect to save this.'));
-      return;
-    }
-
     setSaving(true);
     try {
+      if (isOffline && !(await recheck())) {
+        toast.warning(t('common.offlineAction', 'You are offline. Reconnect to save this.'));
+        return;
+      }
       const { data } = await api.put('/users/me', { name: trimmed });
+      noteProfileWrite();
       updateUser(data.data);
       setEditMode(false);
       toast.success(t('sellerProfile.nameUpdated', 'Name updated'));
@@ -171,7 +195,7 @@ export default function SellerProfileScreen({ navigation }) {
     } finally {
       setSaving(false);
     }
-  }, [name, user?.name, isOffline, toast, t, updateUser]);
+  }, [name, user?.name, isOffline, recheck, toast, t, updateUser]);
 
   const handleLogout = useCallback(async () => {
     const ok = await confirm({
@@ -222,11 +246,12 @@ export default function SellerProfileScreen({ navigation }) {
             {editMode ? (
               <View style={sp.editWrap}>
                 <TextField
+                  ref={nameInputRef}
                   value={name}
                   onChangeText={(v) => { setName(v); if (nameError) setNameError(null); }}
                   placeholder={t('sellerProfile.yourName', 'Your name')}
                   label={t('sellerProfile.displayName', 'Display name')}
-                  maxLength={MAX_NAME}
+                  maxLength={NAME_MAX}
                   autoCapitalize="words"
                   error={nameError}
                   returnKeyType="done"
@@ -285,9 +310,30 @@ export default function SellerProfileScreen({ navigation }) {
           <Rule />
 
           {/* ── Completion ── */}
+          {syncError && loading ? (
+            <View style={sp.syncError}>
+              <InlineNotice variant="warning">
+                {syncError.isOffline
+                  ? t('sellerProfile.loadErrorOffline', 'You are offline. Your business details will appear when you reconnect.')
+                  : t('sellerProfile.loadError', 'Could not load your business details.')}
+              </InlineNotice>
+              <Button
+                label={t('retry', 'Retry')}
+                icon="refresh"
+                variant="secondary"
+                size="sm"
+                loading={syncing}
+                onPress={retrySync}
+                style={sp.syncRetry}
+              />
+            </View>
+          ) : null}
+
           <PressableRow
             onPress={() => navigation.navigate('BusinessProfile')}
-            accessibilityLabel={`${t('sellerProfile.completion', 'Profile completion')}: ${completion}%`}
+            accessibilityLabel={loading
+              ? t('sellerProfile.completion', 'Profile completion')
+              : `${t('sellerProfile.completion', 'Profile completion')}: ${completion}%`}
             accessibilityHint={t('sellerProfile.completionHint', 'Opens your business profile to fill in what is missing')}
             style={sp.completionWrap}
           >
@@ -301,11 +347,15 @@ export default function SellerProfileScreen({ navigation }) {
                       : t('sellerProfile.completionDone')}
                   </Text>
                 </View>
-                <Text style={[sp.completionPct, { color: completionColor }]}>{completion}%</Text>
+                {loading ? (
+                  <Skeleton width={52} height={26} />
+                ) : (
+                  <Text style={[sp.completionPct, { color: completionColor }]}>{completion}%</Text>
+                )}
                 <Ionicons name="chevron-forward" size={18} color={C.textFaint} />
               </View>
               <ProgressBar
-                value={completion}
+                value={loading ? 0 : completion}
                 color={completionColor}
                 label={t('sellerProfile.completion', 'Profile completion')}
                 style={{ marginTop: SP.lg }}
@@ -331,6 +381,7 @@ export default function SellerProfileScreen({ navigation }) {
               label={t('sellerProfile.location', 'Location')}
               value={locationStr || t('sellerProfile.notSetTap')}
               onPress={() => navigation.navigate('BusinessProfile')}
+              loading={loading}
               last
             />
           </SectionCard>
@@ -342,21 +393,26 @@ export default function SellerProfileScreen({ navigation }) {
               label={t('sellerProfile.businessType', 'Business type')}
               value={bizTypeLabel}
               onPress={() => navigation.navigate('BusinessProfile')}
+              loading={loading}
             />
+            {/* Opt-out is checked first: it is what the business profile form
+                shows when both are set, and the API clears the number on
+                opt-out. */}
             <Row
               icon="document-text-outline"
               label={t('sellerProfile.gstNumber', 'GST number')}
               value={
-                user?.gstNumber ? user.gstNumber
-                  : user?.gstOptOut ? t('sellerProfile.notApplicable', 'Not applicable')
+                user?.gstOptOut ? t('sellerProfile.notApplicable', 'Not applicable')
+                  : user?.gstNumber ? user.gstNumber
                     : t('sellerProfile.notAdded', 'Not added')
               }
               onPress={() => navigation.navigate('BusinessProfile')}
+              loading={loading}
               badge={
-                user?.gstNumber
-                  ? { text: t('sellerProfile.verified', 'Verified'), color: C.success, icon: 'checkmark-circle' }
-                  : user?.gstOptOut
-                    ? { text: t('sellerProfile.exempt', 'Exempt'), color: C.warning, icon: 'remove-circle-outline' }
+                user?.gstOptOut
+                  ? { text: t('sellerProfile.exempt', 'Exempt'), color: C.warning, icon: 'remove-circle-outline' }
+                  : user?.gstNumber
+                    ? { text: t('sellerProfile.added', 'Added'), color: C.success, icon: 'checkmark-circle' }
                     : null
               }
             />
@@ -372,6 +428,7 @@ export default function SellerProfileScreen({ navigation }) {
                   : t('sellerProfile.notAdded', 'Not added')
               }
               onPress={() => navigation.navigate('BusinessProfile')}
+              loading={loading}
               badge={
                 user?.sellerProfile?.bankAccountNumber
                   ? { text: t('sellerProfile.added', 'Added'), color: C.success, icon: 'lock-closed' }
@@ -381,12 +438,10 @@ export default function SellerProfileScreen({ navigation }) {
             <Row
               icon="shield-checkmark-outline"
               label={t('sellerProfile.kycStatus', 'KYC status')}
-              value={user?.kycStatus === 'verified'
-                ? t('sellerProfile.verified', 'Verified')
-                : t('sellerProfile.pendingVerification', 'Pending verification')}
-              badge={user?.kycStatus === 'verified'
-                ? { text: t('sellerProfile.verified', 'Verified'), color: C.success, icon: 'checkmark-circle' }
-                : { text: t('sellerProfile.pending', 'Pending'), color: C.warning, icon: 'hourglass-outline' }}
+              value={kycValue}
+              onPress={() => navigation.navigate('BusinessProfile')}
+              loading={loading}
+              badge={{ text: t(kycMeta.tKey, kycMeta.fallback), color: kycMeta.color, icon: kycMeta.icon }}
               last
             />
           </SectionCard>
@@ -396,6 +451,7 @@ export default function SellerProfileScreen({ navigation }) {
             <Row
               icon="calendar-outline"
               label={t('sellerProfile.sellerSince', 'Seller since')}
+              loading={loading}
               value={(() => {
                 const created = user?.createdAt ? new Date(user.createdAt) : null;
                 return created && !Number.isNaN(created.getTime())
@@ -472,6 +528,9 @@ const sp = StyleSheet.create({
   editWrap: { gap: SP.md },
   nameError: { ...T.captionBold, color: C.danger, textAlign: 'center' },
   editBtns: { flexDirection: 'row', gap: SP.md },
+
+  syncError: { marginTop: SP.xl, gap: SP.sm },
+  syncRetry: { alignSelf: 'flex-end' },
 
   completionWrap: { marginTop: SP.xl, borderRadius: R.xl },
   completionCard: { ...E.raised },

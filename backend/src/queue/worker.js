@@ -14,7 +14,7 @@
  */
 import { Worker } from 'bullmq';
 import { ENV } from '../config/env.js';
-import logger from '../utils/logger.js';
+import logger, { errorText } from '../utils/logger.js';
 import { createQueueConnection } from './connection.js';
 import { PROCESSORS, QUEUE_NAMES } from './processors.js';
 
@@ -40,7 +40,7 @@ export function startWorkers() {
     );
     worker.on('failed', (job, err) =>
       logger.warn('[Worker] %s/%s failed (attempt %d): %s', queueName, job?.name, job?.attemptsMade, err.message));
-    worker.on('error', (err) => logger.warn('[Worker] %s worker error: %s', queueName, err.message));
+    worker.on('error', (err) => logger.warn('[Worker] %s worker error: %s', queueName, errorText(err)));
     workers.push(worker);
   }
   logger.info('[Worker] Started %d queue worker(s) (concurrency=%d)', workers.length, ENV.QUEUE_CONCURRENCY);

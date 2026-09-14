@@ -34,5 +34,8 @@ async function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+// The reason goes in as its own argument, not through %s: Node formats an object
+// under %s at inspect depth 0, which reduced a plain-object rejection to
+// "{ statusCode: 400, error: [Object] }" and an AggregateError to "[errors]: [Array]".
 process.on('unhandledRejection', (reason) =>
-  logger.error('[Worker] Unhandled rejection — %s', reason?.message || reason));
+  logger.error('[Worker] Unhandled rejection —', reason));
