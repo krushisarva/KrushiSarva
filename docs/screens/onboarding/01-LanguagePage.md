@@ -3,11 +3,11 @@
 > **Tab:** Auth/Onboarding · **Stack:** `OnboardingNavigator` (own `NavigationContainer`, shown when onboarding is incomplete) · **Route name:** `OnboardingLanguage` · **File:** `frontend/src/screens/Onboarding/OnboardingLanguageScreen.js`
 
 ## Purpose
-Screen 1 of 2 in the post-login onboarding flow. It lets a brand-new user pick the app's interface language from 10 Indian languages before they fill in their farm profile. The choice is applied app-wide immediately (not deferred to submit) so the rest of onboarding and the app render in the chosen language.
+Second screen of the post-login onboarding flow (Intro → **Language** → Profile). It lets a brand-new user pick the app's interface language from 10 Indian languages before they fill in their farm profile. The choice is applied app-wide immediately (not deferred to submit) so the rest of onboarding and the app render in the chosen language.
 
 ## Where it sits / how you reach it
-- **Reached from:** Rendered automatically by `OnboardingNavigator` as its initial route. `App.js` mounts `OnboardingNavigator` instead of the main app when `needsOnboarding` is true (`user?.onboardingStep === 'BASIC' && !user?.totalFarms`) — i.e. right after a new user finishes OTP login.
-- **Navigates to:** `OnboardingProfile` (screen 2) via the bottom CTA button ("Next") — `navigation.navigate("OnboardingProfile")`. There is no back navigation (this is the first screen; gestures are disabled on the stack).
+- **Reached from:** `OnboardingIntroScreen` ("Get started" or "Skip", both `navigation.replace('OnboardingLanguage')`). `App.js` mounts `OnboardingNavigator` instead of the main app when `needsOnboarding` is true (`user?.onboardingStep === 'BASIC' && !user?.totalFarms`) — i.e. right after a new user finishes OTP login.
+- **Navigates to:** `OnboardingProfile` via the bottom CTA button ("Next") — `navigation.navigate("OnboardingProfile")`. There is no back navigation (the intro was replaced; gestures are disabled on the stack).
 - **Route params in:** none.
 
 ## How it works
@@ -36,11 +36,13 @@ Screen 1 of 2 in the post-login onboarding flow. It lets a brand-new user pick t
 - **Local / static data:** `LANGS` constant (10 languages with code/name/native/flag/region) defined in-file.
 
 ## Languages / i18n
-- Drives the app's language globally via `setLanguage`. Only one i18n key is consumed for copy here: `t("next")`. All other strings (headline, subtitle, region labels, native names) are hard-coded literals in `LANGS` / JSX.
+- Drives the app's language globally via `setLanguage`. The headline and subtitle are localised (`onboarding.chooseLanguageTitle`, `onboarding.chooseLanguageAccent`, `onboarding.chooseLanguageSubtitle`) and so is `t("next")`; region labels and native names are literals in `LANGS`.
+- `frontend/src/screens/Onboarding/__tests__/onboardingI18n.test.js` fails if any of those keys stops resolving in English (which would show the raw key).
 - The 10 supported languages: `en, hi, mr, ta, te, kn, ml, bn, gu, pa`.
 
 ## Notes, edge cases & gaps
 - No empty/loading/error states — purely local, instantaneous selection.
 - Selecting a language takes effect immediately (even before pressing Next), so backing out is not possible here (first screen; `gestureEnabled: false` on the stack).
 - Web-specific height handling (`Platform.OS === "web"`) is applied so the fixed bottom bar sits correctly.
-- The headline and bilingual subtitle are not localised (English/Hindi/Marathi literals baked in).
+- **Bottom bar spacer is measured.** The bar floats over the list and grows with the navigation-bar inset and the phone's font size; a fixed 180 left the last language (Punjabi) under it on large fonts. `onLayout` on the bar sets the spacer.
+- **Headline line height is 40 on a 30px font.** The headline switches script as a language is tapped; 34 clipped the marks above and below Devanagari, Tamil and Bengali letters.

@@ -3,10 +3,10 @@
 > **Tab:** Auth/Onboarding · **Stack:** `OnboardingNavigator` · **Route name:** `OnboardingProfile` · **File:** `frontend/src/screens/Onboarding/OnboardingProfileScreen.js`
 
 ## Purpose
-Screen 2 of 2 in the post-login onboarding flow. A single long-scroll form where a new user enters their name, profile photo, farm location, farm details (land size, soil, irrigation) and crops, then submits everything in one shot to complete onboarding. Only **first name** and **district** are required; everything else is optional and can be skipped.
+Last screen of the post-login onboarding flow (Intro → Language → **Profile**). A single long-scroll form where a new user enters their name, profile photo, farm location, farm details (land size, soil, irrigation) and crops, then submits everything in one shot to complete onboarding. Only **first name** and **district** are required; everything else is optional and can be skipped.
 
 ## Where it sits / how you reach it
-- **Reached from:** `OnboardingLanguageScreen` → "Next" button (`navigation.navigate("OnboardingProfile")`). It is the second screen of `OnboardingNavigator`, which `App.js` mounts when `needsOnboarding` (`onboardingStep === 'BASIC' && !totalFarms`).
+- **Reached from:** `OnboardingLanguageScreen` → "Next" button (`navigation.navigate("OnboardingProfile")`). It is the third screen of `OnboardingNavigator`, which `App.js` mounts when `needsOnboarding` (`onboardingStep === 'BASIC' && !totalFarms`).
 - **Navigates to:** No `navigation.navigate` forward — completing or skipping calls `updateUser({ onboardingStep: 'COMPLETE', ... })`, which flips `needsOnboarding` to false in `App.js` and tears down `OnboardingNavigator` (the user lands in the main tab app). The header back button (`navigation.goBack()`) returns to `OnboardingLanguage`.
 - **Route params in:** none.
 
@@ -17,7 +17,9 @@ Screen 2 of 2 in the post-login onboarding flow. A single long-scroll form where
 - **Profile photo (`handlePickPhoto`)** is uploaded eagerly (not at submit): requests media-library permission, picks/edits a square image, validates extension/mime (jpg/jpeg/png/webp), compresses via `compressImage`, then `PUT /users/me` as multipart `FormData` and stores the returned avatar URL via `updateUser`.
 - **GPS (`captureGPS`)** requests foreground location permission and captures lat/lng with `expo-location`; the values are passed to `completeOnboarding` but the screen does no reverse-geocoding (it only displays the captured coordinates).
 - A progress bar at the top reflects how many of 4 logical sections are filled (name, district, land+soil, crops).
-- **Loading/error:** `saving` shows a spinner in the submit button; `uploadingPhoto` shows a spinner in the camera badge; `gpsLoading` shows "Getting location...". Failures surface via `Alert` (photo upload, GPS, complete, skip).
+- **Loading/error:** `saving` shows a spinner in the submit button and dims Skip; `uploadingPhoto` shows a spinner in the camera badge; `gpsLoading` shows "Getting location...". Failures surface via `Alert` (photo upload, GPS, complete, skip). A render error anywhere in onboarding shows a plain "Something went wrong" screen with a **Try again** button (`OnboardingNavigator` `ErrorCatcher`), which restarts from the intro; the error text is shown in development builds only.
+- **Keyboard:** Android is edge-to-edge on Expo SDK 54, so the window is not resized for the keyboard. `useKeyboardRoom` (`shared/hooks/useKeyboardRoom.js`, also used by the login screen) pads the scroll viewport by the covered strip, and the focused field is scrolled into view with `revealScrollOffset` — when the viewport shrinks, and on focus when the keyboard is already open. iOS uses `KeyboardAvoidingView` padding.
+- **Safe areas:** the header starts below the top inset and the bottom bar sits above the bottom inset (the navigation bar is drawn over the app). The end spacer is the measured bar height + 20.
 
 ## UI elements
 
@@ -30,19 +32,19 @@ Screen 2 of 2 in the post-login onboarding flow. A single long-scroll form where
 | Avatar picker | Image / initial placeholder + camera badge (`TouchableOpacity`) | Tap opens gallery picker; shows uploaded photo or first-letter initial; spinner while `uploadingPhoto`. Hint text "tap to add photo". |
 | First name input | `TextInput` (required) | `firstName`, maxLength 50. |
 | Last name input | `TextInput` | `lastName`, maxLength 50. |
-| State picker | `LocationPicker` (modal dropdown) | `STATE_LIST`; changing state resets district & taluka. |
+| State picker | `LocationPicker` (modal dropdown) | `STATE_LIST`; changing state resets district & taluka. Trigger styled like the text inputs (`triggerStyle` / `triggerTextStyle`). While its search field is focused the sheet moves to the top half of the screen and hides Cancel, so results stay above the keyboard. |
 | District picker | `LocationPicker` (required) | `getDistrictsForState(state)`; disabled until a state is chosen; resets taluka on change. |
 | Taluka picker / input | `LocationPicker` (Maharashtra) or `TextInput` (other states) | For Maharashtra uses `getTalukas(district)`; otherwise free-text. |
 | Village input | `TextInput` | `village`. |
-| Pincode input | `TextInput` (numeric, maxLength 6) | `pincode`. |
+| Pincode input | `TextInput` (number-pad, maxLength 6) | `pincode`; `cleanPincode` keeps digits only (a paste or suggestion can carry "." or "-"). |
 | GPS button | Dashed `TouchableOpacity` | "Auto-detect from GPS" → `captureGPS`; shows captured coords / "Getting location..." / checkmark. |
 | Farm name input | `TextInput` | `farmName`, placeholder "<name>'s Farm", maxLength 60. |
-| Total land input | `TextInput` (decimal-pad, centred) | `landSize` in acres. |
-| Soil type grid | 7 gradient square cards (`SoilIcon` art) | Single-select of `SOILS` (Black Cotton, Red, Alluvial, Sandy, Clay Loam, Laterite, Not Sure); selected card shows checkmark. |
+| Total land input | `TextInput` (decimal-pad, centred) | `landSize` in acres. `cleanAcres`: a decimal comma becomes a point, one point, two decimals, five integer digits ("2,5" used to save as 2). Sent as `acresOrNull` (positive number or null). |
+| Soil type grid | 7 gradient square cards (`SoilIcon` art), 4 per row | Single-select of `SOILS` (Black Cotton, Red, Alluvial, Sandy, Clay Loam, Laterite, Not Sure); selected card shows checkmark. Cards are 23.5% wide with a 2% gutter so the second row lines up; labels 11px, up to two lines. |
 | Irrigation chips | 5 chips (`IrrigationIcon` art) | Single-select of `IRRS` (Drip, Sprinkler, Flood, Rainfed, Mixed); selected chip shows check-circle. |
-| Crop grid | 24 crop cards (`CropIcon`) + count badge | Multi-select toggle of `CROPS`; selected count shown in a badge. |
+| Crop grid | 24 crop cards (`CropIcon`), 4 per row, + count badge | Multi-select toggle of `CROPS`; selected count shown in a badge. Names 11px on one line, shrinking to fit a long single word ("Pomegranate"). |
 | "Other" crop card | Card toggle | Reveals a manual crop-entry row. |
-| Custom crop input + add button | `TextInput` + add `TouchableOpacity` | Type a crop name and add it; `autoFocus`, maxLength 30, submit-on-enter. |
+| Custom crop input + add button | `TextInput` + add `TouchableOpacity` | Type a crop name and add it; `autoFocus`, maxLength 30, submit-on-enter keeps the keyboard open. `findCrop` matches case-insensitively, so "rice" selects the Rice card instead of adding a second chip. |
 | Custom crop chips | Removable pills | Each user-added crop shows as a chip with a close (`close-circle`) to remove. |
 | Skip button | Secondary CTA | `t('onboarding.skip')` → `handleSkip`. |
 | Complete Setup button | Primary CTA (gradient) | `handleComplete`; disabled until name+district filled; label toggles "Complete Setup" / "Fill name & district"; spinner while `saving`. |
@@ -65,4 +67,5 @@ Screen 2 of 2 in the post-login onboarding flow. A single long-scroll form where
 - Validation is minimal: only first name (≥1 char) and district required; soil/irrigation default server-side enums when blank.
 - GPS coordinates are captured and sent but not reverse-geocoded into address fields on this screen.
 - Taluka behaves differently per state (dropdown only for Maharashtra; free text elsewhere).
-- **Legacy / dead code:** The sibling screens `OnboardingNameScreen.js`, `OnboardingLocationScreen.js`, `OnboardingFarmScreen.js` and `OnboardingCropsScreen.js` exist in `frontend/src/screens/Onboarding/` but are **not registered in any navigator** — `OnboardingNavigator` only wires `OnboardingLanguage` + `OnboardingProfile`. Those four screens `navigation.navigate('OnboardingLocation'/'OnboardingFarm'/...)` to route names that no longer exist, so they are an earlier multi-step version superseded by this single-screen `OnboardingProfileScreen`. The `ProfileSetup/` folder (see `profile-setup-flow.md`) is a separate, also-unwired redesigned wizard.
+- The complete button's label wraps to two lines: "Fill name & district" is long in Tamil and Malayalam.
+- Tests: `frontend/src/utils/__tests__/onboardingForm.test.js` (pincode, acres, crop matching) and `frontend/src/screens/Onboarding/__tests__/onboardingI18n.test.js` (no raw keys).

@@ -98,6 +98,14 @@ export default function OnboardingLanguageScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState(language || "en");
   const { height: winHeight } = useWindowDimensions();
+  // The bottom bar floats over the list. Its height grows with the navigation
+  // bar inset and the phone's font size, so the list's end spacer is measured
+  // rather than guessed — a fixed 180 left Punjabi under the bar on large fonts.
+  const [barHeight, setBarHeight] = useState(180);
+  const onBarLayout = useCallback((e) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setBarHeight((prev) => (prev === h ? prev : h));
+  }, []);
 
   const handleSelect = useCallback((code) => {
     setSelected(code);
@@ -145,11 +153,11 @@ export default function OnboardingLanguageScreen({ navigation }) {
           ))}
         </View>
 
-        <View style={{ height: 180 }} />
+        <View style={{ height: barHeight }} />
       </ScrollView>
 
       {/* ── Bottom CTA ── */}
-      <View style={[sty.bottomBar, { paddingBottom: insets.bottom + 18 }]}>
+      <View style={[sty.bottomBar, { paddingBottom: insets.bottom + 18 }]} onLayout={onBarLayout}>
         <View style={sty.selectedIndicator}>
           <Text style={sty.selectedFlag}>{selectedLang?.flag}</Text>
           <Text style={sty.selectedText}>
@@ -185,7 +193,9 @@ const sty = StyleSheet.create({
   // Hero
   hero: { flexDirection: "row", alignItems: "center", marginBottom: 26 },
   heroIcon: { width: 56, height: 56, borderRadius: 16, justifyContent: "center", alignItems: "center", ...KSHADOW.elegant },
-  title: { fontSize: 30, fontFamily: KFONT.display, color: KHET.foreground, lineHeight: 34, letterSpacing: -0.5 },
+  // The headline switches script live as a language is tapped. 34 on a 30px
+  // font clipped the marks above and below Devanagari, Tamil and Bengali letters.
+  title: { fontSize: 30, fontFamily: KFONT.display, color: KHET.foreground, lineHeight: 40, letterSpacing: -0.5 },
   titleAccent: { fontFamily: KFONT.displayItalic, fontStyle: "italic", color: KHET.primary },
   subtitle: { fontSize: 12, color: KHET.mutedForeground, marginTop: 8, lineHeight: 18, fontFamily: KFONT.sans },
 

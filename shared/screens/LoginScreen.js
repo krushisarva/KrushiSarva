@@ -47,7 +47,8 @@ import { isValidPhone, normalizePhone } from '../utils/validators';
 import {
   activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
 } from '../utils/otp';
-import { androidKeyboardInset, revealScrollOffset } from '../utils/keyboardInset';
+import { revealScrollOffset } from '../utils/keyboardInset';
+import { useKeyboardRoom } from '../hooks/useKeyboardRoom';
 import { KHET, KFONT, KSHADOW } from '../constants/khetTheme';
 
 const HERO = require('../assets/khet/welcome-hero.jpg');
@@ -75,11 +76,22 @@ const REVEAL_MARGIN = 24;
 const IS_ANDROID = Platform.OS === 'android';
 const IS_WEB = Platform.OS === 'web';
 
-// Fully see-through, but NOT 'transparent'. On Android 'transparent' is the
-// integer 0, which React Native's renderer also uses to mean "no colour set"
-// (HostPlatformColor::UndefinedColor), so the text fell back to the theme's
-// black and the hidden OTP input showed its digits over the cells.
+// Fully see-through, but NOT 'transparent' (which is the integer 0 on Android,
+// the same value React Native uses for "no colour set"). On its own this did NOT
+// hide the OTP input's digits on real Android phones: ReactEditText lays a
+// highest-priority span of the view's own text colour over the whole text
+// (addSpansFromStyleAttributes), and the digits still showed in black over the
+// cells. What hides them is
+// OTP_INPUT_OPACITY below; this stays so the text is clear wherever a colour
+// does apply (iOS, web).
 const INVISIBLE = 'rgba(255,255,255,0)';
+
+// The OTP input is drawn at 1.1% opacity. View alpha applies to everything the
+// field draws, whatever text colour Android picks, so the digits cannot show.
+// Not 0: a view at alpha 0 counts as not visible to the user, and iOS and some
+// Android autofill services then skip it — 0.011 is the value
+// react-native-confirmation-code-field uses for exactly this reason.
+const OTP_INPUT_OPACITY = 0.011;
 
 // ── Web viewport lock ────────────────────────────────────────────────────────
 // App.js pins html/body/#root to `height:auto; overflow:visible` so the app uses
@@ -91,66 +103,6 @@ const INVISIBLE = 'rgba(255,255,255,0)';
 function useViewportLock() {
   const { height } = useWindowDimensions();
   return IS_WEB ? { height, maxHeight: height, overflow: 'hidden' } : null;
-}
-
-// ── Keyboard room ────────────────────────────────────────────────────────────
-// iOS: KeyboardAvoidingView pads (below). Android: this hook computes the strip
-// the keyboard covers, net of anything the window itself gave back — see
-// shared/utils/keyboardInset.js. Web: the browser handles it; nothing fires.
-function initialKeyboardHeight() {
-  if (IS_WEB || !Keyboard.isVisible?.()) return 0;
-  const h = Keyboard.metrics?.()?.height;
-  return Number.isFinite(h) ? h : 0;
-}
-
-function useKeyboardRoom(bottomInset) {
-  const [keyboard, setKeyboard] = useState(() => {
-    const height = initialKeyboardHeight();
-    return { visible: height > 0, height };
-  });
-  const visibleRef = useRef(keyboard.visible);
-  const [root, setRoot] = useState({ rest: 0, current: 0 });
-
-  useEffect(() => {
-    if (IS_WEB) return undefined;
-    // iOS fires *Will* in step with the keyboard animation; Android only has
-    // *Did*, which it emits from the layout pass that follows the IME change.
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const subs = [
-      Keyboard.addListener(showEvent, (e) => {
-        visibleRef.current = true;
-        const h = e?.endCoordinates?.height;
-        setKeyboard({ visible: true, height: Number.isFinite(h) ? h : 0 });
-      }),
-      Keyboard.addListener(hideEvent, () => {
-        visibleRef.current = false;
-        setKeyboard({ visible: false, height: 0 });
-      }),
-    ];
-    return () => subs.forEach((sub) => sub.remove());
-  }, []);
-
-  // The root view's height with the keyboard closed is the reference: if the
-  // window shrinks while it is open, that shrink is room already made.
-  const onRootLayout = useCallback((e) => {
-    const h = e.nativeEvent.layout.height;
-    setRoot((prev) => {
-      const rest = !visibleRef.current || prev.rest === 0 ? h : prev.rest;
-      return prev.rest === rest && prev.current === h ? prev : { rest, current: h };
-    });
-  }, []);
-
-  const inset = IS_ANDROID
-    ? androidKeyboardInset({
-      keyboardHeight: keyboard.height,
-      bottomInset,
-      restHeight: root.rest,
-      height: root.current,
-    })
-    : 0;
-
-  return { inset, visible: keyboard.visible, visibleRef, onRootLayout };
 }
 
 // CSS flex children default to `min-height:auto` and refuse to shrink below
@@ -1061,6 +1013,7 @@ const sty = StyleSheet.create({
   // (opacity 0 or an off-screen input is skipped by some autofill services).
   otpInput: {
     ...StyleSheet.absoluteFillObject,
+    opacity: OTP_INPUT_OPACITY,
     color: INVISIBLE,
     backgroundColor: 'transparent',
     textAlign: 'center',

@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Keyboard room for the login screen — pure geometry, no React Native import, so
-// it runs under the node-environment jest config.
+// Keyboard room for full-height form screens (login, onboarding profile) — pure
+// geometry, no React Native import, so it runs under the node-environment jest
+// config. The React side is shared/hooks/useKeyboardRoom.js.
 //
 // WHY THE LOGIN SCREEN MAKES ITS OWN ROOM ON ANDROID
 // ─────────────────────────────────────────────────
