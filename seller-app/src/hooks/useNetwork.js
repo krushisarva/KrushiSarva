@@ -95,6 +95,27 @@ export function NetworkProvider({ children }) {
     }
   }, [probe]);
 
+  /**
+   * Probe now instead of waiting out the backoff. Resolves true when the API
+   * answers. The offline flag only clears when a probe succeeds, and after a
+   * few failures the next probe can be 30s away — long enough that a seller
+   * back on signal was told "You are offline" for every tap on Save.
+   */
+  const recheck = useCallback(async () => {
+    if (onlineRef.current) return true;
+    if (IS_WEB && navigator?.onLine === false) return false;
+    clearProbe();
+    try {
+      await axios.get(API_BASE_URL, { timeout: PROBE_TIMEOUT_MS, validateStatus: () => true });
+      goOnline();
+      return true;
+    } catch {
+      probeStep.current = 0;
+      if (!probeTimer.current) probeTimer.current = setTimeout(probe, PROBE_STEPS_MS[0]);
+      return false;
+    }
+  }, [clearProbe, goOnline, probe]);
+
   // ── Web: the browser tells us directly ─────────────────────────────────────
   useEffect(() => {
     if (!IS_WEB || typeof window === 'undefined') return undefined;
@@ -147,8 +168,8 @@ export function NetworkProvider({ children }) {
   useEffect(() => clearProbe, [clearProbe]);
 
   const value = useMemo(
-    () => ({ isOnline, isOffline: !isOnline, reconnectedAt, notifyOffline: goOffline, notifyOnline: goOnline }),
-    [isOnline, reconnectedAt, goOffline, goOnline],
+    () => ({ isOnline, isOffline: !isOnline, reconnectedAt, notifyOffline: goOffline, notifyOnline: goOnline, recheck }),
+    [isOnline, reconnectedAt, goOffline, goOnline, recheck],
   );
 
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
@@ -167,6 +188,7 @@ export function useNetwork() {
       reconnectedAt: 0,
       notifyOffline: () => {},
       notifyOnline: () => {},
+      recheck: async () => true,
     }
   );
 }

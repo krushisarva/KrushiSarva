@@ -29,7 +29,7 @@ import { navigationRef } from './navigationRef';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { SoundEffects } from '@krushisarva/shared/utils/sounds';
-import { isSellerAccount } from '@krushisarva/shared/utils/roles';
+import { hasSellerRole } from '@krushisarva/shared/utils/roles';
 
 import { C, SP, T } from '../theme';
 import { useReducedMotion } from '../hooks/useMotion';
@@ -97,7 +97,12 @@ export default function SellerNavigator() {
   // dashboard whose every request would 403. Read once, at mount: saving that
   // form flips the backend role to SELLER and the screen itself replaces the
   // route with SellerDashboard, so there is no need to remount the stack here.
-  const initialRouteName = isSellerAccount(user) ? 'SellerDashboard' : 'BusinessProfile';
+  //
+  // Role only. isSellerAccount also accepts a FARMER who has a business type or
+  // GST number on file, and that account was sent to a dashboard where stats,
+  // products and orders all 403 — with no path back to the form whose save
+  // would have promoted it.
+  const initialRouteName = hasSellerRole(user) ? 'SellerDashboard' : 'BusinessProfile';
 
   return (
     <NavigationContainer ref={navigationRef} linking={linking} onStateChange={() => markActivity()}>

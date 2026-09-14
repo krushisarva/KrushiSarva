@@ -3,12 +3,13 @@
 // transform + node environment is enough — no need for the heavier jest-expo
 // preset. Add component/integration suites under their own config if needed.
 //
-// `roots` also covers ../shared so the shared package's tests run from here
-// rather than needing a second runner, and moduleNameMapper mirrors the
-// `@krushisarva/shared` alias metro.config.js sets up for the bundler.
+// `roots` also covers ../shared and ../seller-app/src so those packages' tests
+// run from here rather than needing a runner each (seller-app has no jest of its
+// own), and moduleNameMapper mirrors the `@krushisarva/shared` alias
+// metro.config.js sets up for the bundler.
 module.exports = {
   testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/../shared'],
+  roots: ['<rootDir>/src', '<rootDir>/../shared', '<rootDir>/../seller-app/src'],
   testMatch: ['**/__tests__/**/*.test.js'],
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
   // ../shared has no node_modules of its own, so a file transformed there

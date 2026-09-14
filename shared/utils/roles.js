@@ -7,6 +7,24 @@
  */
 
 /**
+ * Roles the backend admits to its seller routes. Mirrors `SELLER_ROLES` in
+ * backend/src/routes/agristore.routes.js and sellerCompliance.routes.js.
+ */
+export const SELLER_ROLES = ['SELLER', 'VERIFIED_FARMER', 'ADMIN'];
+
+/**
+ * True when the backend will serve this account's seller requests.
+ *
+ * Stricter than isSellerAccount below, which also accepts a filled-in business
+ * profile. That fallback only labels a badge; a FARMER with a business type
+ * still gets 403 from every seller endpoint, so anything that decides whether
+ * the seller dashboard can load must use this.
+ */
+export function hasSellerRole(user) {
+  return SELLER_ROLES.includes(user?.role);
+}
+
+/**
  * True when the account may use the seller portal.
  *
  * Role is the source of truth — the backend flips FARMER → SELLER on the first

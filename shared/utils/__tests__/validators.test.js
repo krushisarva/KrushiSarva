@@ -1,6 +1,7 @@
 import {
   isValidPhone, isValidPincode, isValidOtp,
-  isValidGst, isValidIfsc, isValidAadhaar, isValidPan,
+  isValidGst, isValidIfsc, isValidAadhaar, isValidPan, isValidBankAccount,
+  isAadhaarChecksumValid, isGstChecksumValid,
   normalizePhone, PHONE_RE, PINCODE_RE,
 } from '../validators';
 
@@ -73,6 +74,48 @@ describe('KYC validators', () => {
     expect(isValidPan('abcde1234f')).toBe(true);
     expect(isValidPan('ABCD1234F')).toBe(false);
     expect(isValidPan('ABCDE12345')).toBe(false);
+  });
+  test('bank account', () => {
+    expect(isValidBankAccount('123456789')).toBe(true);            // 9 digits
+    expect(isValidBankAccount('123456789012345678')).toBe(true);   // 18 digits
+    expect(isValidBankAccount(' 1234567890 ')).toBe(true);
+    expect(isValidBankAccount('12345678')).toBe(false);            // 8 digits
+    expect(isValidBankAccount('1234567890123456789')).toBe(false); // 19 digits
+    expect(isValidBankAccount('1234-5678-90')).toBe(false);
+    expect(isValidBankAccount('')).toBe(false);
+    expect(isValidBankAccount(null)).toBe(false);
+  });
+});
+
+describe('check digits', () => {
+  // Synthetic numbers built to pass the check digit, plus UIDAI's published
+  // sandbox number. None of them belongs to a person.
+  test.each(['234567890124', '987654321096', '999941057058'])('Aadhaar %s passes Verhoeff', (v) => {
+    expect(isAadhaarChecksumValid(v)).toBe(true);
+  });
+
+  test('Aadhaar: one wrong digit or two swapped digits fail', () => {
+    expect(isAadhaarChecksumValid('234567890125')).toBe(false); // last digit changed
+    expect(isAadhaarChecksumValid('234567809124')).toBe(false); // 9 and 0 swapped
+  });
+
+  test('Aadhaar: cannot start with 0 or 1, and must be 12 digits', () => {
+    expect(isAadhaarChecksumValid('123456789012')).toBe(false);
+    expect(isAadhaarChecksumValid('012345678901')).toBe(false);
+    expect(isAadhaarChecksumValid('23456789012')).toBe(false);
+    expect(isAadhaarChecksumValid('2345 6789 0124')).toBe(false);
+    expect(isAadhaarChecksumValid(undefined)).toBe(false);
+  });
+
+  test('GSTIN check character', () => {
+    expect(isGstChecksumValid('27ABCDE1234F1Z0')).toBe(true);
+    expect(isGstChecksumValid('27abcde1234f1z0')).toBe(true); // case-insensitive
+    expect(isGstChecksumValid('27AAPFU0939F1ZV')).toBe(true);
+    expect(isGstChecksumValid('29AAGCB7383J1Z4')).toBe(true);
+    // Right shape, wrong check character — the example string in the hints.
+    expect(isGstChecksumValid('27ABCDE1234F1Z5')).toBe(false);
+    expect(isGstChecksumValid('27ABCDE1243F1Z0')).toBe(false); // two digits swapped
+    expect(isGstChecksumValid('27ABCDE1234F1Z')).toBe(false);  // wrong shape
   });
 });
 
