@@ -40,8 +40,11 @@ jest.unstable_mockModule('../../../src/queue/processors.js', () => ({
   isBestEffort,
 }));
 
+// jobQueue imports errorText as well as the default logger; an ESM mock without
+// it fails at link time ("does not provide an export named 'errorText'").
 jest.unstable_mockModule('../../../src/utils/logger.js', () => ({
   default: { warn() {}, info() {}, error() {} },
+  errorText: (err) => String(err?.message ?? err ?? ''),
 }));
 
 const { enqueue, QUEUE_NAMES, inlineStats, _resetInlineStats } = await import('../../../src/queue/jobQueue.js');
