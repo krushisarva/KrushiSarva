@@ -19,6 +19,12 @@ import { fs } from '../../utils/responsive';
 import {
   checkServiceability, classifyError, inr, discountPct, thumbUrl, detailImageUrl,
 } from './shopClient';
+import { useAuth } from '@krushisarva/shared/context/AuthContext';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeLookup } from '@krushisarva/shared/hooks/usePincodeLocation';
+import {
+  isValidPincode, sanitizePincode, PINCODE_INPUT_MAX_LENGTH,
+} from '@krushisarva/shared/utils/pincode';
 
 
 // ── Spring press wrapper ──────────────────────────────────────────────────────
@@ -267,14 +273,29 @@ function SafetyPanel({ safety, recall }) {
  */
 function DeliveryCheck({ productId, defaultPincode }) {
   const { t } = useLanguage();
-  const [pin, setPin] = useState(defaultPincode || '');
+  const [pin, setPin] = useState(sanitizePincode(defaultPincode));
   const [result, setResult] = useState(null);
   const [checking, setChecking] = useState(false);
   const [err, setErr] = useState(null);
+  // Names the place for the typed PIN, so a mistyped digit is caught before
+  // the farmer reads "delivers in 3 days" for someone else's village.
+  const place = usePincodeLookup(pin);
+
+  const onPinChange = useCallback((v) => {
+    setPin(sanitizePincode(v));
+    // An answer for the previous PIN must not stay on screen under a new one.
+    setResult(null);
+    setErr(null);
+  }, []);
 
   const check = useCallback(async () => {
-    if (!/^[1-9][0-9]{5}$/.test(pin)) {
+    if (!isValidPincode(pin)) {
       setErr(t('shop.invalidPincode', 'Enter a valid 6-digit PIN code.'));
+      setResult(null);
+      return;
+    }
+    if (place.status === 'not_found') {
+      setErr(t('pincode.notFound'));
       setResult(null);
       return;
     }
@@ -288,7 +309,7 @@ function DeliveryCheck({ productId, defaultPincode }) {
     } finally {
       setChecking(false);
     }
-  }, [pin, productId, t]);
+  }, [pin, productId, t, place.status]);
 
   return (
     <View style={S.sectionCard}>
@@ -300,11 +321,11 @@ function DeliveryCheck({ productId, defaultPincode }) {
         <TextInput
           style={S.pinInput}
           value={pin}
-          onChangeText={(v) => setPin(v.replace(/\D/g, '').slice(0, 6))}
+          onChangeText={onPinChange}
           placeholder={t('product.enterPincode', 'Enter PIN code')}
           placeholderTextColor={COLORS.textMedium}
           keyboardType="number-pad"
-          maxLength={6}
+          maxLength={PINCODE_INPUT_MAX_LENGTH}
           accessibilityLabel={t('product.enterPincode', 'Enter PIN code')}
           returnKeyType="done"
           onSubmitEditing={check}
@@ -316,7 +337,9 @@ function DeliveryCheck({ productId, defaultPincode }) {
         </TouchableOpacity>
       </View>
 
-      {err ? <Text style={S.pinError}>{err}</Text> : null}
+      {err
+        ? <Text style={S.pinError}>{err}</Text>
+        : <PincodeLocationStatus lookup={place} showPicker={false} />}
 
       {result?.serviceable ? (
         <View style={S.pinResultOk}>
@@ -389,6 +412,7 @@ function SimilarCard({ item, onPress }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ProductDetail({ route, navigation }) {
   const { t }       = useLanguage();
+  const { user }    = useAuth();
   const insets      = useSafeAreaInsets();
 
   // ── Route params carry the CATALOG product, never a listing ────────────────
@@ -899,7 +923,7 @@ export default function ProductDetail({ route, navigation }) {
         {/* ── Delivery & PIN-code check ──────────────────────────────────────
             Replaces a "coming soon" placeholder. Real serviceability, from the
             seller's declared areas. */}
-        <DeliveryCheck productId={productId} defaultPincode={null} />
+        <DeliveryCheck productId={productId} defaultPincode={user?.pincode} />
 
         {/* ── Seller + other offers ────────────────────────────────────────
             This whole surface is new. Before the split there was no seller in the

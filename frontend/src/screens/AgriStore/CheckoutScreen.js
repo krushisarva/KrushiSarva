@@ -17,6 +17,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import api from '@krushisarva/shared/services/api';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { isValidPhone, isValidPincode, normalizePhone } from '@krushisarva/shared/utils/validators';
+import { sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import {
   fetchCartQuote, fetchPaymentConfig, fetchPaymentStatus, initiatePayment, confirmPayment,
@@ -446,6 +449,16 @@ export default function CheckoutScreen({ route, navigation }) {
 
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // PIN code → city and state for the new-address form.
+  const pin = usePincodeAutofill({
+    pincode: form.pincode,
+    values: form,
+    fields: { city: 'city', state: 'state' },
+    onChange: (patch) => setForm(f => ({ ...f, ...patch })),
+    resetKey: showForm ? 'open' : 'closed',
+    enabled: showForm,
+  });
+
   // Load addresses + cart items
   useEffect(() => {
     api.get('/addresses').then(({ data }) => {
@@ -503,6 +516,10 @@ export default function CheckoutScreen({ route, navigation }) {
     }
     if (!isValidPincode(form.pincode)) {
       Alert.alert(t('checkout.invalidPincode'), t('checkout.invalidPincodeMsg'));
+      return;
+    }
+    if (pin.status === 'not_found') {
+      Alert.alert(t('checkout.invalidPincode'), t('pincode.notFound'));
       return;
     }
     setSavingAddr(true);
@@ -865,19 +882,26 @@ export default function CheckoutScreen({ route, navigation }) {
                   <FInput label={t('checkout.flat')} req value={form.flat} onChangeText={v => upd('flat', v)}
                     ref={flatRef} onSubmitEditing={() => streetRef.current?.focus()} />
                   <FInput label={t('checkout.street')} req value={form.street} onChangeText={v => upd('street', v)}
-                    ref={streetRef} onSubmitEditing={() => cityRef.current?.focus()} />
+                    ref={streetRef} onSubmitEditing={() => pincodeRef.current?.focus()} />
+                  {/* PIN before city and state: it fills them. */}
+                  <FInput label={t('checkout.pincode')} req style={{ marginBottom: 0 }} value={form.pincode}
+                    onChangeText={v => upd('pincode', sanitizePincode(v))}
+                    keyboardType="number-pad" maxLength={PINCODE_INPUT_MAX_LENGTH}
+                    placeholder={t('pincode.placeholder')}
+                    ref={pincodeRef} onSubmitEditing={() => cityRef.current?.focus()} />
+                  <View style={{ marginBottom: 12 }}>
+                    {pin.status === 'idle'
+                      ? <Text style={ST.pinHint}>{t('pincode.autofillHint')}</Text>
+                      : <PincodeLocationStatus lookup={pin} />}
+                  </View>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <FInput label={t('checkout.city')} req style={{ flex: 1 }} value={form.city} onChangeText={v => upd('city', v)}
                       ref={cityRef} onSubmitEditing={() => stateRef.current?.focus()} />
                     <FInput label={t('checkout.state')} req style={{ flex: 1 }} value={form.state} onChangeText={v => upd('state', v)}
-                      ref={stateRef} onSubmitEditing={() => pincodeRef.current?.focus()} />
+                      ref={stateRef} onSubmitEditing={() => landmarkRef.current?.focus()} />
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <FInput label={t('checkout.pincode')} req style={{ flex: 1 }} value={form.pincode} onChangeText={v => upd('pincode', v)}
-                      keyboardType="number-pad" ref={pincodeRef} onSubmitEditing={() => landmarkRef.current?.focus()} />
-                    <FInput label={t('checkout.landmark')} style={{ flex: 1 }} value={form.landmark} onChangeText={v => upd('landmark', v)}
-                      ref={landmarkRef} returnKeyType="done" />
-                  </View>
+                  <FInput label={t('checkout.landmark')} value={form.landmark} onChangeText={v => upd('landmark', v)}
+                    ref={landmarkRef} returnKeyType="done" />
                 </SlideCard>
               )}
             </>
@@ -1203,6 +1227,7 @@ const ST = StyleSheet.create({
   sectionSub:   { fontSize: 13, color: COLORS.textMedium, marginBottom: 16 },
   typeChip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.background },
   typeChipTxt:  { fontSize: 12, fontWeight: '700', color: COLORS.textMedium },
+  pinHint:      { fontSize: 12, color: COLORS.textMedium, marginTop: 6 },
 });
 
 const BOT = StyleSheet.create({

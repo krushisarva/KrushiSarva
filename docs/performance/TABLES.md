@@ -91,6 +91,7 @@ cache hit in the common case.
 | `GET /admin/metrics` | 16 cold / **0 warm** | 4 | ~2 KB | n/a | **30 s** | — |
 | `GET /consent` | 1 | 1 | bounded by purposes | n/a | no | — |
 | `GET /ai/scan/job/:id` | 1/poll | 4/poll | ~150 B | n/a | no | FastAPI side is 5 **blocking** Redis RTs per poll (§13 open) |
+| `GET /location/pincode/:pin` | 0 | 0 warm (L1) / 1–2 cold | ~0.1–5 KB | n/a | **30 d** Redis + 1 h L1; not-found 6 h | India Post 0.3–2.2 s on a miss; breaker `postal-pincode` |
 
 ---
 

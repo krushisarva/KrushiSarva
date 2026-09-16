@@ -25,10 +25,12 @@
  *   - each field can register its Y position so the form can scroll to the
  *     first invalid one on submit
  */
-import React, { forwardRef, useCallback, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, E, F, HIT, R, SP, T, alpha } from '../../theme';
+import { blurField, focusField, getFocusOwner, nextFieldId, subscribeFocusOwner } from './fieldFocus';
+import { useRevealFocusedField } from './KeyboardAwareScroll';
 
 // ── Field wrapper ────────────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ export const Field = forwardRef(function Field({
 export const TextField = forwardRef(function TextField({
   value,
   onChangeText,
+  onFocus,
   onBlur,
   placeholder,
   label,
@@ -127,9 +130,28 @@ export const TextField = forwardRef(function TextField({
   importantForAutofill,
   testID,
 }, ref) {
-  const [focused, setFocused] = useState(false);
+  // The ring follows the one field that owns focus (./fieldFocus.js), so a late
+  // blur from the field being left cannot switch off the ring of the field
+  // being entered, and two fields can never be ringed at once.
+  const idRef = useRef(null);
+  if (idRef.current === null) idRef.current = nextFieldId();
+  const owner = useSyncExternalStore(subscribeFocusOwner, getFocusOwner, getFocusOwner);
+  const focused = owner === idRef.current;
 
-  const handleBlur = useCallback((e) => { setFocused(false); onBlur?.(e); }, [onBlur]);
+  // Inside a KeyboardAwareScroll: bring this field above the keyboard when
+  // focus moves to it with the keyboard already open.
+  const reveal = useRevealFocusedField();
+  const handleFocus = useCallback((e) => {
+    focusField(idRef.current);
+    reveal?.();
+    onFocus?.(e);
+  }, [onFocus, reveal]);
+  const handleBlur = useCallback((e) => { blurField(idRef.current); onBlur?.(e); }, [onBlur]);
+
+  // A field that goes away or stops accepting input must not keep the ring:
+  // neither unmounting nor being disabled fires onBlur.
+  useEffect(() => () => blurField(idRef.current), []);
+  useEffect(() => { if (!editable) blurField(idRef.current); }, [editable]);
 
   return (
     <View
@@ -148,7 +170,7 @@ export const TextField = forwardRef(function TextField({
         style={[fs.input, multiline && fs.inputMultiline, inputStyle]}
         value={value}
         onChangeText={onChangeText}
-        onFocus={() => setFocused(true)}
+        onFocus={handleFocus}
         onBlur={handleBlur}
         placeholder={placeholder}
         placeholderTextColor={C.textFaint}
@@ -427,17 +449,14 @@ const fs = StyleSheet.create({
     paddingHorizontal: SP.lg,
   },
   inputShellMultiline: { minHeight: 116, alignItems: 'stretch', paddingVertical: SP.md },
-  // Focus is a colour change plus a warm halo — on web the :focus-visible ring
-  // from App.js sits on top of this, and the two are deliberately different
-  // (one is keyboard focus, one is "this is the field you are in").
+  // Focus is a colour change ONLY. It used to add a shadow and `elevation: 2`,
+  // so on Android every focus change also changed the depth of the view that
+  // holds the text box while the keyboard was opening. On web the
+  // :focus-visible ring from App.js sits on top of this; the two are
+  // deliberately different (keyboard focus vs "this is the field you are in").
   inputShellFocused: {
     borderColor: C.brand,
     backgroundColor: C.surfaceRaised,
-    shadowColor: C.brand,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 2,
   },
   inputShellError: { borderColor: C.danger, backgroundColor: C.dangerPale },
   inputShellDisabled: { backgroundColor: C.surfaceSunken, borderColor: C.border },

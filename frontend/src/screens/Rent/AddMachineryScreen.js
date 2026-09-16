@@ -21,6 +21,8 @@ import { useLocation } from '../../context/LocationContext';
 import { COLORS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import RentAvailabilityPicker from '../../components/ui/RentAvailabilityPicker';
 import { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import { useAuth } from '@krushisarva/shared/context/AuthContext';
+import RentPincodeFill from './RentPincodeFill';
 
 
 const CATEGORIES = [
@@ -84,6 +86,7 @@ export default function AddMachineryScreen({ navigation, route }) {
   const insets    = useSafeAreaInsets();
   const { t }         = useLanguage();
   const { coords: gpsCoords } = useLocation();
+  const { user } = useAuth();
   const existing  = route?.params?.listing  || null;
   const editMode  = route?.params?.editMode || false;
 
@@ -374,6 +377,17 @@ export default function AddMachineryScreen({ navigation, route }) {
 
           {/* ── Location ── */}
           <SectionLabel>{t('rent.location')}</SectionLabel>
+          {/* A new listing starts from the profile PIN; an edit starts blank. */}
+          <RentPincodeFill
+            location={location}
+            district={district}
+            onLocation={setLocation}
+            onDistrict={setDistrict}
+            initialPincode={existing ? '' : user?.pincode}
+            t={t}
+            labelStyle={S.label}
+            inputStyle={S.input}
+          />
           <View style={S.row}>
             <View style={{ flex: 1 }}>
               <FieldInput label={t('rent.villageCityLabel')} value={location} onChangeText={setLocation} placeholder={t('rent.villagePlaceholder')} required />

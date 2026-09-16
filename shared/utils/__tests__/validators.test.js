@@ -41,9 +41,9 @@ describe('isValidPhone', () => {
 });
 
 describe('isValidPincode', () => {
-  test.each(['411001', '110001', '000000'])('accepts %s', (v) => expect(isValidPincode(v)).toBe(true));
+  test.each(['411001', '110001', '999999'])('accepts %s', (v) => expect(isValidPincode(v)).toBe(true));
   test('trims surrounding whitespace', () => expect(isValidPincode('  411001 ')).toBe(true));
-  test.each(['41100', '4110011', '4110a1', '', null])('rejects %s', (v) => expect(isValidPincode(v)).toBe(false));
+  test.each(['41100', '4110011', '4110a1', '000000', '012345', '', null])('rejects %s', (v) => expect(isValidPincode(v)).toBe(false));
 });
 
 describe('isValidOtp', () => {

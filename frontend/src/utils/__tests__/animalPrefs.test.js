@@ -6,8 +6,51 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getManualLocation, setManualLocation,
   getRecentSearches, pushRecentSearch, clearRecentSearches,
-  relativeTime,
+  relativeTime, pincodePlace,
 } from '../animalPrefs';
+import { summarisePincode } from '@krushisarva/shared/utils/pincode';
+
+const office = (name, block, district, state = 'Maharashtra') => ({
+  name, block, district, state, delivery: true, branchType: null,
+});
+
+describe('pincodePlace', () => {
+  const baramati = summarisePincode({
+    pincode: '413102', found: true,
+    postOffices: [office('Baramati', 'Baramati', 'Pune'), office('Barhanpur', 'Baramati', 'Pune')],
+  });
+
+  it('turns a PIN into a district the listing filter can match', () => {
+    expect(pincodePlace(baramati)).toEqual({
+      label: 'Baramati, Pune (413102)', pincode: '413102', district: 'Pune',
+      taluka: 'Baramati', village: undefined, state: 'Maharashtra',
+    });
+  });
+
+  it('names the village the user picked', () => {
+    const place = pincodePlace(baramati, baramati.localities[1]);
+    expect(place).toMatchObject({ label: 'Barhanpur, Pune (413102)', district: 'Pune', village: 'Barhanpur' });
+  });
+
+  it('a PIN spanning districts needs a village first', () => {
+    const delhi = summarisePincode({
+      pincode: '110001', found: true,
+      postOffices: [office('Connaught Place', 'New Delhi', 'Central Delhi', 'Delhi'), office('Sansad Marg', 'New Delhi', 'New Delhi', 'Delhi')],
+    });
+    expect(pincodePlace(delhi)).toBeNull();
+    expect(pincodePlace(delhi, delhi.localities[1])).toMatchObject({ district: 'New Delhi' });
+  });
+
+  it('does not repeat a district that is also the taluka', () => {
+    const beed = summarisePincode({ pincode: '431122', found: true, postOffices: [office('Beed', 'Beed', 'Beed')] });
+    expect(pincodePlace(beed).label).toBe('Beed (431122)');
+  });
+
+  it('nothing for an unknown PIN', () => {
+    expect(pincodePlace(summarisePincode({ pincode: '999999', found: false, postOffices: [] }))).toBeNull();
+    expect(pincodePlace(null)).toBeNull();
+  });
+});
 
 beforeEach(async () => { await AsyncStorage.clear(); });
 

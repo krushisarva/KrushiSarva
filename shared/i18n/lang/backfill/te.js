@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "వేగంగా వ్యాధి నిర్ధారణ కోసం మీ పంట ఫోటో పంచుకోండి.",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "నూనెగింజలు",
   "market.cat_cash": "వాణిజ్య పంటలు",
   "market.cat_spice": "మసాలాలు",
+  "pincode.label": "పిన్ కోడ్",
+  "pincode.placeholder": "6 అంకెల పిన్ కోడ్",
+  "pincode.autofillHint": "పిన్ కోడ్ నమోదు చేయండి, మిగిలిన వివరాలు ఆటోమేటిక్‌గా నిండుతాయి.",
+  "pincode.checking": "మీ ప్రాంతాన్ని వెతుకుతున్నాం…",
+  "pincode.invalid": "సరైన 6 అంకెల పిన్ కోడ్ నమోదు చేయండి.",
+  "pincode.notFound": "ఈ పిన్ కోడ్‌కు ఏ ప్రాంతం కనబడలేదు. దయచేసి నంబర్‌ను తనిఖీ చేయండి.",
+  "pincode.unavailable": "ప్రస్తుతం ఈ పిన్ కోడ్‌ను తనిఖీ చేయలేకపోయాం. మీరు వివరాలను స్వయంగా నింపవచ్చు.",
+  "pincode.offline": "మీరు ఆఫ్‌లైన్‌లో ఉన్నారు. వివరాలను స్వయంగా నింపండి, లేదా కనెక్ట్ అయ్యాక మళ్లీ ప్రయత్నించండి.",
+  "pincode.rateLimited": "పిన్ కోడ్‌ను చాలాసార్లు తనిఖీ చేశారు. దయచేసి ఒక నిమిషం ఆగి మళ్లీ ప్రయత్నించండి.",
+  "pincode.retry": "మళ్లీ ప్రయత్నించండి",
+  "pincode.pickArea": "మిగిలిన వివరాలు నింపడానికి మీ గ్రామం లేదా ప్రాంతాన్ని ఎంచుకోండి.",
+  "pincode.multipleDistricts": "ఈ పిన్ కోడ్ ఒకటి కంటే ఎక్కువ జిల్లాల్లో ఉంది. మీ గ్రామం లేదా ప్రాంతాన్ని ఎంచుకోండి.",
+  "pincode.pickAreaTitle": "{{pincode}} లోని గ్రామాలు, ప్రాంతాలు",
+  "pincode.pickAreaCount": "గ్రామం / ప్రాంతం ఎంచుకోండి ({{count}})",
+  "pincode.fixBeforeSave": "సేవ్ చేసే ముందు పిన్ కోడ్‌ను సరిచేయండి.",
 };

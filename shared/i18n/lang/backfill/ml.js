@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "വേഗത്തിലുള്ള രോഗനിർണയത്തിന് നിങ്ങളുടെ വിളയുടെ ഫോട്ടോ പങ്കിടുക.",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "എണ്ണക്കുരുക്കൾ",
   "market.cat_cash": "നാണ്യവിളകൾ",
   "market.cat_spice": "സുഗന്ധവ്യഞ്ജനങ്ങൾ",
+  "pincode.label": "പിൻ കോഡ്",
+  "pincode.placeholder": "6 അക്ക പിൻ കോഡ്",
+  "pincode.autofillHint": "പിൻ കോഡ് നൽകുക, ബാക്കി വിവരങ്ങൾ സ്വയം പൂരിപ്പിക്കപ്പെടും.",
+  "pincode.checking": "നിങ്ങളുടെ പ്രദേശം തിരയുന്നു…",
+  "pincode.invalid": "ശരിയായ 6 അക്ക പിൻ കോഡ് നൽകുക.",
+  "pincode.notFound": "ഈ പിൻ കോഡിന് ഒരു പ്രദേശവും കണ്ടെത്തിയില്ല. ദയവായി നമ്പർ പരിശോധിക്കുക.",
+  "pincode.unavailable": "ഇപ്പോൾ ഈ പിൻ കോഡ് പരിശോധിക്കാൻ കഴിഞ്ഞില്ല. നിങ്ങൾക്ക് വിവരങ്ങൾ സ്വയം പൂരിപ്പിക്കാം.",
+  "pincode.offline": "നിങ്ങൾ ഓഫ്‌ലൈനിലാണ്. വിവരങ്ങൾ സ്വയം പൂരിപ്പിക്കുക, അല്ലെങ്കിൽ കണക്റ്റ് ആയ ശേഷം വീണ്ടും ശ്രമിക്കുക.",
+  "pincode.rateLimited": "പിൻ കോഡ് പലതവണ പരിശോധിച്ചു. ദയവായി ഒരു മിനിറ്റ് കാത്തിരുന്ന് വീണ്ടും ശ്രമിക്കുക.",
+  "pincode.retry": "വീണ്ടും ശ്രമിക്കുക",
+  "pincode.pickArea": "ബാക്കി വിവരങ്ങൾ പൂരിപ്പിക്കാൻ നിങ്ങളുടെ ഗ്രാമമോ പ്രദേശമോ തിരഞ്ഞെടുക്കുക.",
+  "pincode.multipleDistricts": "ഈ പിൻ കോഡ് ഒന്നിലധികം ജില്ലകളിൽ ഉൾപ്പെടുന്നു. നിങ്ങളുടെ ഗ്രാമമോ പ്രദേശമോ തിരഞ്ഞെടുക്കുക.",
+  "pincode.pickAreaTitle": "{{pincode}} ലെ ഗ്രാമങ്ങളും പ്രദേശങ്ങളും",
+  "pincode.pickAreaCount": "ഗ്രാമം / പ്രദേശം തിരഞ്ഞെടുക്കുക ({{count}})",
+  "pincode.fixBeforeSave": "സേവ് ചെയ്യുന്നതിന് മുമ്പ് പിൻ കോഡ് ശരിയാക്കുക.",
 };

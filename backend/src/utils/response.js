@@ -29,6 +29,18 @@ export function serializeDecimals(value) {
   return value;
 }
 
+/**
+ * The HTTP status a thrown error asks for, or 500. Accepts `status` (Express,
+ * body-parser, http-errors) and `statusCode` (this codebase's own errors,
+ * including withSerializableRetry's 409); anything outside 400–599 is ignored.
+ */
+export function errorStatus(err) {
+  for (const s of [err?.status, err?.statusCode]) {
+    if (Number.isInteger(s) && s >= 400 && s <= 599) return s;
+  }
+  return 500;
+}
+
 export function sendSuccess(res, data, statusCode = 200, meta) {
   const payload = { success: true, data: serializeDecimals(data) };
   if (meta !== undefined) payload.meta = serializeDecimals(meta);

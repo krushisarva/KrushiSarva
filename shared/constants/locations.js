@@ -53,8 +53,16 @@ const MAHARASHTRA_DISTRICTS = {
 
 export const DISTRICT_LIST = Object.keys(MAHARASHTRA_DISTRICTS).sort();
 
+// The all-India list uses the renamed districts; the taluka table above is
+// keyed by the old names. Without this, picking "Dharashiv" offered no talukas.
+const RENAMED_DISTRICTS = {
+  Dharashiv: 'Osmanabad',
+  Ahilyanagar: 'Ahmednagar',
+  'Chhatrapati Sambhajinagar': 'Aurangabad',
+};
+
 export function getTalukas(district) {
-  return MAHARASHTRA_DISTRICTS[district] || [];
+  return MAHARASHTRA_DISTRICTS[district] || MAHARASHTRA_DISTRICTS[RENAMED_DISTRICTS[district]] || [];
 }
 
 // Selling scope options — where the product is available to buyers

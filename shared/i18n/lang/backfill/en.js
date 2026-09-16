@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 877 keys.
 
 export default {
   "aiChat.attachHint": "Share a photo of your crop for a quick diagnosis.",
@@ -872,4 +872,20 @@ export default {
   "market.cat_oil": "Oilseeds",
   "market.cat_cash": "Cash Crops",
   "market.cat_spice": "Spices",
+  "pincode.label": "PIN code",
+  "pincode.placeholder": "6-digit PIN code",
+  "pincode.autofillHint": "Enter your PIN code to fill in the rest automatically.",
+  "pincode.checking": "Finding your area…",
+  "pincode.invalid": "Enter a valid 6-digit PIN code.",
+  "pincode.notFound": "No area found for this PIN code. Please check the number.",
+  "pincode.unavailable": "Couldn't check this PIN code right now. You can fill in the details yourself.",
+  "pincode.offline": "You're offline. Fill in the details yourself, or retry when connected.",
+  "pincode.rateLimited": "Too many PIN code checks. Please wait a minute and retry.",
+  "pincode.retry": "Retry",
+  "pincode.pickArea": "Select your village or area to fill in the rest.",
+  "pincode.multipleDistricts": "This PIN code covers more than one district. Select your village or area.",
+  "pincode.pickAreaTitle": "Villages and areas in {{pincode}}",
+  "pincode.pickAreaCount": "Select village / area ({{count}})",
+  "pincode.fixBeforeSave": "Please correct the PIN code before saving.",
+  "sellerBizProfile.pincodeOutsideState": "This PIN code is outside Maharashtra. Selling is currently limited to Maharashtra.",
 };

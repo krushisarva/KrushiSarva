@@ -1,0 +1,301 @@
+{
+  "110001": {
+    "pincode": "110001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "New Delhi",
+        "block": "New Delhi",
+        "district": "New Delhi",
+        "state": "Delhi",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Baroda House",
+        "block": "New Delhi",
+        "district": "Central Delhi",
+        "state": "Delhi",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      },
+      {
+        "name": "Bengali Market",
+        "block": "New Delhi",
+        "district": "Central Delhi",
+        "state": "Delhi",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "122001": {
+    "pincode": "122001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Gurgaon",
+        "block": "Sadar Bazar",
+        "district": "Gurgaon",
+        "state": "Haryana",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Arjun Nagar",
+        "block": "Arjun Nagar",
+        "district": "Gurgaon",
+        "state": "Haryana",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "194101": {
+    "pincode": "194101",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Bazgo",
+        "block": "Leh",
+        "district": "Leh",
+        "state": "Jammu & Kashmir",
+        "delivery": true,
+        "branchType": "Branch Office directly a/w Head Office"
+      },
+      {
+        "name": "Chuchot Gongma",
+        "block": "Leh",
+        "district": "Leh",
+        "state": "Jammu & Kashmir",
+        "delivery": true,
+        "branchType": "Branch Office directly a/w Head Office"
+      }
+    ]
+  },
+  "396230": {
+    "pincode": "396230",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Amboli",
+        "block": "Umbergaon",
+        "district": "Valsad",
+        "state": "Gujarat",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      },
+      {
+        "name": "Amli",
+        "block": "Dadra & Nagar Haveli",
+        "district": "Dadra & Nagar Haveli",
+        "state": "Dadra & Nagar Haveli",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      },
+      {
+        "name": "Athola",
+        "block": "Dadra & Nagar Haveli",
+        "district": "Dadra & Nagar Haveli",
+        "state": "Dadra & Nagar Haveli",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      },
+      {
+        "name": "Khadoli",
+        "block": "Pardi",
+        "district": "Valsad",
+        "state": "Gujarat",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      }
+    ]
+  },
+  "400001": {
+    "pincode": "400001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Elephanta Caves Po",
+        "block": "Uran",
+        "district": "Raigarh(MH)",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Branch Office directly a/w Head Office"
+      },
+      {
+        "name": "Mumbai",
+        "block": "Mumbai",
+        "district": "Mumbai",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Bazargate",
+        "block": "Mumbai",
+        "district": "Mumbai",
+        "state": "Maharashtra",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "401404": {
+    "pincode": "401404",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Palghar",
+        "block": "Palghar",
+        "district": "Thane",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      }
+    ]
+  },
+  "402201": {
+    "pincode": "402201",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Alibag",
+        "block": "Alibag",
+        "district": "Raigarh(MH)",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      }
+    ]
+  },
+  "403001": {
+    "pincode": "403001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Panaji",
+        "block": "Tiswadi",
+        "district": "North Goa",
+        "state": "Goa",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "C.C.Altinho",
+        "block": "Tiswadi",
+        "district": "North Goa",
+        "state": "Goa",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "413102": {
+    "pincode": "413102",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Baramati",
+        "block": "Baramati",
+        "district": "Pune",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Sub Post Office"
+      },
+      {
+        "name": "Barhanpur",
+        "block": "Baramati",
+        "district": "Pune",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      }
+    ]
+  },
+  "413501": {
+    "pincode": "413501",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Osmanabad",
+        "block": "Osmanabad",
+        "district": "Osmanabad",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Osmanabad Town",
+        "block": "Osmanabad",
+        "district": "Osmanabad",
+        "state": "Maharashtra",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "431001": {
+    "pincode": "431001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Aurangabad (MH)",
+        "block": "Aurangabad",
+        "district": "Aurangabad",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Aurangabad City",
+        "block": "Aurangabad",
+        "district": "Aurangabad",
+        "state": "Maharashtra",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "605001": {
+    "pincode": "605001",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Pondicherry",
+        "block": "Pondicherry",
+        "district": "Pondicherry",
+        "state": "Pondicherry",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      }
+    ]
+  },
+  "744101": {
+    "pincode": "744101",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Port Blair",
+        "block": "Port Blair",
+        "district": "South Andaman",
+        "state": "Andaman & Nicobar",
+        "delivery": true,
+        "branchType": "Head Post Office"
+      },
+      {
+        "name": "Marine Jetty",
+        "block": "Portblair",
+        "district": "South Andaman",
+        "state": "Andaman & Nicobar",
+        "delivery": false,
+        "branchType": "Sub Post Office"
+      }
+    ]
+  },
+  "999999": {
+    "pincode": "999999",
+    "found": false,
+    "postOffices": []
+  }
+}

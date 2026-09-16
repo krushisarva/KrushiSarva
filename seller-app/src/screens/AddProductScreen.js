@@ -45,7 +45,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform,
+  ActivityIndicator, Image, Linking, Platform,
   Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -61,7 +61,7 @@ import { C, E, R, SP, T, alpha, useResponsive } from '../theme';
 import { useNetwork } from '../hooks/useNetwork';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {
-  Screen, ActionBar, Button, IconButton, Field, TextField, CharCount,
+  Screen, ActionBar, Button, IconButton, Field, TextField, CharCount, KeyboardAwareScroll,
   Chip, ChipGroup, OptionRow, FormSection, SelectSheet, InlineNotice,
   Card, ProgressBar, Badge,
   useConfirm, useToast,
@@ -747,21 +747,15 @@ export default function AddProductScreen({ route, navigation }) {
 
   return (
     <Screen edges={['left', 'right']} background={C.bg}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
+      <KeyboardAwareScroll
+        ref={scrollRef}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        contentContainerStyle={[
+          { padding: gutter, paddingBottom: SP.huge },
+          isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[
-            { padding: gutter, paddingBottom: SP.huge },
-            isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           {/* ── Progress ── */}
           <Card style={s.progressCard}>
             <View style={s.progressTop}>
@@ -1370,8 +1364,7 @@ export default function AddProductScreen({ route, navigation }) {
               </View>
             </Field>
           </FormSection>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScroll>
 
       <ActionBar>
         {uploadProgress ? (

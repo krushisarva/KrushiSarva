@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "ઝડપી નિદાન માટે તમારા પાકનો ફોટો શેર કરો.",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "તેલીબિયાં",
   "market.cat_cash": "રોકડિયા પાક",
   "market.cat_spice": "મસાલા",
+  "pincode.label": "પિન કોડ",
+  "pincode.placeholder": "6 અંકનો પિન કોડ",
+  "pincode.autofillHint": "પિન કોડ નાખો, બાકીની વિગતો આપમેળે ભરાઈ જશે.",
+  "pincode.checking": "તમારો વિસ્તાર શોધી રહ્યા છીએ…",
+  "pincode.invalid": "સાચો 6 અંકનો પિન કોડ નાખો.",
+  "pincode.notFound": "આ પિન કોડ માટે કોઈ વિસ્તાર મળ્યો નથી. કૃપા કરીને નંબર તપાસો.",
+  "pincode.unavailable": "હમણાં આ પિન કોડ તપાસી શકાયો નથી. તમે વિગતો જાતે ભરી શકો છો.",
+  "pincode.offline": "તમે ઑફલાઇન છો. વિગતો જાતે ભરો, અથવા કનેક્ટ થયા પછી ફરી પ્રયાસ કરો.",
+  "pincode.rateLimited": "ઘણી વાર પિન કોડ તપાસાયો. કૃપા કરીને એક મિનિટ રાહ જોઈને ફરી પ્રયાસ કરો.",
+  "pincode.retry": "ફરી પ્રયાસ કરો",
+  "pincode.pickArea": "બાકીની વિગતો ભરવા માટે તમારું ગામ અથવા વિસ્તાર પસંદ કરો.",
+  "pincode.multipleDistricts": "આ પિન કોડ એકથી વધુ જિલ્લામાં આવે છે. તમારું ગામ અથવા વિસ્તાર પસંદ કરો.",
+  "pincode.pickAreaTitle": "{{pincode}} નાં ગામો અને વિસ્તારો",
+  "pincode.pickAreaCount": "ગામ / વિસ્તાર પસંદ કરો ({{count}})",
+  "pincode.fixBeforeSave": "સેવ કરતાં પહેલાં પિન કોડ સુધારો.",
 };

@@ -356,3 +356,66 @@ describe('server field errors', () => {
     expect(serverFieldMessage('bankHolderName')).toBe('Please check this field');
   });
 });
+
+describe('PIN code', () => {
+  const onFile = onFileFromUser(storedSeller);
+  const form = (over = {}) => ({ ...initialFormFromUser(storedSeller), ...over });
+
+  test('starts from the stored PIN, cleaned', () => {
+    expect(initialFormFromUser({ ...storedSeller, pincode: '412 207' }).pincode).toBe('412207');
+    expect(initialFormFromUser({ ...storedSeller, pincode: null }).pincode).toBe('');
+  });
+
+  test('typing keeps digits only, Devanagari included, capped at six', () => {
+    expect(applyFieldChange(form(), 'pincode', '४१२ २०७9').pincode).toBe('412207');
+  });
+
+  test('is optional', () => {
+    expect(validateBusinessProfile(form({ pincode: '' }), { onFile })).toEqual({});
+  });
+
+  test.each(['4122', '012345'])('%s is rejected', (pincode) => {
+    expect(validateBusinessProfile(form({ pincode }), { onFile }).pincode).toMatch(/6-digit PIN/);
+  });
+
+  test('a PIN India Post does not know is rejected', () => {
+    const errors = validateBusinessProfile(form({ pincode: '999999' }), { onFile, pincode: { status: 'not_found' } });
+    expect(errors.pincode).toMatch(/No area found/);
+  });
+
+  test('a PIN outside Maharashtra is rejected', () => {
+    const errors = validateBusinessProfile(form({ pincode: '396230' }), { onFile, pincode: { status: 'found', state: 'Gujarat' } });
+    expect(errors.pincode).toMatch(/outside Maharashtra/);
+  });
+
+  test('a lookup that could not run does not block saving', () => {
+    expect(validateBusinessProfile(form({ pincode: '412207' }), { onFile, pincode: { status: 'offline' } })).toEqual({});
+  });
+
+  test('the PIN comes before district when scrolling to the first error', () => {
+    expect(firstErrorKey({ district: 'x', pincode: 'y' })).toBe('pincode');
+  });
+
+  test('only a new, non-empty PIN is sent', () => {
+    const seller = { ...storedSeller, pincode: '412207' };
+    expect(buildBusinessProfilePayload(form({ pincode: '412207' }), seller)).not.toHaveProperty('pincode');
+    expect(buildBusinessProfilePayload(form({ pincode: '' }), seller)).not.toHaveProperty('pincode');
+    expect(buildBusinessProfilePayload(form({ pincode: '413102' }), seller).pincode).toBe('413102');
+  });
+
+  test('changing the PIN counts as an unsaved change', () => {
+    const initial = form({ pincode: '412207' });
+    expect(hasUnsavedChanges({ ...initial, pincode: '413102' }, initial)).toBe(true);
+  });
+
+  test('a server rejection of the PIN is attributed to the field', () => {
+    const err = { response: { status: 400, data: { error: { details: [{ path: 'pincode' }] } } } };
+    expect(serverFieldErrorKeys(err)).toEqual(['pincode']);
+    expect(serverFieldMessage('pincode')).toMatch(/PIN/);
+  });
+
+  test('the lookup\'s Dharashiv maps onto this form\'s Osmanabad, with its talukas', () => {
+    expect(canonicalDistrict('Dharashiv')).toBe('Osmanabad');
+    expect(canonicalTaluka('Osmanabad', 'Tuljapur')).toBe('Tuljapur');
+  });
+});
