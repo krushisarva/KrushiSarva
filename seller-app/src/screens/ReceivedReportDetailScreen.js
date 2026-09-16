@@ -42,7 +42,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image, KeyboardAvoidingView, Linking, Platform, Pressable,
+  Image, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Switch, Text, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,7 +53,7 @@ import { C, E, HIT, R, SP, T, alpha, formatCurrency, riskMeta, useResponsive } f
 import useAsyncData from '../hooks/useAsyncData';
 import { useNetwork } from '../hooks/useNetwork';
 import {
-  Screen, AppHeader, Card, Button, IconButton, PressableRow, Badge, FormSection,
+  Screen, AppHeader, Card, Button, IconButton, PressableRow, Badge, FormSection, KeyboardAwareScroll,
   TextField, Field, CharCount, InlineNotice, ProgressBar, MetricRow,
   LoadingState, ErrorState, EmptyState,
   useToast,
@@ -398,20 +398,14 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
         }
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
+      <KeyboardAwareScroll
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        contentContainerStyle={[
+          { padding: gutter, paddingBottom: SP.huge },
+          isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={[
-            { padding: gutter, paddingBottom: SP.huge },
-            isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           {/* ── The evidence ── */}
           <EvidenceStrip urls={report.imageUrls} t={t} onOpen={openPhoto} />
 
@@ -677,8 +671,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
               style={{ marginTop: SP.xl }}
             />
           </FormSection>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScroll>
     </Screen>
   );
 }

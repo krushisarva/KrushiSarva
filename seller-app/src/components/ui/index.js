@@ -18,3 +18,4 @@ export {
 } from './Display';
 export { FeedbackProvider, useToast, useConfirm } from './Feedback';
 export { default as SelectSheet } from './SelectSheet';
+export { default as KeyboardAwareScroll, useRevealFocusedField } from './KeyboardAwareScroll';
