@@ -24,6 +24,9 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import { isSellerAccount, isKycVerified } from '@krushisarva/shared/utils/roles';
 import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 import DeleteAccountModal from './DeleteAccountModal';
 import Svg, { Circle, Defs, RadialGradient as SvgRadialGradient, Stop, Path } from 'react-native-svg';
 
@@ -131,23 +134,65 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
   const [district,    setDistrict]    = useState('');
   const [city,        setCity]        = useState('');
   const [pincode,     setPincode]     = useState('');
+  // Not shown in this form, but a new PIN code moves them too; they are sent
+  // only once a PIN lookup has changed them.
+  const [stateName,   setStateName]   = useState('');
+  const [taluka,      setTaluka]      = useState('');
+  const [village,     setVillage]     = useState('');
+  const [placeMoved,  setPlaceMoved]  = useState(false);
   const [saving,      setSaving]      = useState(false);
 
   // The modal stays mounted (only `visible` toggles), so seeding state via
   // useState initialisers would freeze the fields at first-mount values and
   // show stale data on reopen. Re-sync from the latest `user` each time it opens.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // Otherwise the next opening briefly holds this session's PIN, and a
+      // lookup for it would be applied over the freshly synced values.
+      setPincode('');
+      return;
+    }
     setName(user?.name || '');
     setEmail(user?.email || '');
     setStatusQuote(user?.statusQuote || '');
     setDistrict(user?.district || '');
     setCity(user?.city || '');
     setPincode(user?.pincode || '');
+    setStateName(user?.state || '');
+    setTaluka(user?.taluka || '');
+    setVillage(user?.village || '');
+    setPlaceMoved(false);
   }, [visible, user]);
+
+  // PIN code → district and city (+ the hidden state / taluka / village).
+  // Reopening only fills blanks; a PIN the farmer types decides the rest.
+  const applyLocation = (patch) => {
+    if ('district' in patch && patch.district !== district) {
+      // A different district: the old taluka and village no longer apply.
+      setTaluka(patch.taluka ?? '');
+      setVillage(patch.village ?? '');
+    } else {
+      if ('taluka' in patch) setTaluka(patch.taluka);
+      if ('village' in patch) setVillage(patch.village);
+    }
+    if ('state' in patch) setStateName(patch.state);
+    if ('district' in patch) setDistrict(patch.district);
+    if ('city' in patch) setCity(patch.city);
+    setPlaceMoved(true);
+  };
+  const pin = usePincodeAutofill({
+    pincode,
+    values: { state: stateName, district, taluka, village, city },
+    fields: { state: 'state', district: 'district', taluka: 'taluka', village: 'village', city: 'city' },
+    onChange: applyLocation,
+    savedPincode: user?.pincode || '',
+    resetKey: visible ? 'open' : 'closed',
+    enabled: visible,
+  });
 
   const handleSave = async () => {
     if (!name.trim()) { Alert.alert(t('product.error'), t('profile.nameEmpty')); return; }
+    if (pin.blocksSubmit) { Alert.alert(t('product.error'), t('pincode.fixBeforeSave')); return; }
     // Email is optional; only validate format when the user actually typed one.
     // Empty string is sent through to clear it server-side (stored as NULL).
     const emailTrim = email.trim();
@@ -157,7 +202,9 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-      const { data } = await api.put('/users/me', { name, email: emailTrim, statusQuote, district, city, pincode });
+      const body = { name, email: emailTrim, statusQuote, district, city, pincode };
+      if (placeMoved) Object.assign(body, { state: stateName, taluka, village });
+      const { data } = await api.put('/users/me', body);
       onSaved(data.data);
     } catch (e) {
       Alert.alert(t('product.error'), e?.response?.data?.error?.message || t('profile.updateFailed'));
@@ -172,8 +219,13 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
     { key: 'quote',    label: t('profile.statusQuote', 'Status / bio'),  icon: 'chatbubble-ellipses-outline', color: D.cyan,         value: statusQuote, setter: setStatusQuote, placeholder: t('profile.statusPlaceholder'),   maxLen: 200 },
     { key: 'district', label: t('profile.district'),                     icon: 'business-outline',            color: D.green,        value: district,    setter: setDistrict,    placeholder: t('profile.districtPlaceholder'), maxLen: 100 },
     { key: 'city',     label: t('profile.cityTown'),                     icon: 'location-outline',            color: D.amber,        value: city,        setter: setCity,        placeholder: t('profile.cityPlaceholder'),     maxLen: 100 },
-    { key: 'pincode',  label: t('profile.pincode'),                      icon: 'pin-outline',                 color: D.gold,         value: pincode,     setter: setPincode,     placeholder: t('profile.pincodePlaceholder'),  maxLen: 6, keyboard: 'number-pad' },
   ];
+  // PIN goes before district and city, which it fills.
+  FIELDS.splice(3, 0, {
+    key: 'pincode', label: t('profile.pincode'), icon: 'pin-outline', color: D.gold, value: pincode,
+    setter: (v) => setPincode(sanitizePincode(v)), placeholder: t('profile.pincodePlaceholder'),
+    maxLen: PINCODE_INPUT_MAX_LENGTH, keyboard: 'number-pad',
+  });
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -216,6 +268,11 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
                     autoCorrect={f.autoCap !== 'none'}
                   />
                 </View>
+                {f.key === 'pincode' ? (
+                  pin.status === 'idle'
+                    ? <Text style={S.pinHint}>{t('pincode.autofillHint')}</Text>
+                    : <PincodeLocationStatus lookup={pin} />
+                ) : null}
               </View>
             ))}
           </ScrollView>
@@ -1329,6 +1386,7 @@ const S = StyleSheet.create({
   },
   sheetTitle: { fontSize: 20, fontFamily: KFONT.displaySemi, color: KHET.foreground, letterSpacing: -0.3 },
   fieldGroup: { marginBottom: 14 },
+  pinHint: { fontSize: 12, fontFamily: KFONT.sans, color: KHET.mutedForeground, marginTop: 6, marginLeft: 2 },
   fieldLabel: { fontSize: 11, fontFamily: KFONT.sansBold, color: KHET.mutedForeground, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8, marginLeft: 2 },
   fieldRow: {
     flexDirection: 'row', alignItems: 'center',

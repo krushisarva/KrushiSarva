@@ -25,6 +25,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '@krushisarva/shared/constants/colors';
 import api from '@krushisarva/shared/services/api';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import {
+  isValidPincode, sanitizePincode, PINCODE_INPUT_MAX_LENGTH,
+} from '@krushisarva/shared/utils/pincode';
 import { SkeletonList } from '../../components/ui/Skeleton';
 
 const TYPE_ICON = { HOME: 'home-outline', OFFICE: 'briefcase-outline', OTHER: 'location-outline' };
@@ -37,8 +42,8 @@ const EMPTY_FORM = {
 
 // Mirrors the server's own checks (addresses.routes.js) so the farmer is told
 // what is wrong before a round trip, never instead of the server checking.
+// The PIN rule is shared/utils/pincode's isValidPincode.
 const PHONE_RE   = /^[6-9][0-9]{9}$/;
-const PINCODE_RE = /^[1-9][0-9]{5}$/;
 
 const AddressCard = memo(function AddressCard({ item, onEdit, onDelete, onMakeDefault, busy }) {
   const { t } = useLanguage();
@@ -125,6 +130,18 @@ export default function SavedAddressesScreen({ navigation }) {
   const alive    = useRef(true);
   const inFlight = useRef(false);
 
+  // PIN code → city and state. Both are free text here, so India Post's name
+  // is used even where the app's lists have none. Editing an address only
+  // fills its blanks.
+  const pin = usePincodeAutofill({
+    pincode: form?.pincode ?? '',
+    values: form || {},
+    fields: { city: 'city', state: 'state' },
+    onChange: (patch) => setForm((f) => (f ? { ...f, ...patch } : f)),
+    resetKey: form ? (editingId || 'new') : 'closed',
+    enabled: Boolean(form),
+  });
+
   const load = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -168,8 +185,11 @@ export default function SavedAddressesScreen({ navigation }) {
     if (!PHONE_RE.test(String(form.phone).replace(/\D/g, '').slice(-10))) {
       setFormError(t('savedAddresses.errPhone')); return;
     }
-    if (!PINCODE_RE.test(String(form.pincode).trim())) {
+    if (!isValidPincode(form.pincode)) {
       setFormError(t('savedAddresses.errPincode')); return;
+    }
+    if (pin.status === 'not_found') {
+      setFormError(t('pincode.notFound')); return;
     }
 
     setSaving(true); setFormError('');
@@ -185,7 +205,7 @@ export default function SavedAddressesScreen({ navigation }) {
     } finally {
       if (alive.current) setSaving(false);
     }
-  }, [form, editingId, saving, load, t]);
+  }, [form, editingId, saving, load, t, pin.status]);
 
   const makeDefault = useCallback(async (item) => {
     if (busy) return;
@@ -315,9 +335,24 @@ export default function SavedAddressesScreen({ navigation }) {
               <Field label={t('savedAddresses.fFlat')}     value={form?.flat}     onChangeText={set('flat')}     maxLength={100} />
               <Field label={t('savedAddresses.fStreet')}   value={form?.street}   onChangeText={set('street')}   maxLength={200} />
               <Field label={t('savedAddresses.fLandmark')} value={form?.landmark} onChangeText={set('landmark')} maxLength={200} />
+              {/* PIN before city and state: it fills them. */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={S.fieldLabel}>{t('savedAddresses.fPincode')}</Text>
+                <TextInput
+                  style={S.input}
+                  value={form?.pincode}
+                  onChangeText={(v) => set('pincode')(sanitizePincode(v))}
+                  keyboardType="number-pad"
+                  maxLength={PINCODE_INPUT_MAX_LENGTH}
+                  placeholder={t('pincode.placeholder')}
+                  placeholderTextColor={COLORS.textMedium}
+                />
+                {pin.status === 'idle'
+                  ? <Text style={S.pinHint}>{t('pincode.autofillHint')}</Text>
+                  : <PincodeLocationStatus lookup={pin} />}
+              </View>
               <Field label={t('savedAddresses.fCity')}     value={form?.city}     onChangeText={set('city')}     maxLength={100} />
               <Field label={t('savedAddresses.fState')}    value={form?.state}    onChangeText={set('state')}    maxLength={100} />
-              <Field label={t('savedAddresses.fPincode')}  value={form?.pincode}  onChangeText={set('pincode')}  keyboardType="number-pad" maxLength={6} />
 
               <View style={S.defaultRow}>
                 <Text style={S.defaultRowTxt}>{t('savedAddresses.makeDefault')}</Text>
@@ -423,6 +458,7 @@ const S = StyleSheet.create({
   typeOptTxt:{ fontSize: 13, fontWeight: '600', color: COLORS.textMedium },
 
   fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textMedium, marginBottom: 5 },
+  pinHint: { fontSize: 12, color: COLORS.textMedium, marginTop: 6 },
   input: {
     borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: COLORS.textDark,

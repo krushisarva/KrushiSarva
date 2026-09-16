@@ -34,8 +34,12 @@ const SCREENS = [
 /** Bare t('some.key') — no second argument, so no fallback text exists. */
 const BARE_T = /\bt\(\s*'([a-zA-Z][a-zA-Z0-9_.]*)'\s*\)/g;
 
-const resolve = (dict, key) =>
-  key.split('.').reduce((acc, part) => (acc == null ? acc : acc[part]), dict);
+// Mirrors LanguageContext: a flat dotted key first (the lang/backfill files
+// store them that way), then the nested path.
+const resolve = (dict, key) => {
+  if (dict && typeof dict[key] === 'string') return dict[key];
+  return key.split('.').reduce((acc, part) => (acc == null ? acc : acc[part]), dict);
+};
 
 function bareKeysIn(relPath) {
   const src = fs.readFileSync(path.join(ROOT, relPath), 'utf8');

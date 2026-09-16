@@ -12,8 +12,9 @@
 import { BUSINESS_TYPES, DISTRICT_LIST, getTalukas } from '@krushisarva/shared/constants/locations';
 import {
   isAadhaarChecksumValid, isGstChecksumValid, isValidAadhaar, isValidBankAccount,
-  isValidGst, isValidIfsc, isValidPan,
+  isValidGst, isValidIfsc, isValidPan, isValidPincode,
 } from '@krushisarva/shared/utils/validators';
+import { sanitizePincode } from '@krushisarva/shared/utils/pincode';
 
 // Server limits (backend/src/routes/user.routes.js, PUT /me). Typing past them
 // used to earn a generic "Invalid request" instead of a field error.
@@ -48,7 +49,7 @@ export const ID_INPUT_MAX = {
 
 /** Top-to-bottom order of the form, used to scroll to the first error. */
 export const FIELD_ORDER = [
-  'name', 'businessType', 'district', 'taluka', 'village', 'gstNumber',
+  'name', 'businessType', 'pincode', 'district', 'taluka', 'village', 'gstNumber',
   'bankHolderName', 'bankName', 'bankAccountNumber', 'bankAccountConfirm', 'bankIfsc',
   'aadharNumber', 'panNumber',
 ];
@@ -174,6 +175,7 @@ export function initialFormFromUser(user) {
   return {
     name: clean(user?.name),
     businessType: isKnownBusinessType(user?.businessType) ? user.businessType : '',
+    pincode: sanitizePincode(user?.pincode),
     district,
     taluka: canonicalTaluka(district, user?.taluka),
     village: clean(user?.village),
@@ -199,6 +201,8 @@ export function applyFieldChange(prev, key, raw, initial) {
     value = digitsOnly(raw, ID_LENGTH[key]);
   } else if (key === 'panNumber' || key === 'bankIfsc' || key === 'gstNumber') {
     value = alphanumericUpper(raw, ID_LENGTH[key]);
+  } else if (key === 'pincode') {
+    value = sanitizePincode(raw);
   }
 
   const next = { ...prev, [key]: value };
@@ -228,8 +232,11 @@ export function hasUnsavedChanges(form, initial) {
  * `onFile.bankAccount` matters: a seller whose account number is already stored
  * still needs an IFSC and holder name, and previously could clear either and
  * save, leaving an account nobody can pay into.
+ *
+ * `pincode` is the PIN lookup's outcome for the typed PIN code:
+ * `{ status, state }` from usePincodeAutofill. The PIN itself is optional.
  */
-export function validateBusinessProfile(form, { onFile = {}, t = passthroughT } = {}) {
+export function validateBusinessProfile(form, { onFile = {}, t = passthroughT, pincode = null } = {}) {
   const e = {};
 
   if (clean(form.name).length < NAME_MIN) {
@@ -237,6 +244,15 @@ export function validateBusinessProfile(form, { onFile = {}, t = passthroughT } 
   }
   if (!isKnownBusinessType(form.businessType)) {
     e.businessType = t('sellerBizProfile.selectBizTypeMsg', 'Choose your business type');
+  }
+
+  const pin = clean(form.pincode);
+  if (pin && !isValidPincode(pin)) {
+    e.pincode = t('pincode.invalid', 'Enter a valid 6-digit PIN code.');
+  } else if (pin && pincode?.status === 'not_found') {
+    e.pincode = t('pincode.notFound', 'No area found for this PIN code. Please check the number.');
+  } else if (pin && pincode?.status === 'found' && pincode.state && pincode.state !== 'Maharashtra') {
+    e.pincode = t('sellerBizProfile.pincodeOutsideState', 'This PIN code is outside Maharashtra. Selling is currently limited to Maharashtra.');
   }
 
   if (!DISTRICT_LIST.includes(form.district)) {
@@ -335,6 +351,11 @@ export function buildBusinessProfilePayload(form, user) {
   const name = clean(form.name);
   if (name !== clean(user?.name)) payload.name = name;
 
+  // The API rejects an empty PIN, and has no way to clear one, so only a new
+  // PIN is sent.
+  const pincode = clean(form.pincode);
+  if (pincode && pincode !== clean(user?.pincode)) payload.pincode = pincode;
+
   const sendIfChanged = (key, next, stored) => {
     const prev = clean(stored);
     if (!prev || next !== prev) payload[key] = next;
@@ -357,7 +378,7 @@ export function buildBusinessProfilePayload(form, user) {
 // ── Server errors ────────────────────────────────────────────────────────────
 
 const SERVER_FIELDS = new Set([
-  'name', 'businessType', 'district', 'taluka', 'village', 'gstNumber',
+  'name', 'businessType', 'pincode', 'district', 'taluka', 'village', 'gstNumber',
   'bankHolderName', 'bankName', 'bankAccountNumber', 'bankIfsc', 'aadharNumber', 'panNumber',
 ]);
 
@@ -378,6 +399,7 @@ export function serverFieldMessage(key, t = passthroughT) {
   switch (key) {
     case 'name': return t('sellerBizProfile.nameRequired', 'Enter your name (at least 2 letters)');
     case 'businessType': return t('sellerBizProfile.selectBizTypeMsg', 'Choose your business type');
+    case 'pincode': return t('pincode.invalid', 'Enter a valid 6-digit PIN code.');
     case 'district': return t('sellerBizProfile.selectDistrictMsg', 'Please select your district');
     case 'taluka': return t('sellerBizProfile.selectTalukaMsg', 'Please select your taluka');
     case 'village': return t('sellerBizProfile.enterVillageMsg', 'Please enter your village/town name');

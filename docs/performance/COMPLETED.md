@@ -5,6 +5,77 @@ verified** — code written is not completion (`claude.md` §4.3).
 
 ---
 
+## PERF-045 — PIN code lookup behind one cached, breaker-guarded endpoint
+
+```
+ID:        PERF-045
+Feature:   Location (every form that asks where the user is)
+Priority:  P1 — external provider on a user-facing path (claude.md §37, §55, §56)
+Status:    COMPLETE — verified
+```
+
+**What changed.** `GET /api/v1/location/pincode/:pincode` wraps
+`api.postalpincode.in` (India Post). Every location form in both apps now calls
+it through `shared/hooks/usePincodeLocation.js`; nothing on a phone calls India
+Post directly.
+
+**Why a proxy rather than a direct call.** Measured live: 0.3–2.2 s per uncached
+lookup, HTTP 200 for every outcome (errors live in `body[0].Status`), and names
+that are not the app's (`Raigarh(MH)`, `Daman & Diu`, Leh under J&K, every
+Palghar office under Thane). One village's farmers share a handful of pincodes,
+so a shared cache turns nearly every lookup into a hit.
+
+**Cost per lookup.**
+
+| | Before | After (miss) | After (hit) |
+|---|---|---|---|
+| External calls | n/a (no lookup existed) | 1 (+1 retry on reset/5xx only) | 0 |
+| Redis | — | 1 GET + 1 SET | 0 (L1) or 1 GET |
+| DB | — | 0 (auth cache) | 0 |
+| Latency (live, this machine) | — | 309–1542 ms | 0 ms |
+
+Found results cached 30 days ± 10 % jitter, not-found 6 h, failures never.
+In-process L1: `BoundedMap` 500 entries / 1 h (~1 MB ceiling). Concurrent misses
+for one pincode coalesce (`singleFlight`). Breaker `postal-pincode` (10 s
+backstop, 60 s open) shows up in the ops dashboard's breaker list with no extra
+wiring. Per-user limit 60 lookups / 10 min on top of the global IP limit.
+
+**Correctness decisions.**
+- Unknown pincode is a 200 `{ found: false }`; India Post down is a 503 with
+  `details.code = PINCODE_LOOKUP_UNAVAILABLE`. Forms block saving on the first
+  and never on the second.
+- A lookup never overwrites what a saved record opened with; state/district
+  follow a PIN the user types; a village the user typed is never replaced.
+- Client PIN rule unified to `^[1-9]\d{5}$` (`validators.js` accepted `000000`
+  while the address screen rejected it). Server-side save validation is
+  unchanged (`\d{6}`) so an old stored value can still be re-sent.
+
+**Bugs fixed on the way.** `FarmAddEditScreen` called `invalidateFocusData`
+without importing it — every farm save ended in an error alert. Typing a PIN in
+the animal-market location sheet filtered listings by `district="413102"`,
+which matches nothing; it now filters by the resolved district, and PIN-only
+places already saved on a phone are upgraded on next open. `getTalukas`
+returned nothing for "Dharashiv". A `maxLength={6}` PIN box truncated a pasted
+"413 102" before cleaning.
+
+**Tests.** Backend: `unit/pincode.service.test.js` (47), `api/locationPincode.api.test.js`
+(9). Shared/mobile: `pincode.test.js` (97), `pincodeRealData.test.js` (15, live
+India Post answers captured as a fixture), `pincodeApi.test.js`,
+`usePincodeLocation.test.js` (28), plus additions to `businessProfile.test.js`,
+`animalPrefs.test.js`, `onboardingForm.test.js`, `validators.test.js`. Full
+frontend runner 560+/560+.
+
+**Known limitations.** India Post data is stale in places the mapping cannot
+detect (a pincode reassigned between two districts with no taluka evidence);
+every autofilled field stays editable. The server does not cross-check a saved
+PIN against its state/district — that would make saves depend on a 2 s
+external call.
+
+**Rollback.** Remove the `/location` mount in `app.js`; the forms degrade to
+the "couldn't check this PIN" state and remain fully usable by hand.
+
+---
+
 ## PERF-005 — A socket never had to prove who it was
 
 ```

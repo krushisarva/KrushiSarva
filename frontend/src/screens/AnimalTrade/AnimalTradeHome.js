@@ -45,8 +45,10 @@ import AnimalFilterSheet, { activeFilterCount, SHEET_FILTER_KEYS } from './compo
 import LocationSheet from './components/LocationSheet';
 import {
   getManualLocation, setManualLocation as persistManualLocation,
-  getRecentSearches, pushRecentSearch, clearRecentSearches, relativeTime,
+  getRecentSearches, pushRecentSearch, clearRecentSearches, relativeTime, pincodePlace,
 } from '../../utils/animalPrefs';
+import { fetchPincode } from '@krushisarva/shared/services/pincodeApi';
+import { summarisePincode } from '@krushisarva/shared/utils/pincode';
 
 const { width: W } = Dimensions.get('window');
 const CARD_W = (W - 14 * 2 - 10) / 2;
@@ -434,6 +436,17 @@ export default function AnimalTradeHome({ navigation, route }) {
       if (!alive) return;
       setManualLoc(loc);
       setRecent(rs);
+      // Places saved before PINs were resolved hold only the digits, which
+      // match no listing. Resolve them once; on failure keep what was saved.
+      if (loc?.pincode && !loc.district) {
+        try {
+          const upgraded = pincodePlace(summarisePincode(await fetchPincode(loc.pincode)));
+          if (alive && upgraded) {
+            setManualLoc(upgraded);
+            persistManualLocation(upgraded);
+          }
+        } catch { /* offline or not found — the old label stays */ }
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -445,7 +458,8 @@ export default function AnimalTradeHome({ navigation, route }) {
     sort: sortBy,
     radiusKm: distanceKm,
     // A hand-typed place filters server-side on the listing's location text.
-    district: manualLoc?.label || null,
+    // A PIN-based place filters by the district the PIN resolved to.
+    district: manualLoc?.district || manualLoc?.label || null,
   }), [sheetFilters, activeFilter, searchQuery, sortBy, distanceKm, manualLoc]);
 
   const {

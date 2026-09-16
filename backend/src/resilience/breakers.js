@@ -54,3 +54,12 @@ export const razorpayBreaker = () => getBreaker('razorpay', {
 export const sarvamBreaker = () => getBreaker('sarvam', {
   timeoutMs: 20_000, failureThreshold: 0.5, volumeThreshold: 5, resetTimeoutMs: 30_000,
 });
+
+/**
+ * India Post PIN directory (api.postalpincode.in) — a free public API that
+ * answers in ~2s when healthy. Autofill is a convenience, so fail fast for a
+ * full minute rather than making every form wait out a dead dependency.
+ */
+export const postalPincodeBreaker = () => getBreaker('postal-pincode', {
+  timeoutMs: 10_000, failureThreshold: 0.5, volumeThreshold: 5, resetTimeoutMs: 60_000,
+});

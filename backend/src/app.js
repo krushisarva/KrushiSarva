@@ -51,6 +51,8 @@ import notificationsRoutes from './routes/notifications.routes.js';
 import rentRoutes          from './routes/rent.routes.js';
 // Saved delivery addresses
 import addressesRoutes     from './routes/addresses.routes.js';
+// PIN code → locality lookup (India Post)
+import locationRoutes      from './routes/location.routes.js';
 import consentRoutes       from './routes/consent.routes.js';
 import incidentRoutes      from './routes/incident.routes.js';
 import fraudRoutes         from './routes/fraud.routes.js';
@@ -460,6 +462,7 @@ app.use(`${API}/planner`,      plannerRoutes);
 app.use(`${API}/schemes`,      schemesRoutes);
 app.use(`${API}/notifications`, notificationsRoutes);
 app.use(`${API}/addresses`,    addressesRoutes);
+app.use(`${API}/location`,     locationRoutes);
 app.use(`${API}/consent`,      consentRoutes);
 app.use(`${API}/admin/incidents`, incidentRoutes);
 app.use(`${API}/admin/fraud`,  fraudRoutes);

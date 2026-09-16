@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "ತ್ವರಿತ ರೋಗನಿರ್ಣಯಕ್ಕಾಗಿ ನಿಮ್ಮ ಬೆಳೆಯ ಫೋಟೋ ಹಂಚಿಕೊಳ್ಳಿ.",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "ಎಣ್ಣೆಕಾಳುಗಳು",
   "market.cat_cash": "ವಾಣಿಜ್ಯ ಬೆಳೆಗಳು",
   "market.cat_spice": "ಮಸಾಲೆಗಳು",
+  "pincode.label": "ಪಿನ್ ಕೋಡ್",
+  "pincode.placeholder": "6 ಅಂಕಿಯ ಪಿನ್ ಕೋಡ್",
+  "pincode.autofillHint": "ಪಿನ್ ಕೋಡ್ ನಮೂದಿಸಿ, ಉಳಿದ ವಿವರಗಳು ತಾವಾಗಿಯೇ ತುಂಬುತ್ತವೆ.",
+  "pincode.checking": "ನಿಮ್ಮ ಪ್ರದೇಶವನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ…",
+  "pincode.invalid": "ಸರಿಯಾದ 6 ಅಂಕಿಯ ಪಿನ್ ಕೋಡ್ ನಮೂದಿಸಿ.",
+  "pincode.notFound": "ಈ ಪಿನ್ ಕೋಡ್‌ಗೆ ಯಾವುದೇ ಪ್ರದೇಶ ಸಿಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಸಂಖ್ಯೆಯನ್ನು ಪರಿಶೀಲಿಸಿ.",
+  "pincode.unavailable": "ಈಗ ಈ ಪಿನ್ ಕೋಡ್ ಪರಿಶೀಲಿಸಲು ಆಗಲಿಲ್ಲ. ನೀವೇ ವಿವರಗಳನ್ನು ತುಂಬಬಹುದು.",
+  "pincode.offline": "ನೀವು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಿ. ವಿವರಗಳನ್ನು ನೀವೇ ತುಂಬಿ, ಅಥವಾ ಸಂಪರ್ಕ ಸಿಕ್ಕಾಗ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+  "pincode.rateLimited": "ಪಿನ್ ಕೋಡ್ ಅನ್ನು ಹಲವು ಬಾರಿ ಪರಿಶೀಲಿಸಲಾಗಿದೆ. ದಯವಿಟ್ಟು ಒಂದು ನಿಮಿಷ ಕಾದು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+  "pincode.retry": "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ",
+  "pincode.pickArea": "ಉಳಿದ ವಿವರಗಳನ್ನು ತುಂಬಲು ನಿಮ್ಮ ಗ್ರಾಮ ಅಥವಾ ಪ್ರದೇಶವನ್ನು ಆಯ್ಕೆಮಾಡಿ.",
+  "pincode.multipleDistricts": "ಈ ಪಿನ್ ಕೋಡ್ ಒಂದಕ್ಕಿಂತ ಹೆಚ್ಚು ಜಿಲ್ಲೆಗಳಲ್ಲಿ ಬರುತ್ತದೆ. ನಿಮ್ಮ ಗ್ರಾಮ ಅಥವಾ ಪ್ರದೇಶವನ್ನು ಆಯ್ಕೆಮಾಡಿ.",
+  "pincode.pickAreaTitle": "{{pincode}} ನಲ್ಲಿರುವ ಗ್ರಾಮಗಳು ಮತ್ತು ಪ್ರದೇಶಗಳು",
+  "pincode.pickAreaCount": "ಗ್ರಾಮ / ಪ್ರದೇಶ ಆಯ್ಕೆಮಾಡಿ ({{count}})",
+  "pincode.fixBeforeSave": "ಉಳಿಸುವ ಮೊದಲು ಪಿನ್ ಕೋಡ್ ಸರಿಪಡಿಸಿ.",
 };

@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "দ্রুত রোগ নির্ণয়ের জন্য আপনার ফসলের একটি ছবি দিন।",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "তৈলবীজ",
   "market.cat_cash": "অর্থকরী ফসল",
   "market.cat_spice": "মশলা",
+  "pincode.label": "পিন কোড",
+  "pincode.placeholder": "৬ অঙ্কের পিন কোড",
+  "pincode.autofillHint": "পিন কোড দিন, বাকি তথ্য নিজে থেকেই ভরে যাবে।",
+  "pincode.checking": "আপনার এলাকা খোঁজা হচ্ছে…",
+  "pincode.invalid": "সঠিক ৬ অঙ্কের পিন কোড দিন।",
+  "pincode.notFound": "এই পিন কোডের জন্য কোনো এলাকা পাওয়া যায়নি। অনুগ্রহ করে নম্বরটি দেখে নিন।",
+  "pincode.unavailable": "এখন এই পিন কোড যাচাই করা গেল না। আপনি তথ্য নিজে ভরতে পারেন।",
+  "pincode.offline": "আপনি অফলাইনে আছেন। তথ্য নিজে ভরুন, অথবা সংযোগ পেলে আবার চেষ্টা করুন।",
+  "pincode.rateLimited": "অনেকবার পিন কোড যাচাই করা হয়েছে। অনুগ্রহ করে এক মিনিট অপেক্ষা করে আবার চেষ্টা করুন।",
+  "pincode.retry": "আবার চেষ্টা করুন",
+  "pincode.pickArea": "বাকি তথ্য ভরতে আপনার গ্রাম বা এলাকা বেছে নিন।",
+  "pincode.multipleDistricts": "এই পিন কোড একাধিক জেলায় পড়ে। আপনার গ্রাম বা এলাকা বেছে নিন।",
+  "pincode.pickAreaTitle": "{{pincode}}-এর গ্রাম ও এলাকা",
+  "pincode.pickAreaCount": "গ্রাম / এলাকা বেছে নিন ({{count}})",
+  "pincode.fixBeforeSave": "সেভ করার আগে পিন কোড ঠিক করুন।",
 };

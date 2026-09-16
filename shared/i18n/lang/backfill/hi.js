@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 877 keys.
 
 export default {
   "aiChat.attachHint": "तुरंत जांच के लिए अपनी फसल की फोटो भेजें।",
@@ -872,4 +872,20 @@ export default {
   "market.cat_oil": "तिलहन",
   "market.cat_cash": "नकदी फसलें",
   "market.cat_spice": "मसाले",
+  "pincode.label": "पिन कोड",
+  "pincode.placeholder": "6 अंकों का पिन कोड",
+  "pincode.autofillHint": "पिन कोड डालें, बाकी जानकारी अपने-आप भर जाएगी।",
+  "pincode.checking": "आपका क्षेत्र खोजा जा रहा है…",
+  "pincode.invalid": "सही 6 अंकों का पिन कोड डालें।",
+  "pincode.notFound": "इस पिन कोड के लिए कोई क्षेत्र नहीं मिला। कृपया नंबर जाँचें।",
+  "pincode.unavailable": "अभी यह पिन कोड जाँचा नहीं जा सका। आप जानकारी खुद भर सकते हैं।",
+  "pincode.offline": "आप ऑफ़लाइन हैं। जानकारी खुद भरें, या कनेक्ट होने पर फिर से कोशिश करें।",
+  "pincode.rateLimited": "बहुत बार पिन कोड जाँचा गया। कृपया एक मिनट रुककर फिर कोशिश करें।",
+  "pincode.retry": "फिर से कोशिश करें",
+  "pincode.pickArea": "बाकी जानकारी भरने के लिए अपना गाँव या क्षेत्र चुनें।",
+  "pincode.multipleDistricts": "यह पिन कोड एक से ज़्यादा ज़िलों में आता है। अपना गाँव या क्षेत्र चुनें।",
+  "pincode.pickAreaTitle": "{{pincode}} के गाँव और क्षेत्र",
+  "pincode.pickAreaCount": "गाँव / क्षेत्र चुनें ({{count}})",
+  "pincode.fixBeforeSave": "सेव करने से पहले पिन कोड ठीक करें।",
+  "sellerBizProfile.pincodeOutsideState": "यह पिन कोड महाराष्ट्र के बाहर का है। अभी बिक्री केवल महाराष्ट्र में ही हो सकती है।",
 };

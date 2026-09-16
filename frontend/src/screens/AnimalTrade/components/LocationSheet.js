@@ -20,11 +20,24 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { sanitizePincode } from '@krushisarva/shared/utils/pincode';
+import { pincodePlace } from '../../../utils/animalPrefs';
 
 const GREEN = COLORS.primary;
+const NO_FIELDS = {};
+const noop = () => {};
 
-/** A 6-digit Indian PIN. Anything else is treated as a place name. */
-const PIN_RE = /^\d{6}$/;
+/**
+ * Text made only of digits (any Indian script) and spaces, six or fewer, is a
+ * PIN being typed. Anything else is a place name.
+ */
+function asPin(text) {
+  const compact = String(text ?? '').replace(/\s+/g, '');
+  if (!compact || compact.length > 6) return null;
+  return sanitizePincode(compact).length === compact.length ? sanitizePincode(compact) : null;
+}
 
 /**
  * @param {object}   p
@@ -38,16 +51,34 @@ const PIN_RE = /^\d{6}$/;
  */
 function LocationSheet({ visible, gpsStatus, manualLocation, onUseGps, onManual, onClose, t }) {
   const insets = useSafeAreaInsets();
-  const [text, setText] = useState(manualLocation?.label || '');
+  // A PIN-based place reopens showing its PIN, so "Set location" re-resolves
+  // it instead of searching for the label text.
+  const initialText = manualLocation?.pincode || manualLocation?.label || '';
+  const [text, setText] = useState(initialText);
   const [asking, setAsking] = useState(false);
   const [denied, setDenied] = useState(gpsStatus === 'denied');
+  const [pinError, setPinError] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setText(manualLocation?.label || '');
+      setText(manualLocation?.pincode || manualLocation?.label || '');
       setDenied(gpsStatus === 'denied');
+      setPinError(false);
     }
   }, [visible, manualLocation, gpsStatus]);
+
+  // The listing filter matches a place NAME, so a PIN has to become its
+  // district first — "413102" on its own matched no listing at all.
+  const typedPin = asPin(text);
+  const pin = usePincodeAutofill({
+    pincode: typedPin || '',
+    values: NO_FIELDS,
+    fields: NO_FIELDS,
+    onChange: noop,
+    enabled: visible && typedPin != null,
+  });
+  const chosen = pin.localities.find((l) => l.key === pin.selectedKey) || null;
+  const pinDistrict = chosen?.district || pin.summary?.district || null;
 
   const useGps = async () => {
     setAsking(true);
@@ -63,9 +94,19 @@ function LocationSheet({ visible, gpsStatus, manualLocation, onUseGps, onManual,
   const applyManual = () => {
     const label = text.trim();
     if (!label) { onManual(null); onClose(); return; }
-    onManual(PIN_RE.test(label) ? { label, pincode: label } : { label });
+    if (typedPin == null) { onManual({ label }); onClose(); return; }
+
+    // A PIN is only applied once it has resolved to a single district; until
+    // then the status line under the box says what is missing.
+    if (pin.status === 'incomplete' || pin.status === 'invalid') { setPinError(true); return; }
+    if (pin.status !== 'found' || !pinDistrict) return;
+    onManual(pincodePlace(pin.summary, chosen));
     onClose();
   };
+  const applyDisabled = typedPin != null && (
+    pin.status === 'loading' || pin.status === 'not_found'
+    || (pin.status === 'found' && !pinDistrict)
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -122,7 +163,7 @@ function LocationSheet({ visible, gpsStatus, manualLocation, onUseGps, onManual,
             <TextInput
               style={S.input}
               value={text}
-              onChangeText={setText}
+              onChangeText={(v) => { setText(v); setPinError(false); }}
               placeholder={t('animal.placePlaceholder', 'e.g. Baramati, Pune or 413102')}
               placeholderTextColor={COLORS.textLight}
               autoCorrect={false}
@@ -130,9 +171,22 @@ function LocationSheet({ visible, gpsStatus, manualLocation, onUseGps, onManual,
               onSubmitEditing={applyManual}
               accessibilityLabel={t('animal.typePlace', 'Type your village, taluka, district or PIN code')}
             />
+            {typedPin != null ? (
+              pinError
+                ? <Text style={S.pinError}>{t('pincode.invalid')}</Text>
+                : <PincodeLocationStatus lookup={pin} />
+            ) : null}
 
-            <TouchableOpacity style={S.applyBtn} onPress={applyManual} accessibilityRole="button">
-              <Text style={S.applyTxt}>{t('animal.setLocation', 'Set location')}</Text>
+            <TouchableOpacity
+              style={[S.applyBtn, applyDisabled && S.applyBtnOff]}
+              onPress={applyManual}
+              disabled={applyDisabled}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: applyDisabled }}
+            >
+              {pin.status === 'loading' && typedPin != null
+                ? <ActivityIndicator color={COLORS.white} />
+                : <Text style={S.applyTxt}>{t('animal.setLocation', 'Set location')}</Text>}
             </TouchableOpacity>
 
             {manualLocation ? (
@@ -198,7 +252,9 @@ const S = StyleSheet.create({
     marginTop: 14, backgroundColor: GREEN, borderRadius: 14,
     minHeight: 52, alignItems: 'center', justifyContent: 'center',
   },
+  applyBtnOff: { opacity: 0.55 },
   applyTxt: { color: COLORS.white, fontSize: 16, fontWeight: '800', fontFamily: 'Inter_800ExtraBold' },
+  pinError: { marginTop: 6, fontSize: 13, color: COLORS.crimson },
 
   clearBtn: { marginTop: 12, alignItems: 'center', paddingVertical: 12 },
   clearTxt: { fontSize: 14, fontWeight: '700', color: COLORS.error },

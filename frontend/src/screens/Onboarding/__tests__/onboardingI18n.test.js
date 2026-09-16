@@ -21,6 +21,7 @@ const FILES = [
   'src/screens/Onboarding/OnboardingLanguageScreen.js',
   'src/screens/Onboarding/OnboardingProfileScreen.js',
   '../shared/components/LocationPicker.js',
+  '../shared/components/PincodeLocationStatus.js',
 ];
 
 // t('key') or t("key") with no second argument, or with an object literal.

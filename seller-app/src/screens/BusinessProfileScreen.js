@@ -54,13 +54,16 @@
  *   - A stale offline flag is re-checked when Save is tapped.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage, saveTokens } from '@krushisarva/shared/services/api';
 import { DISTRICT_LIST, getTalukas, BUSINESS_TYPES } from '@krushisarva/shared/constants/locations';
 import { hasSellerRole } from '@krushisarva/shared/utils/roles';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { matchDistrict, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 
 import { C, E, R, SP, T, alpha, kycStatusMeta, useResponsive } from '../theme';
 import { useNetwork } from '../hooks/useNetwork';
@@ -68,12 +71,12 @@ import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import useProfileSync, { noteProfileWrite } from '../hooks/useProfileSync';
 import {
   FIELD_ORDER, ID_INPUT_MAX, NAME_MAX, TEXT_MAX,
-  applyFieldChange, buildBusinessProfilePayload, completionFromForm, firstErrorKey,
-  hasUnsavedChanges, initialFormFromUser, kycState, onFileFromUser,
-  serverFieldErrorKeys, serverFieldMessage, validateBusinessProfile,
+  applyFieldChange, buildBusinessProfilePayload, canonicalDistrict, canonicalTaluka,
+  completionFromForm, firstErrorKey, hasUnsavedChanges, initialFormFromUser, kycState,
+  onFileFromUser, serverFieldErrorKeys, serverFieldMessage, validateBusinessProfile,
 } from '../utils/businessProfile';
 import {
-  Screen, ActionBar, Button, Field, TextField, Chip, ChipGroup,
+  Screen, ActionBar, Button, Field, TextField, Chip, ChipGroup, KeyboardAwareScroll,
   CheckboxRow, FormSection, SelectSheet, ProgressBar, InlineNotice,
   Card, Badge, ErrorState, SkeletonList,
   useConfirm, useToast,
@@ -81,6 +84,13 @@ import {
 
 /** Sections in the form, in scroll order. Drives the "01 / 05" counters. */
 const TOTAL_SECTIONS = 5;
+
+/** The PIN code's village picker, in this app's SelectSheet. */
+function VillageSheet({ title, items, selected, onSelect, placeholder }) {
+  return (
+    <SelectSheet title={title} items={items} value={selected} onChange={onSelect} placeholder={placeholder} />
+  );
+}
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 
@@ -153,13 +163,53 @@ function BusinessProfileForm({ navigation }) {
   const [scrollTarget, setScrollTarget] = useState(null);
 
   const isDirty = useMemo(() => hasUnsavedChanges(form, initial), [form, initial]);
-  const validationCtx = useMemo(() => ({ onFile, t }), [onFile, t]);
 
   // Event handlers read the latest values through refs so they can stay stable.
   const formRef = useRef(form);
   formRef.current = form;
   const initialRef = useRef(initial);
   initialRef.current = initial;
+
+  // PIN code → district / taluka / village. This form's district list uses
+  // the older names (Osmanabad) and is Maharashtra-only, so the lookup's
+  // all-India names are mapped onto it, and a district it doesn't have leaves
+  // the pickers alone.
+  const applyPin = useCallback((patch) => {
+    setForm((prev) => {
+      let next = prev;
+      if ('district' in patch) {
+        const district = canonicalDistrict(patch.district);
+        if (patch.district && !district) return prev;
+        next = applyFieldChange(next, 'district', district, initialRef.current);
+      }
+      if ('taluka' in patch) {
+        next = { ...next, taluka: patch.taluka ? (canonicalTaluka(next.district, patch.taluka) || next.taluka) : '' };
+      }
+      if ('village' in patch) next = applyFieldChange(next, 'village', patch.village, initialRef.current);
+      return next;
+    });
+  }, []);
+  const pinValues = useMemo(() => ({
+    // Compared in the lookup's own names, so "Osmanabad" isn't read as a
+    // different district from "Dharashiv".
+    district: matchDistrict('Maharashtra', form.district) || form.district,
+    taluka: form.taluka,
+    village: form.village,
+  }), [form.district, form.taluka, form.village]);
+  const pin = usePincodeAutofill({
+    pincode: form.pincode,
+    values: pinValues,
+    fields: { district: 'district', taluka: 'taluka', village: 'village' },
+    strict: ['district', 'taluka'],
+    onChange: applyPin,
+    savedPincode: initial.pincode,
+  });
+
+  const pinOutcome = useMemo(
+    () => ({ status: pin.status, state: pin.summary?.state || null }),
+    [pin.status, pin.summary],
+  );
+  const validationCtx = useMemo(() => ({ onFile, t, pincode: pinOutcome }), [onFile, t, pinOutcome]);
   const dirtyRef = useRef(isDirty);
   dirtyRef.current = isDirty;
   const ctxRef = useRef(validationCtx);
@@ -403,21 +453,15 @@ function BusinessProfileForm({ navigation }) {
 
   return (
     <Screen edges={['left', 'right']} background={C.bgAlt}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
+      <KeyboardAwareScroll
+        ref={scrollRef}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        contentContainerStyle={[
+          { padding: gutter, paddingBottom: SP.huge },
+          isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[
-            { padding: gutter, paddingBottom: SP.huge },
-            isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           {/* ── Purpose, progress, KYC status. In that order: a percentage is
               meaningless until you know what it is a percentage of. ── */}
           <View ref={refFor('top')} collapsable={false}>
@@ -567,6 +611,28 @@ function BusinessProfileForm({ navigation }) {
                 label={t('sellerBizProfile.state', 'State')}
                 accessibilityHint={t('sellerBizProfile.stateFixed', 'Currently fixed to Maharashtra')}
               />
+            </Field>
+
+            {/* Optional, and first: it fills district, taluka and village. */}
+            <Field
+              ref={refFor('pincode')}
+              label={t('pincode.label', 'PIN code')}
+              error={errorOf('pincode')}
+              hint={pin.status === 'idle' ? t('pincode.autofillHint', 'Enter your PIN code to fill in the rest automatically.') : undefined}
+            >
+              <TextField
+                value={form.pincode}
+                onChangeText={set.pincode}
+                onBlur={blur.pincode}
+                placeholder={t('pincode.placeholder', '6-digit PIN code')}
+                keyboardType="number-pad"
+                maxLength={PINCODE_INPUT_MAX_LENGTH}
+                error={errorOf('pincode')}
+                label={t('pincode.label', 'PIN code')}
+              />
+              {pin.status !== 'idle' && !errorOf('pincode') ? (
+                <PincodeLocationStatus lookup={pin} PickerComponent={VillageSheet} />
+              ) : null}
             </Field>
 
             <Field
@@ -729,33 +795,37 @@ function BusinessProfileForm({ navigation }) {
               />
             </Field>
 
-            {form.bankAccountNumber ? (
-              <Field
-                ref={refFor('bankAccountConfirm')}
-                label={t('sellerBizProfile.confirmAccountNumber', 'Re-enter Account Number')}
-                required
-                secure
-                secureLabel={encryptedLabel}
+            {/* Always on screen, locked until an account number is typed. It used
+                to appear the moment the first digit went into the field above,
+                inserting a new text box right under the one being typed in. */}
+            <Field
+              ref={refFor('bankAccountConfirm')}
+              label={t('sellerBizProfile.confirmAccountNumber', 'Re-enter Account Number')}
+              required={!!form.bankAccountNumber}
+              secure
+              secureLabel={encryptedLabel}
+              error={errorOf('bankAccountConfirm')}
+            >
+              <TextField
+                value={form.bankAccountConfirm}
+                onChangeText={set.bankAccountConfirm}
+                onBlur={blur.bankAccountConfirm}
+                editable={!!form.bankAccountNumber}
+                placeholder={form.bankAccountNumber
+                  ? t('sellerBizProfile.confirmAccountPlaceholder', 'Type the account number again')
+                  : t('sellerBizProfile.confirmAccountLocked', 'Enter the account number above first')}
+                keyboardType="number-pad"
+                autoCorrect={false}
+                autoComplete="off"
+                importantForAutofill="no"
+                maxLength={ID_INPUT_MAX.bankAccountConfirm}
                 error={errorOf('bankAccountConfirm')}
-              >
-                <TextField
-                  value={form.bankAccountConfirm}
-                  onChangeText={set.bankAccountConfirm}
-                  onBlur={blur.bankAccountConfirm}
-                  placeholder={t('sellerBizProfile.confirmAccountPlaceholder', 'Type the account number again')}
-                  keyboardType="number-pad"
-                  autoCorrect={false}
-                  autoComplete="off"
-                  importantForAutofill="no"
-                  maxLength={ID_INPUT_MAX.bankAccountConfirm}
-                  error={errorOf('bankAccountConfirm')}
-                  label={t('sellerBizProfile.confirmAccountNumber', 'Re-enter Account Number')}
-                  suffix={confirmMatches
-                    ? <Ionicons name="checkmark-circle" size={20} color={C.success} />
-                    : null}
-                />
-              </Field>
-            ) : null}
+                label={t('sellerBizProfile.confirmAccountNumber', 'Re-enter Account Number')}
+                suffix={confirmMatches
+                  ? <Ionicons name="checkmark-circle" size={20} color={C.success} />
+                  : null}
+              />
+            </Field>
 
             <Field
               ref={refFor('bankIfsc')}
@@ -841,8 +911,7 @@ function BusinessProfileForm({ navigation }) {
           <InlineNotice variant="success" icon="lock-closed">
             {t('sellerBizProfile.securityNote')}
           </InlineNotice>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScroll>
 
       <ActionBar>
         <Button

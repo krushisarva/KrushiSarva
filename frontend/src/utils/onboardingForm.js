@@ -7,7 +7,9 @@
  * a decimal comma, and parseFloat("2,5") is 2 — the farmer saw 2,5 and saved 2.
  */
 
-export const PINCODE_LENGTH = 6;
+import { sanitizePincode } from '@krushisarva/shared/utils/pincode';
+
+export { PINCODE_LENGTH, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 // Five integer digits covers any real holding in acres; more is a typo.
 const ACRES_INT_DIGITS = 5;
 const ACRES_DECIMALS = 2;
@@ -15,8 +17,8 @@ const ACRES_DECIMALS = 2;
 /** Keep digits only, capped at `max`. */
 export const digitsOnly = (value, max) => String(value ?? '').replace(/\D/g, '').slice(0, max);
 
-/** Pincode as typed → at most six digits. */
-export const cleanPincode = (value) => digitsOnly(value, PINCODE_LENGTH);
+/** Pincode as typed → at most six digits (Devanagari and other Indian digits included). */
+export const cleanPincode = sanitizePincode;
 
 /**
  * Land size as typed → "12", "12.", "12.5" or "12.75".

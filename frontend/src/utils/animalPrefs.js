@@ -39,6 +39,31 @@ export async function setManualLocation(loc) {
   }
 }
 
+/**
+ * The saved place for a resolved PIN code, or null if the PIN doesn't settle
+ * on one district. Listings are filtered by `district`, since a listing's
+ * location text names its district but never its PIN.
+ *
+ * @param {object} summary   summarisePincode() output
+ * @param {object} [locality] the village the user picked, if any
+ * @returns {ManualLocation-without-savedAt | null}
+ */
+export function pincodePlace(summary, locality = null) {
+  if (!summary?.found) return null;
+  const district = locality?.district || summary.district;
+  if (!district) return null;
+  const near = locality?.name || summary.taluka;
+  const name = near && near.toLowerCase() !== district.toLowerCase() ? `${near}, ${district}` : district;
+  return {
+    label: `${name} (${summary.pincode})`,
+    pincode: summary.pincode,
+    district,
+    taluka: locality?.taluka || summary.taluka || undefined,
+    village: locality?.name || undefined,
+    state: locality?.state || summary.state || undefined,
+  };
+}
+
 /** Most-recent-first list of past searches. */
 export async function getRecentSearches() {
   try {

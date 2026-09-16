@@ -33,8 +33,11 @@ environment with mocked AI providers (load testing, §62/§63).
 
 ## Current Feature
 
-None in progress. The last batch covered pagination correctness, seller metrics,
-AI history read cost, upload memory, and mobile start-up cost.
+None in progress. The last item was PERF-045 (COMPLETE): PIN code → location
+via India Post, behind one cached, breaker-guarded endpoint, wired into every
+location form in both apps. The batch before it covered pagination
+correctness, seller metrics, AI history read cost, upload memory, and mobile
+start-up cost.
 
 ## Two lessons from this batch worth keeping
 

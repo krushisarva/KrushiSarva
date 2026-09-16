@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 861 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "ਛੇਤੀ ਜਾਂਚ ਲਈ ਆਪਣੀ ਫ਼ਸਲ ਦੀ ਫੋਟੋ ਭੇਜੋ।",
@@ -872,4 +872,19 @@ export default {
   "market.cat_oil": "ਤੇਲ ਬੀਜ",
   "market.cat_cash": "ਨਕਦੀ ਫਸਲਾਂ",
   "market.cat_spice": "ਮਸਾਲੇ",
+  "pincode.label": "ਪਿੰਨ ਕੋਡ",
+  "pincode.placeholder": "6 ਅੰਕਾਂ ਦਾ ਪਿੰਨ ਕੋਡ",
+  "pincode.autofillHint": "ਪਿੰਨ ਕੋਡ ਭਰੋ, ਬਾਕੀ ਜਾਣਕਾਰੀ ਆਪਣੇ-ਆਪ ਭਰ ਜਾਵੇਗੀ।",
+  "pincode.checking": "ਤੁਹਾਡਾ ਇਲਾਕਾ ਲੱਭਿਆ ਜਾ ਰਿਹਾ ਹੈ…",
+  "pincode.invalid": "ਸਹੀ 6 ਅੰਕਾਂ ਦਾ ਪਿੰਨ ਕੋਡ ਭਰੋ।",
+  "pincode.notFound": "ਇਸ ਪਿੰਨ ਕੋਡ ਲਈ ਕੋਈ ਇਲਾਕਾ ਨਹੀਂ ਮਿਲਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਨੰਬਰ ਜਾਂਚੋ।",
+  "pincode.unavailable": "ਇਸ ਵੇਲੇ ਇਹ ਪਿੰਨ ਕੋਡ ਜਾਂਚਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ। ਤੁਸੀਂ ਜਾਣਕਾਰੀ ਆਪ ਭਰ ਸਕਦੇ ਹੋ।",
+  "pincode.offline": "ਤੁਸੀਂ ਆਫ਼ਲਾਈਨ ਹੋ। ਜਾਣਕਾਰੀ ਆਪ ਭਰੋ, ਜਾਂ ਕਨੈਕਟ ਹੋਣ 'ਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "pincode.rateLimited": "ਬਹੁਤ ਵਾਰ ਪਿੰਨ ਕੋਡ ਜਾਂਚਿਆ ਗਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਇੱਕ ਮਿੰਟ ਰੁਕ ਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "pincode.retry": "ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ",
+  "pincode.pickArea": "ਬਾਕੀ ਜਾਣਕਾਰੀ ਭਰਨ ਲਈ ਆਪਣਾ ਪਿੰਡ ਜਾਂ ਇਲਾਕਾ ਚੁਣੋ।",
+  "pincode.multipleDistricts": "ਇਹ ਪਿੰਨ ਕੋਡ ਇੱਕ ਤੋਂ ਵੱਧ ਜ਼ਿਲ੍ਹਿਆਂ ਵਿੱਚ ਆਉਂਦਾ ਹੈ। ਆਪਣਾ ਪਿੰਡ ਜਾਂ ਇਲਾਕਾ ਚੁਣੋ।",
+  "pincode.pickAreaTitle": "{{pincode}} ਦੇ ਪਿੰਡ ਅਤੇ ਇਲਾਕੇ",
+  "pincode.pickAreaCount": "ਪਿੰਡ / ਇਲਾਕਾ ਚੁਣੋ ({{count}})",
+  "pincode.fixBeforeSave": "ਸੇਵ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਪਿੰਨ ਕੋਡ ਠੀਕ ਕਰੋ।",
 };

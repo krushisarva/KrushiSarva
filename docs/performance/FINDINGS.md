@@ -1104,3 +1104,15 @@ the only evidence. That is how the one reproducible case today was finally
 identified (an ambiguous fixture: three DMs created in the same millisecond, with
 the seek ordering by `createdAt DESC, id DESC` and uuid ids making the tiebreak
 arbitrary).
+
+## PERF-045 — PIN code lookup: a slow external provider on every location form
+
+**P1 · COMPLETE** — see COMPLETED.md
+
+Component: backend `services/pincode.service.js`, `routes/location.routes.js`; shared `hooks/usePincodeLocation.js`.
+Evidence: live probe of api.postalpincode.in — 0.3–2.2 s per call, HTTP 200 for success, not-found and malformed alike.
+Current behavior (before): no lookup; state/district/taluka typed or picked by hand, never checked against the PIN.
+Risk: a naive per-keystroke client call would multiply provider latency and exposure by users × forms.
+Recommended change: one backend endpoint — Redis 30 d cache + 500-entry L1, single-flight, breaker, per-user limit.
+Expected impact: repeat lookups 0 external calls, 0 ms; provider outage degrades to manual entry, never blocks a save.
+Rollback: unmount `/location`.

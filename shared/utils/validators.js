@@ -14,8 +14,10 @@
 
 // Indian mobile number: 10 digits, first digit 6-9 (the valid operator series).
 export const PHONE_RE = /^[6-9]\d{9}$/;
-// Indian PIN code: exactly 6 digits.
-export const PINCODE_RE = /^\d{6}$/;
+// Indian PIN code: 6 digits, never starting with 0 (the first digit is the
+// postal zone, 1–9). "000000" used to pass here while the address screen's
+// own copy of the rule rejected it.
+export const PINCODE_RE = /^[1-9]\d{5}$/;
 // One-time password: 6 digits.
 const OTP_RE = /^\d{6}$/;
 // GSTIN, e.g. 27ABCDE1234F1Z5.

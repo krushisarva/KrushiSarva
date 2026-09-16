@@ -16,6 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import LocationPicker from '@krushisarva/shared/components/LocationPicker';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { fitPatchToLocationLists } from '@krushisarva/shared/utils/pincode';
 import SoilIcon from '../../components/SoilIcons';
 import IrrigationIcon from '../../components/IrrigationIcons';
 import PhotoIcon from '../../components/PhotoIcon';
@@ -29,7 +32,7 @@ import api from '@krushisarva/shared/services/api';
 import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import { s, vs, fs, ms } from '../../utils/responsive';
 import { webScreenContainer, useAbsoluteBarScrollStyle } from '../../utils/webScrollFix';
-import { acresOrNull, cleanAcres, cleanPincode, findCrop, PINCODE_LENGTH } from '../../utils/onboardingForm';
+import { acresOrNull, cleanAcres, cleanPincode, findCrop, PINCODE_INPUT_MAX_LENGTH } from '../../utils/onboardingForm';
 import { useKeyboardRoom } from '@krushisarva/shared/hooks/useKeyboardRoom';
 import { revealScrollOffset } from '@krushisarva/shared/utils/keyboardInset';
 
@@ -192,7 +195,28 @@ export default function OnboardingProfileScreen({ navigation }) {
   // UI
   const [saving, setSaving] = useState(false);
 
-  const canSubmit = firstName.trim().length >= 1 && district.trim().length > 0;
+  // PIN code → state / district / taluka / village. The pickers only accept
+  // names from their own lists, so anything else India Post returns is dropped
+  // here rather than shown as a selection the picker can't display.
+  const applyLocation = (patch) => {
+    const fit = fitPatchToLocationLists({ state, district, taluka }, patch);
+    if ('state' in fit) setState(fit.state);
+    if ('district' in fit) setDistrict(fit.district);
+    if ('taluka' in fit) setTaluka(fit.taluka);
+    if ('village' in fit) setVillage(fit.village);
+  };
+  const pin = usePincodeAutofill({
+    pincode,
+    values: { state, district, taluka, village },
+    fields: { state: 'state', district: 'district', taluka: 'taluka', village: 'village' },
+    strict: ['state', 'district'],
+    onChange: applyLocation,
+  });
+
+  const canSubmit = firstName.trim().length >= 1 && district.trim().length > 0 && !pin.blocksSubmit;
+  const submitHint = pin.blocksSubmit && firstName.trim() && district.trim()
+    ? t('pincode.fixBeforeSave')
+    : t('onboarding.fillNameDistrict');
 
   const toggleCrop = (crop) => setSelectedCrops(p => {
     const n = new Set(p); n.has(crop) ? n.delete(crop) : n.add(crop); return n;
@@ -409,6 +433,21 @@ export default function OnboardingProfileScreen({ navigation }) {
               <Text style={sty.required}>*</Text>
             </View>
 
+            {/* PIN first: it fills everything below it. */}
+            <Text style={sty.fieldLabel}>{t('farmProfile.pincode')}</Text>
+            {/* number-pad has no "." or "-", and cleanPincode drops anything a
+                paste or suggestion brings in. */}
+            <TextInput {...fieldProps(pincodeRef)} style={sty.input} value={pincode}
+              onChangeText={(v) => setPincode(cleanPincode(v))}
+              placeholder={t('onboarding.pincodePlaceholder')} keyboardType="number-pad"
+              maxLength={PINCODE_INPUT_MAX_LENGTH} placeholderTextColor={PLACEHOLDER} />
+            {pin.status === 'idle' ? (
+              <Text style={sty.pinHint}>{t('pincode.autofillHint')}</Text>
+            ) : (
+              <PincodeLocationStatus lookup={pin}
+                pickerTriggerStyle={sty.pickerTrigger} pickerTriggerTextStyle={sty.pickerText} />
+            )}
+
             <Text style={sty.fieldLabel}>{t('farmProfile.selectState')}</Text>
             <LocationPicker title={t('farmProfile.selectState')} items={STATE_LIST} selected={state}
               onSelect={v => { setState(v); setDistrict(''); setTaluka(''); }}
@@ -431,22 +470,9 @@ export default function OnboardingProfileScreen({ navigation }) {
                 placeholder={t('onboarding.talukaPlaceholder')} placeholderTextColor={PLACEHOLDER} />
             )}
 
-            <View style={sty.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={sty.fieldLabel}>{t('farmProfile.village')}</Text>
-                <TextInput {...fieldProps(villageRef)} style={sty.input} value={village} onChangeText={setVillage}
-                  placeholder={t('onboarding.enterVillage')} placeholderTextColor={PLACEHOLDER} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={sty.fieldLabel}>{t('farmProfile.pincode')}</Text>
-                {/* number-pad has no "." or "-", and cleanPincode drops anything a
-                    paste or suggestion brings in. */}
-                <TextInput {...fieldProps(pincodeRef)} style={sty.input} value={pincode}
-                  onChangeText={(v) => setPincode(cleanPincode(v))}
-                  placeholder={t('onboarding.pincodePlaceholder')} keyboardType="number-pad"
-                  maxLength={PINCODE_LENGTH} placeholderTextColor={PLACEHOLDER} />
-              </View>
-            </View>
+            <Text style={sty.fieldLabel}>{t('farmProfile.village')}</Text>
+            <TextInput {...fieldProps(villageRef)} style={sty.input} value={village} onChangeText={setVillage}
+              placeholder={t('onboarding.enterVillage')} placeholderTextColor={PLACEHOLDER} />
 
             <TouchableOpacity style={sty.gpsBtn} onPress={captureGPS} disabled={gpsLoading} activeOpacity={0.8}>
               <Ionicons name={lat ? 'checkmark-circle' : 'navigate-outline'} size={16} color={KHET.primary} />
@@ -619,7 +645,7 @@ export default function OnboardingProfileScreen({ navigation }) {
                 {/* Up to two lines: "Fill name & district" runs long in Tamil and
                     Malayalam and was cut off beside the Skip button. */}
                 <Text style={sty.submitTxt} numberOfLines={2}>
-                  {canSubmit ? t('onboarding.completeSetup') : t('onboarding.fillNameDistrict')}
+                  {canSubmit ? t('onboarding.completeSetup') : submitHint}
                 </Text>
                 {canSubmit && (
                   <View style={sty.submitArrow}><Ionicons name="checkmark" size={16} color={KHET.primaryForeground} /></View>
@@ -701,6 +727,7 @@ const sty = StyleSheet.create({
     backgroundColor: KHET.input, elevation: 0, shadowOpacity: 0,
   },
   pickerText: { fontSize: fs(15), color: KHET.foreground, fontFamily: KFONT.sans },
+  pinHint: { fontSize: fs(12), color: KHET.mutedForeground, fontFamily: KFONT.sans, marginTop: vs(6) },
 
   // GPS
   gpsBtn: {

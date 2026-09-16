@@ -30,6 +30,12 @@ import CosmicPicker from './ui/CosmicPicker';
 import GlassCard    from './ui/GlassCard';
 import GlowButton   from './ui/GlowButton';
 import { STATE_LIST, getDistrictsForState, getTalukas } from '@krushisarva/shared/constants/locations';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import {
+  fitPatchToLocationLists, sanitizePincode, PINCODE_INPUT_MAX_LENGTH,
+} from '@krushisarva/shared/utils/pincode';
+import { invalidateFocusData } from '../../hooks/useFocusRefresh';
 import SoilIcon       from '../../components/SoilIcons';
 import IrrigationIcon from '../../components/IrrigationIcons';
 import { useMultiFarm } from '../../context/MultiFarmContext';
@@ -78,6 +84,16 @@ export default function FarmAddEditScreen({ navigation, route }) {
 
   const u = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  // PIN code → state / district / taluka / village. Opening an existing farm
+  // only fills its blanks; see usePincodeAutofill.
+  const pin = usePincodeAutofill({
+    pincode: form.pincode,
+    values: form,
+    fields: { state: 'state', district: 'district', taluka: 'taluka', village: 'village' },
+    strict: ['state', 'district'],
+    onChange: (patch) => setForm((p) => ({ ...p, ...fitPatchToLocationLists(p, patch) })),
+  });
+
   // ── GPS capture ─────────────────────────────────────────────────────────
   const captureGPS = useCallback(async () => {
     Haptics.light?.();
@@ -98,6 +114,11 @@ export default function FarmAddEditScreen({ navigation, route }) {
 
   // ── Save ────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
+    if (pin.blocksSubmit) {
+      Haptics.error?.();
+      Alert.alert(t('farmProfile.pincode') || 'Pincode', t('pincode.fixBeforeSave'));
+      return;
+    }
     if (!form.landSizeAcres || parseFloat(form.landSizeAcres) <= 0) {
       Haptics.error?.();
       Alert.alert(t('farmProfile.requiredTitle') || 'Land size required', t('farmProfile.landRequired') || 'Please enter the total land size in acres.');
@@ -118,7 +139,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
     } finally {
       setSaving(false);
     }
-  }, [form, isEdit, existing, addFarm, editFarm, navigation, t]);
+  }, [form, isEdit, existing, addFarm, editFarm, navigation, t, pin.blocksSubmit]);
 
   return (
     <CosmicScreen backgroundVariant="default" edges={{ top: false, bottom: false }}>
@@ -147,6 +168,22 @@ export default function FarmAddEditScreen({ navigation, route }) {
 
           {/* ── 2. Location ─────────────────────────────────────────────── */}
           <SectionCard icon="location-outline" iconTint={COSMIC.INFO} title={t('location')}>
+            {/* PIN first: it fills everything below it. */}
+            <Field label={t('farmProfile.pincode') || 'Pincode'}>
+              <CosmicInput
+                value={form.pincode}
+                onChangeText={(v) => u('pincode', sanitizePincode(v))}
+                placeholder={t('pincode.placeholder')}
+                keyboardType="number-pad"
+                maxLength={PINCODE_INPUT_MAX_LENGTH}
+              />
+              {pin.status === 'idle' ? (
+                <Text style={styles.pinHint}>{t('pincode.autofillHint')}</Text>
+              ) : (
+                <PincodeLocationStatus lookup={pin} PickerComponent={CosmicPicker} />
+              )}
+            </Field>
+
             <Field label={t('farmProfile.state') || 'State'}>
               <CosmicPicker
                 title={t('farmProfile.selectState') || 'Select state'}
@@ -196,29 +233,14 @@ export default function FarmAddEditScreen({ navigation, route }) {
               </Field>
             )}
 
-            <View style={styles.row2}>
-              <View style={{ flex: 1 }}>
-                <Field label={t('farmProfile.village') || 'Village'}>
-                  <CosmicInput
-                    value={form.village}
-                    onChangeText={(v) => u('village', v)}
-                    placeholder={t('farmProfile.villagePlaceholder') || 'Village name'}
-                    autoCapitalize="words"
-                  />
-                </Field>
-              </View>
-              <View style={{ width: 120 }}>
-                <Field label={t('farmProfile.pincode') || 'Pincode'}>
-                  <CosmicInput
-                    value={form.pincode}
-                    onChangeText={(v) => u('pincode', v)}
-                    placeholder={t('farmProfile.pincodePlaceholder') || '6-digit'}
-                    keyboardType="numeric"
-                    maxLength={6}
-                  />
-                </Field>
-              </View>
-            </View>
+            <Field label={t('farmProfile.village') || 'Village'}>
+              <CosmicInput
+                value={form.village}
+                onChangeText={(v) => u('village', v)}
+                placeholder={t('farmProfile.villagePlaceholder') || 'Village name'}
+                autoCapitalize="words"
+              />
+            </Field>
 
             <Pressable
               onPress={captureGPS}
@@ -417,6 +439,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
+  },
+  pinHint: {
+    fontSize: 12,
+    color: COSMIC.TEXT_3,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    marginTop: 6,
   },
   subLabel: {
     fontSize: 11,
