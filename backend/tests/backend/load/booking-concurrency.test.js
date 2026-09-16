@@ -54,22 +54,22 @@ describe('Checkout concurrency — last unit race', () => {
         .send({ deliveryAddress: address }),
     ]);
 
-    const successes = [res1, res2].filter(r => r.status === 201).length;
-    const failures = [res1, res2].filter(r => r.status === 400).length;
-
-    // Check final stock
+    const statuses = [res1.status, res2.status];
     const finalProduct = await prisma.product.findUnique({ where: { id: product.id } });
 
-    // BUG: Both may succeed because stock check is outside the transaction
-    // Ideal: exactly 1 success, 1 failure, stock = 0
-    // Reality: may see 2 successes, stock = -1
-    if (successes === 2) {
-      console.warn(`[RACE BUG] Both checkouts succeeded. Final stock: ${finalProduct.stock}`);
-      // FIX: Move stock validation inside the $transaction block
-    }
+    // The loser is refused in one of two ways, decided by timing alone:
+    //   409 — its pre-transaction price check (loadPricedCart) already sees the
+    //         winner's commit and reports INSUFFICIENT_STOCK as a cart issue;
+    //         a serializable retry that runs out also answers 409;
+    //   400 — its price check still saw the unit, but the stock check inside
+    //         the transaction did not.
+    // Both are correct. This used to accept only 400, so it failed on roughly
+    // half of all runs.
+    expect(statuses.every((s) => [201, 400, 409].includes(s))).toBe(true);
 
-    // At minimum verify no crash
-    expect([res1.status, res2.status].every(s => [201, 400].includes(s))).toBe(true);
+    // What the test exists for: the last unit sells exactly once.
+    expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+    expect(finalProduct.stock).toBe(0);
   });
 });
 

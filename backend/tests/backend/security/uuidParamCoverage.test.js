@@ -41,6 +41,7 @@ const NON_UUID_PARAMS = new Map([
   ['column', 'farmCropCycle.routes.js — a log column name, validated with isIn()'],
   ['jobId', 'ai.routes.js — FastAPI job handle, not a row in our database'],
   ['providerOrderId', 'agristore.routes.js — Razorpay order id (order_XXXX), length-checked in the handler'],
+  ['pincode', 'location.routes.js — a 6-digit Indian PIN code, validated with matches(PINCODE_RE); never reaches the database'],
 ]);
 
 /**

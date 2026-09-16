@@ -9,7 +9,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import { ENV } from './config/env.js';
-import { sendError } from './utils/response.js';
+import { sendError, errorStatus } from './utils/response.js';
 import { persistErrorLog } from './utils/errorLog.js';
 import { maintenanceMode } from './middleware/maintenance.js';
 import logger from './utils/logger.js';
@@ -499,13 +499,17 @@ app.use((err, req, res, _next) => {
   // [FIX #22] Never leak internal error details (Prisma, SQL, etc.) even in dev.
   // err.message may contain DB schema info, query details, or stack traces.
   const safeMessage = err.expose ? err.message : 'Internal server error';
-  sendError(res, safeMessage, err.status || 500);
+  // Our own errors carry `statusCode`, not `status`. Reading only `status`
+  // turned every thrown 404/400 — and withSerializableRetry's "lost a race"
+  // 409 — into a 500 on any route without its own catch.
+  const status = errorStatus(err);
+  sendError(res, safeMessage, status);
 
   // BEST-EFFORT: persist to ErrorLog for the admin Ops viewer. Shared with
   // sendServerError via utils/errorLog.js so both error paths — thrown errors that
   // land here, and the far more common handled ones that return directly — produce
   // identical rows. Runs after the response is sent and never throws.
-  persistErrorLog({ err, req, status: err.status || 500 });
+  persistErrorLog({ err, req, status });
 });
 
 export default app;
