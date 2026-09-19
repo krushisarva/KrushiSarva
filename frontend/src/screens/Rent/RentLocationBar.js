@@ -15,7 +15,7 @@
 import { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, Pressable, ScrollView,
-  Switch, ActivityIndicator, Linking, TouchableWithoutFeedback,
+  Switch, ActivityIndicator, Linking, TouchableWithoutFeedback, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
@@ -23,7 +23,10 @@ import { Haptics } from '@krushisarva/shared/utils/haptics';
 import { SPRINGS, isReducedMotion } from '@krushisarva/shared/components/ui/motion';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import LocationPicker from '@krushisarva/shared/components/LocationPicker';
-import { DISTRICT_LIST, getTalukas } from '@krushisarva/shared/constants/locations';
+import { DISTRICT_LIST, getTalukas, toDistrictListName } from '@krushisarva/shared/constants/locations';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 import { COLORS, TYPE, SPACE, RADIUS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import { SOURCE, RADIUS_OPTIONS } from './rentLocationPrefs';
 
@@ -242,6 +245,31 @@ export function RentLocationSheet({
   const { t } = useLanguage();
   const talukas = useMemo(() => (prefs.district ? getTalukas(prefs.district) : []), [prefs.district]);
 
+  // PIN code → district + taluka pickers. The pickers only hold Maharashtra
+  // names (DISTRICT_LIST's old spellings), so a result is translated into them;
+  // a PIN outside Maharashtra shows its area and leaves the pickers alone.
+  const [pinText, setPinText] = useState('');
+  const pin = usePincodeAutofill({
+    pincode: pinText,
+    values: { district: prefs.district || '', taluka: prefs.taluka || '' },
+    fields: { district: 'district', taluka: 'taluka' },
+    strict: ['district', 'taluka'],
+    enabled: visible && prefs.source === SOURCE.DISTRICT,
+    onChange: (patch) => {
+      const district = 'district' in patch ? toDistrictListName(patch.district) : prefs.district;
+      if ('district' in patch && patch.district && !district) return;
+      const next = {};
+      if ('district' in patch) next.district = district;
+      if ('taluka' in patch || 'district' in patch) {
+        const taluka = patch.taluka ?? ('district' in patch ? '' : prefs.taluka);
+        next.taluka = taluka && getTalukas(district).includes(taluka) ? taluka : null;
+      }
+      setPrefs(next);
+    },
+  });
+  const pinOutsideList = pin.status === 'found' && !!pin.summary?.district
+    && !toDistrictListName(pin.summary.district);
+
   const gpsSub = coords
     ? t('rent.srcGpsLive', 'Using your current position')
     : permissionDenied
@@ -334,7 +362,27 @@ export function RentLocationSheet({
             selected={prefs.source === SOURCE.DISTRICT}
             onPress={() => setPrefs({ source: SOURCE.DISTRICT })}
           >
-            <Text style={S.fieldLabel}>{t('rent.districtLabel', 'District')}</Text>
+            <Text style={S.fieldLabel}>{t('pincode.label')}</Text>
+            <TextInput
+              style={S.pinInput}
+              value={pinText}
+              onChangeText={(v) => setPinText(sanitizePincode(v))}
+              placeholder={t('pincode.placeholder')}
+              placeholderTextColor={COLORS.grayLightMid}
+              keyboardType="number-pad"
+              maxLength={PINCODE_INPUT_MAX_LENGTH}
+              accessibilityLabel={t('pincode.label')}
+            />
+            {pin.status === 'idle'
+              ? <Text style={S.noteTxt}>{t('pincode.autofillHint')}</Text>
+              : <PincodeLocationStatus lookup={pin} />}
+            {pinOutsideList && (
+              <Text style={S.noteTxt}>
+                {t('rent.pinOutsideMaharashtra', 'Rentals are listed in Maharashtra only. Pick a district below.')}
+              </Text>
+            )}
+
+            <Text style={[S.fieldLabel, { marginTop: SPACE[1.5] }]}>{t('rent.districtLabel', 'District')}</Text>
             <LocationPicker
               title={t('rent.districtLabel', 'District')}
               items={DISTRICT_LIST}
@@ -490,6 +538,11 @@ const S = StyleSheet.create({
 
   fieldLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textMedium },
   noteTxt: { fontSize: 11, color: COLORS.textMedium, lineHeight: 16 },
+  pinInput: {
+    minHeight: TAP, marginTop: 6, paddingHorizontal: 12,
+    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface, fontSize: 15, color: COLORS.textDark,
+  },
 
   doneBtn: {
     marginHorizontal: SPACE[2], marginTop: SPACE[1],

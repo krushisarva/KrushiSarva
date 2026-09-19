@@ -65,6 +65,18 @@ export function getTalukas(district) {
   return MAHARASHTRA_DISTRICTS[district] || MAHARASHTRA_DISTRICTS[RENAMED_DISTRICTS[district]] || [];
 }
 
+/**
+ * `district` as DISTRICT_LIST spells it, or null when it is not a Maharashtra
+ * district. PIN lookups return the all-India list's renamed districts
+ * ("Dharashiv"); a picker over DISTRICT_LIST can only show the old name.
+ */
+export function toDistrictListName(district) {
+  if (!district) return null;
+  if (MAHARASHTRA_DISTRICTS[district]) return district;
+  const old = RENAMED_DISTRICTS[district];
+  return old && MAHARASHTRA_DISTRICTS[old] ? old : null;
+}
+
 // Selling scope options — where the product is available to buyers
 export const SELLING_SCOPES = [
   { key: 'village',   tKey: 'village',   descKey: 'villageDesc',   label: 'My Village',  icon: 'home-outline',       desc: 'Sell only within my village / gram panchayat' },

@@ -10,7 +10,7 @@ import {
   resolveStateDistrict, matchTaluka, summarisePincode, localityToValues, pincodeBlocksSubmit,
 } from '../pincode';
 import { INDIA_DISTRICTS, INDIA_STATES_LIST } from '../../constants/indiaLocations';
-import { getTalukas } from '../../constants/locations';
+import { getTalukas, toDistrictListName } from '../../constants/locations';
 
 const po = (name, block, district, state, delivery = true) => ({
   name, block, district, state, delivery, branchType: 'Branch Post Office',
@@ -311,5 +311,18 @@ describe('pincodeBlocksSubmit', () => {
     ['unavailable', false], ['offline', false], ['rate_limited', false],
   ])('%s → %s', (status, blocks) => {
     expect(pincodeBlocksSubmit(status)).toBe(blocks);
+  });
+});
+
+describe('toDistrictListName (Rent district picker)', () => {
+  test('renamed districts map back to the picker spelling', () => {
+    expect(toDistrictListName('Dharashiv')).toBe('Osmanabad');
+    expect(toDistrictListName('Ahilyanagar')).toBe('Ahmednagar');
+    expect(toDistrictListName('Chhatrapati Sambhajinagar')).toBe('Aurangabad');
+  });
+  test('a listed district passes through; others are null', () => {
+    expect(toDistrictListName('Pune')).toBe('Pune');
+    expect(toDistrictListName('Central Delhi')).toBeNull();
+    expect(toDistrictListName('')).toBeNull();
   });
 });

@@ -435,7 +435,11 @@ export default function ProductDetail({ route, navigation }) {
 
   const [quantity,    setQuantity]    = useState(1);
   const [imgIdx,      setImgIdx]      = useState(0);
-  const [adding,      setAdding]      = useState(false);
+  // Which add is in flight: 'cart' | 'buy' | 'offer' | null. One boolean used to
+  // drive both bottom buttons, so tapping either one spun BOTH. Both stay
+  // disabled while any add runs (no double POST); only the tapped one spins.
+  const [addingAction, setAddingAction] = useState(null);
+  const adding = addingAction !== null;
   const [similar,     setSimilar]     = useState([]);
 
   const product = detail || routeProduct || {};
@@ -548,9 +552,9 @@ export default function ProductDetail({ route, navigation }) {
   // the buyer chose, so `productId` alone decided it. productId is still sent as
   // the fallback for a product that has no listings yet, where the server
   // resolves the buy-box winner itself.
-  async function addToCart(chosen = offer, qty = quantity) {
+  async function addToCart(chosen = offer, qty = quantity, action = 'cart') {
     const listingId = chosen?.listingId || null;
-    setAdding(true);
+    setAddingAction(action);
     setAddingId(listingId);
     try {
       await api.post('/agristore/cart', listingId
@@ -562,24 +566,24 @@ export default function ProductDetail({ route, navigation }) {
       Alert.alert(t('product.error'), err.response?.data?.error?.message || t('product.cartError'));
       return false;
     } finally {
-      setAdding(false);
+      setAddingAction(null);
       setAddingId(null);
     }
   }
 
   async function handleAddToCart() {
-    const ok = await addToCart();
+    const ok = await addToCart(offer, quantity, 'cart');
     if (ok) Alert.alert(t('product.addedToCart'), t('product.addedToCartMsg', { qty: quantity, name: product.name }), [{ text: t('ok') }]);
   }
 
   async function handleBuyNow() {
-    const ok = await addToCart();
+    const ok = await addToCart(offer, quantity, 'buy');
     if (ok) navigation.navigate('Cart');
   }
 
   /** Add straight from a row in the offers sheet — each row has its own button. */
   async function handleAddOffer(chosen) {
-    const ok = await addToCart(chosen, 1);
+    const ok = await addToCart(chosen, 1, 'offer');
     if (ok) {
       setOffer(chosen);
       setOffersOpen(false);
@@ -1117,11 +1121,11 @@ export default function ProductDetail({ route, navigation }) {
       {/* ── Bottom Action Bar ──────────────────────────────────────────────── */}
       <View style={[S.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity
-          style={[S.addCartBtn, (!inStock || adding) && { opacity: 0.45 }]}
+          style={[S.addCartBtn, (!inStock || addingAction === 'cart') && { opacity: 0.45 }]}
           onPress={handleAddToCart}
           disabled={adding || !inStock}
         >
-          {adding
+          {addingAction === 'cart'
             ? <ActivityIndicator size="small" color={COLORS.primary} />
             : (
               <>
@@ -1133,12 +1137,12 @@ export default function ProductDetail({ route, navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[S.buyNowBtn, (!inStock || adding) && { opacity: 0.45 }]}
+          style={[S.buyNowBtn, (!inStock || addingAction === 'buy') && { opacity: 0.45 }]}
           onPress={handleBuyNow}
           disabled={adding || !inStock}
           activeOpacity={0.82}
         >
-          {adding
+          {addingAction === 'buy'
             ? <ActivityIndicator size="small" color={COLORS.yellowDark} />
             : (
               <>

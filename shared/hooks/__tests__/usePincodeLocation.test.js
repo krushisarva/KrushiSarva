@@ -13,7 +13,9 @@ jest.mock('../../services/pincodeApi', () => {
 });
 
 import { fetchPincode, peekPincode, PincodeLookupError } from '../../services/pincodeApi';
-import { usePincodeLookup, usePincodeAutofill } from '../usePincodeLocation';
+import {
+  usePincodeLookup, usePincodeAutofill, usePincodeLineAutofill, composeLocationLine,
+} from '../usePincodeLocation';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -350,5 +352,138 @@ describe('usePincodeAutofill', () => {
     act(() => h.setForm((f) => ({ ...f, village: 'x' })));
     await flush();
     expect(h.form.taluka).toBe('Daund');
+  });
+});
+
+// The address sheets (SavedAddressesScreen, CheckoutScreen): the form is closed
+// (autofill disabled) at mount, opens empty, and maps only city + state.
+describe('usePincodeAutofill in an address sheet', () => {
+  const EMPTY = { name: '', flat: '', street: '', city: '', state: '', pincode: '' };
+
+  function renderSheet() {
+    const out = { form: null, pin: null, setForm: null, open: null, close: null };
+    function Sheet() {
+      const [form, setForm] = useState(null);
+      out.form = form;
+      out.setForm = setForm;
+      out.pin = usePincodeAutofill({
+        pincode: form?.pincode ?? '',
+        values: form || {},
+        fields: { city: 'city', state: 'state' },
+        onChange: (patch) => setForm((f) => (f ? { ...f, ...patch } : f)),
+        resetKey: form ? 'new' : 'closed',
+        enabled: Boolean(form),
+      });
+      return null;
+    }
+    act(() => { TestRenderer.create(<Sheet />); });
+    out.open = () => act(() => out.setForm({ ...EMPTY }));
+    out.close = () => act(() => out.setForm(null));
+    return out;
+  }
+
+  const typeIn = (h, pincode) => act(() => h.setForm((f) => ({ ...f, pincode })));
+
+  test('opening the sheet and typing a PIN fills city and state', async () => {
+    const h = renderSheet();
+    h.open();
+    typeIn(h, '416416');
+    await flush();
+    expect(h.form).toMatchObject({ city: 'Sangli', state: 'Maharashtra' });
+  });
+
+  test('a multi-village PIN fills state and the shared taluka as city', async () => {
+    const h = renderSheet();
+    h.open();
+    typeIn(h, '413102');
+    await flush();
+    expect(h.form).toMatchObject({ city: 'Baramati', state: 'Maharashtra' });
+  });
+
+  test('typed digit by digit, as a keyboard does', async () => {
+    const h = renderSheet();
+    h.open();
+    for (const pin of ['4', '41', '416', '4164', '41641', '416416']) typeIn(h, pin);
+    await flush();
+    expect(h.form).toMatchObject({ city: 'Sangli', state: 'Maharashtra' });
+  });
+
+  test('closing and reopening the sheet fills again for the same PIN', async () => {
+    const h = renderSheet();
+    h.open();
+    typeIn(h, '416416');
+    await flush();
+    h.close();
+    h.open();
+    typeIn(h, '416416');
+    await flush();
+    expect(h.form).toMatchObject({ city: 'Sangli', state: 'Maharashtra' });
+  });
+});
+
+// One-line locations (AddAnimalListing's sellerLocation).
+describe('usePincodeLineAutofill', () => {
+  function renderLine(initialLine = '') {
+    const out = { line: null, typed: false, pin: null, setPin: null, typeLine: null };
+    function Line() {
+      const [pincode, setPincode] = useState('');
+      const [line, setLine] = useState(initialLine);
+      const [typed, setTyped] = useState(false);
+      out.line = line;
+      out.setPin = setPincode;
+      out.typeLine = (v) => { setLine(v); setTyped(v.trim().length > 0); };
+      out.pin = usePincodeLineAutofill({ pincode, onLine: setLine, lineTypedByUser: typed });
+      return null;
+    }
+    act(() => { TestRenderer.create(<Line />); });
+    return out;
+  }
+
+  test('composeLocationLine drops blanks and a repeated name', () => {
+    expect(composeLocationLine({ village: 'Sillod', taluka: 'Sillod', district: 'Aurangabad', state: 'Maharashtra' }))
+      .toBe('Sillod, Aurangabad, Maharashtra');
+    expect(composeLocationLine({ village: '', taluka: 'Baramati', district: 'Pune', state: '' })).toBe('Baramati, Pune');
+    expect(composeLocationLine({})).toBe('');
+  });
+
+  test('a single-village PIN writes the whole line', async () => {
+    const h = renderLine();
+    act(() => h.setPin('413106'));
+    await flush();
+    expect(h.line).toBe('Indapur, Pune, Maharashtra');
+  });
+
+  test('replaces the profile default the form opened with', async () => {
+    const h = renderLine('Somewhere, Nashik, Maharashtra');
+    act(() => h.setPin('416416'));
+    await flush();
+    expect(h.line).toBe('Sangli, Miraj, Maharashtra');
+  });
+
+  test('a multi-village PIN writes what they share; picking one adds the village', async () => {
+    const h = renderLine();
+    act(() => h.setPin('413102'));
+    await flush();
+    expect(h.line).toBe('Baramati, Pune, Maharashtra');
+    act(() => h.pin.selectLocality(h.pin.localities.find((l) => l.name === 'Barhanpur')));
+    expect(h.line).toBe('Barhanpur, Baramati, Pune, Maharashtra');
+  });
+
+  test('a new PIN replaces the line autofill wrote for the old one', async () => {
+    const h = renderLine();
+    act(() => h.setPin('413106'));
+    await flush();
+    act(() => h.setPin('416416'));
+    await flush();
+    expect(h.line).toBe('Sangli, Miraj, Maharashtra');
+  });
+
+  test('never overwrites a line the user typed', async () => {
+    const h = renderLine();
+    act(() => h.typeLine('Near bus stand, Palshi'));
+    act(() => h.setPin('416416'));
+    await flush();
+    expect(h.line).toBe('Near bus stand, Palshi');
+    expect(h.pin.status).toBe('found');
   });
 });
