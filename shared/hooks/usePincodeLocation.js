@@ -247,3 +247,51 @@ export function usePincodeAutofill({
     blocksSubmit: pincodeBlocksSubmit(lookup.status),
   };
 }
+
+// ── One-line locations ──────────────────────────────────────────────────────
+// Some records keep their place as a single text line rather than separate
+// fields (an animal ad's `sellerLocation`, e.g. "Palshi, Sillod, Aurangabad,
+// Maharashtra"). The parts are kept here so usePincodeAutofill applies its
+// usual rules to them, and the line is rebuilt from them.
+
+const LINE_FIELDS = { village: 'village', taluka: 'taluka', district: 'district', state: 'state' };
+const EMPTY_LINE_PARTS = { village: '', taluka: '', district: '', state: '' };
+
+/** "Sillod, Sillod, Aurangabad" → "Sillod, Aurangabad": a one-office taluka repeats its name. */
+export function composeLocationLine(parts) {
+  const out = [];
+  for (const key of ['village', 'taluka', 'district', 'state']) {
+    const v = text(parts?.[key]);
+    if (v && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out.join(', ');
+}
+
+/**
+ * @param {object} args
+ * @param {string} args.pincode
+ * @param {(line: string) => void} args.onLine   receives the rebuilt line
+ * @param {boolean} [args.lineTypedByUser]  the user edited the line by hand; a
+ *        PIN then still shows its area but never overwrites their words
+ * @param {boolean} [args.enabled]
+ */
+export function usePincodeLineAutofill({ pincode, onLine, lineTypedByUser = false, enabled = true }) {
+  const [parts, setParts] = useState(EMPTY_LINE_PARTS);
+  const partsRef = useRef(EMPTY_LINE_PARTS);
+  const latest = useRef({});
+  latest.current = { onLine, lineTypedByUser };
+
+  return usePincodeAutofill({
+    pincode,
+    values: parts,
+    fields: LINE_FIELDS,
+    enabled,
+    onChange: (patch) => {
+      const next = { ...partsRef.current, ...patch };
+      partsRef.current = next;
+      setParts(next);
+      const line = composeLocationLine(next);
+      if (line && !latest.current.lineTypedByUser) latest.current.onLine?.(line);
+    },
+  });
+}

@@ -55,6 +55,10 @@ import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 import { compressImage } from '@krushisarva/shared/utils/mediaCompressor';
 import { DISTRICT_LIST, getTalukas, SELLING_SCOPES } from '@krushisarva/shared/constants/locations';
+import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { matchDistrict, sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
+import { canonicalDistrict, canonicalTaluka } from '../utils/businessProfile';
 import { SUBCATEGORIES_MAP } from '@krushisarva/shared/constants/categories';
 
 import { C, E, R, SP, T, alpha, useResponsive } from '../theme';
@@ -66,6 +70,13 @@ import {
   Card, ProgressBar, Badge,
   useConfirm, useToast,
 } from '../components/ui';
+
+/** The PIN code's village picker, in this app's SelectSheet. */
+function VillageSheet({ title, items, selected, onSelect, placeholder }) {
+  return (
+    <SelectSheet title={title} items={items} value={selected} onChange={onSelect} placeholder={placeholder} />
+  );
+}
 
 const UNITS = ['kg', 'quintal', 'gram', 'litre', 'ml', 'piece', 'bag', 'packet', 'bundle', 'acre', 'dozen'];
 const MAX_IMAGES = 5;
@@ -363,6 +374,45 @@ export default function AddProductScreen({ route, navigation }) {
     // under a field they just fixed reads as "still wrong".
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
   }, []);
+
+  // PIN code → district / taluka / village. Only a helper: an offer stores no
+  // PIN. The district list is Maharashtra-only with the older names
+  // (Osmanabad), so the lookup's names are mapped onto it, and a PIN outside
+  // Maharashtra leaves the location fields alone.
+  const [pincode, setPincode] = useState('');
+  const applyPin = useCallback((patch) => {
+    dirtyRef.current = true;
+    setForm((prev) => {
+      let next = prev;
+      if ('district' in patch) {
+        const district = canonicalDistrict(patch.district);
+        if (patch.district && !district) return prev;
+        if (district !== prev.district) next = { ...next, district, taluka: '' };
+      }
+      if ('taluka' in patch) {
+        next = { ...next, taluka: patch.taluka ? canonicalTaluka(next.district, patch.taluka) : '' };
+      }
+      if ('village' in patch) next = { ...next, village: patch.village };
+      return next;
+    });
+    if (patch.district) setErrors((prev) => (prev.district ? { ...prev, district: undefined } : prev));
+  }, []);
+  const pinValues = useMemo(() => ({
+    // Compared in the lookup's own names, so "Osmanabad" isn't read as a
+    // different district from "Dharashiv".
+    district: matchDistrict('Maharashtra', form.district) || form.district,
+    taluka: form.taluka,
+    village: form.village,
+  }), [form.district, form.taluka, form.village]);
+  const pin = usePincodeAutofill({
+    pincode,
+    values: pinValues,
+    fields: { district: 'district', taluka: 'taluka', village: 'village' },
+    strict: ['district', 'taluka'],
+    onChange: applyPin,
+  });
+  const pinOutsideState = pin.status === 'found' && !!pin.summary?.state
+    && pin.summary.state !== 'Maharashtra';
 
   // Live re-validation, but only after the first submit attempt. Validating
   // while someone types their first character is hostile.
@@ -1308,6 +1358,27 @@ export default function AddProductScreen({ route, navigation }) {
             step={sectionSteps.geo}
             total={totalSections}
           >
+            {/* Optional, and first: it fills district, taluka and village. */}
+            <Field
+              label={t('pincode.label', 'PIN code')}
+              error={pinOutsideState
+                ? t('sellerBizProfile.pincodeOutsideState', 'This PIN code is outside Maharashtra. Selling is currently limited to Maharashtra.')
+                : undefined}
+              hint={pin.status === 'idle' ? t('pincode.autofillHint', 'Enter your PIN code to fill in the rest automatically.') : undefined}
+            >
+              <TextField
+                value={pincode}
+                onChangeText={(v) => setPincode(sanitizePincode(v))}
+                placeholder={t('pincode.placeholder', '6-digit PIN code')}
+                keyboardType="number-pad"
+                maxLength={PINCODE_INPUT_MAX_LENGTH}
+                label={t('pincode.label', 'PIN code')}
+              />
+              {pin.status !== 'idle' && !pinOutsideState ? (
+                <PincodeLocationStatus lookup={pin} PickerComponent={VillageSheet} />
+              ) : null}
+            </Field>
+
             <Field
               label={t('products.district')}
               required

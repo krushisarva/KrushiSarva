@@ -38,6 +38,7 @@ import api from '@krushisarva/shared/services/api';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { prepareImageForFormData } from '@krushisarva/shared/utils/mediaCompressor';
 import { formatLocation } from '../../utils/location';
+import AnimalPincodeFill from './components/AnimalPincodeFill';
 import { invalidateFocusData } from '../../hooks/useFocusRefresh';
 import { classifyError } from '../../utils/apiError';
 
@@ -153,6 +154,9 @@ export default function AddAnimalListing({ navigation, route }) {
     vaccinated: false, healthCertificate: false, negotiable: false,
   }));
 
+  // True once the seller edits the location line by hand: a PIN typed after
+  // that shows the area it found but does not overwrite their words.
+  const [locationTyped, setLocationTyped] = useState(false);
   const [existingImages, setExistingImages] = useState(editing?.images || []);
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -229,6 +233,7 @@ export default function AddAnimalListing({ navigation, route }) {
       milkYield: '', price: '', description: '', location: defaultLocation,
       vaccinated: false, healthCertificate: false, negotiable: false,
     });
+    setLocationTyped(false);
     setDraftRestored(false);
   }, [defaultLocation]);
 
@@ -639,11 +644,22 @@ export default function AddAnimalListing({ navigation, route }) {
         {/* Location */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('addAnimal.locationSection')}</Text>
+          {/* PIN before the location line: it fills it. */}
+          <AnimalPincodeFill
+            onLocation={(line) => update('location', line)}
+            lineTypedByUser={locationTyped}
+            t={t}
+            labelStyle={styles.inputLabel}
+            inputStyle={styles.input}
+          />
           <InputField
             label={t('addAnimal.locationLabel')}
             placeholder={t('addAnimal.locationPlaceholder')}
             value={form.location}
-            onChangeText={(v) => update('location', v)}
+            onChangeText={(v) => {
+              update('location', v);
+              setLocationTyped(v.trim().length > 0);
+            }}
           />
           <View style={styles.gpsNote}>
             <Ionicons

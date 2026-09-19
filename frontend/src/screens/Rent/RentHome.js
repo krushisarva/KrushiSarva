@@ -391,23 +391,31 @@ const MachineryCard = memo(function MachineryCard({
       </View>
 
       <View style={S.mBody}>
-        <View style={S.mTopRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={S.mName} numberOfLines={1}>
-              {item.name}
+        {/* Name and price are stacked, not side by side: in a half-width grid
+            card a row of name + "₹2,500/hr" has no room, and the name ran
+            under the price. */}
+        <View style={S.mTopBlock}>
+          <Text style={S.mName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.brand ? (
+            <Text style={S.mBrand} numberOfLines={1}>
+              {item.brand}
+              {item.horsePower ? ` • ${item.horsePower}` : ""}
             </Text>
-            {item.brand ? (
-              <Text style={S.mBrand}>
-                {item.brand}
-                {item.horsePower ? ` • ${item.horsePower}` : ""}
+          ) : null}
+          <View style={S.mPriceRow}>
+            {/* pricePerHour is optional (Decimal? in the schema); without the
+                guard a day-only listing rendered a bare "₹/hr". */}
+            {item.pricePerHour != null ? (
+              <Text style={S.mPrice} numberOfLines={1}>
+                ₹{item.pricePerHour.toLocaleString()}/hr
               </Text>
             ) : null}
-          </View>
-          <View style={S.mPriceCol}>
-            <Text style={S.mPrice}>
-              ₹{item.pricePerHour?.toLocaleString()}/hr
-            </Text>
-            <Text style={S.mPriceDay}>
+            <Text
+              style={item.pricePerHour != null ? S.mPriceDay : S.mPrice}
+              numberOfLines={1}
+            >
               ₹{item.pricePerDay?.toLocaleString()}/day
             </Text>
           </View>
@@ -1635,36 +1643,32 @@ const S = StyleSheet.create({
   },
   workerBookedTxt: { fontSize: 10, fontWeight: "800" },
   mBody: { padding: KSPACE.s14 },
-  mTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: KSPACE.s8,
-    gap: KSPACE.s8,
-  },
-  // flexShrink + minWidth: at 2x text the price column ("₹/hr") grew and
-  // squeezed this column toward zero, so RN wrapped the machinery name one
-  // CHARACTER per line ("S h a k t i m a n" down the card). numberOfLines={1}
-  // does not prevent that — it only caps the line count, and a 1-char-wide
-  // column still renders 1 char. The minWidth is the actual guard.
+  mTopBlock: { marginBottom: KSPACE.s8 },
+  // Full card width now that the price sits on its own row below, so the name
+  // can no longer be squeezed into (or under) a neighbouring price column.
   mName: {
     fontSize: 16,
     fontWeight: TYPE.weight.black,
     color: COLORS.textDark,
-    flexShrink: 1,
-    minWidth: 90,
   },
   mBrand: {
     fontSize: 12,
     color: COLORS.textMedium,
     marginTop: KSPACE.s2,
   },
-  mPriceCol: { alignItems: "flex-end", flexShrink: 0 },
+  // Wraps: at 2x text "₹2,500/hr ₹18,000/day" is wider than a half card, so
+  // the day price drops to a second line instead of clipping.
+  mPriceRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    columnGap: KSPACE.s6,
+    marginTop: KSPACE.s4,
+  },
   mPrice: { fontSize: 15, fontWeight: "900", color: GREEN },
   mPriceDay: {
     fontSize: 11,
     color: COLORS.textMedium,
-    marginTop: KSPACE.s1,
   },
   mMetaRow: { flexDirection: "row", gap: KSPACE.s6, marginBottom: KSPACE.s8, flexWrap: "wrap" },
   ratingPill: {
