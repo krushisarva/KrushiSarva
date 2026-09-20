@@ -683,6 +683,19 @@ model OrderItem {
   /// reproducible even after the manufacturer publishes a new label.
   batchNumber   String?
   batchExpiry   DateTime?
+  /// How many of this line's units the LOT LEDGER actually gave up, frozen at
+  /// order time. NOT the same number as `quantity`: consumeOrderBatches clamps
+  /// every draw at what the lot physically held, so a seller whose lot quantities
+  /// under-cover the stockQty they are offering gives up fewer units than the
+  /// line sold. Nothing recorded the difference, so a cancel credited the LINE
+  /// quantity back and minted units onto a shelf the Kendra never had — the lot
+  /// then over-reported the physical stock to a recall, and FEFO went on
+  /// allocating units that did not exist. (stockQty is untouched by any of this:
+  /// it is the oversell guarantee and is restored in full by the stock path.)
+  /// NULL on every row written before this column existed. Their draw is
+  /// unrecoverable, so restoreOrderBatches falls back to `quantity` for them —
+  /// exactly what they did before, and right whenever the lots covered the sale.
+  batchQuantity Int?
   labelVersion  String?
   complianceSnapshot Json?
   /// Return eligibility decided by the BACKEND at order time from the product's
@@ -3024,8 +3037,11 @@ model ProductBatch {
   batchNumber   String
   manufactureDate DateTime?
   expiryDate    DateTime?
-  /// Units of this lot the seller still holds. Reduced on dispatch, zeroed when
-  /// the lot is quarantined or recalled.
+  /// Units of this lot the seller still holds. Reduced when an order ALLOCATES
+  /// the lot — order_items.batchNumber freezes the choice at order creation and
+  /// that snapshot is what a recall searches, so the ledger moves there and not
+  /// on dispatch — restored when that order is cancelled, and zeroed when the lot
+  /// is quarantined or recalled.
   quantity      Int      @default(0)
   status        BatchStatus @default(ACTIVE)
   quarantineReason String?

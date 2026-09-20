@@ -213,6 +213,28 @@
       }
     ]
   },
+  "413209": {
+    "pincode": "413209",
+    "found": true,
+    "postOffices": [
+      {
+        "name": "Madha",
+        "block": "Madha",
+        "district": "Solapur",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Sub Post Office"
+      },
+      {
+        "name": "Darfal",
+        "block": "Madha",
+        "district": "Solapur",
+        "state": "Maharashtra",
+        "delivery": true,
+        "branchType": "Branch Post Office"
+      }
+    ]
+  },
   "413501": {
     "pincode": "413501",
     "found": true,

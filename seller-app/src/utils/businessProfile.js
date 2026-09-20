@@ -152,6 +152,17 @@ export function canonicalDistrict(name) {
   return DISTRICT_LIST.find((d) => d.toLowerCase() === wanted) || '';
 }
 
+/**
+ * The district to save. A seller stored under a new name ("Dharashiv") is shown
+ * the picker's old one ("Osmanabad"), and sending that back renamed them on
+ * every save, a village edit included, while the farmer app uses the new name.
+ * The stored spelling is kept unless the seller picked a different district.
+ */
+function districtForPayload(formDistrict, storedDistrict) {
+  const stored = clean(storedDistrict);
+  return stored && DISTRICT_ALIASES[stored.toLowerCase()] === formDistrict ? stored : formDistrict;
+}
+
 /** The stored taluka as it appears under `district`, or ''. */
 export function canonicalTaluka(district, taluka) {
   const raw = clean(taluka).toLowerCase();
@@ -341,7 +352,7 @@ export function buildBusinessProfilePayload(form, user) {
     // FARMER → SELLER promotion; the backend records it as consent.
     sellerConsent: true,
     businessType: form.businessType,
-    district: form.district,
+    district: districtForPayload(form.district, user?.district),
     taluka: form.taluka,
     village: clean(form.village),
     state: 'Maharashtra',
@@ -351,10 +362,13 @@ export function buildBusinessProfilePayload(form, user) {
   const name = clean(form.name);
   if (name !== clean(user?.name)) payload.name = name;
 
-  // The API rejects an empty PIN, and has no way to clear one, so only a new
-  // PIN is sent.
+  // Sent whenever it differs from what is stored, '' included — the API reads an
+  // empty PIN as "clear it". It used to be dropped, so a stored PIN that fails
+  // lookup (which blocks Save until the field is emptied) came straight back on
+  // the next load and blocked the save after that one too. The district the PIN
+  // filled in is left alone: it is still a valid choice, and it is required.
   const pincode = clean(form.pincode);
-  if (pincode && pincode !== clean(user?.pincode)) payload.pincode = pincode;
+  if (pincode !== clean(user?.pincode)) payload.pincode = pincode;
 
   const sendIfChanged = (key, next, stored) => {
     const prev = clean(stored);

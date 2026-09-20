@@ -287,7 +287,13 @@ export default function CartScreen({ navigation }) {
   // names the line it is about.
   const blockingIssues = quote?.issues || [];
 
+  // Bumped on every +/- and remove. A cart load that started before the latest
+  // change would put the OLD quantity back on screen, so its result is dropped;
+  // the re-quote scheduled after that change brings the fresh one.
+  const changeSeq = useRef(0);
+
   const fetchCart = useCallback(async () => {
+    const seq = changeSeq.current;
     try {
       // Send the delivery PIN CODE so the cart quote is priced for where the
       // order is actually going. Without it the cart ignored the address
@@ -296,6 +302,7 @@ export default function CartScreen({ navigation }) {
       // which does send it.
       const params = defaultPincode ? { pincode: defaultPincode } : undefined;
       const { data } = await api.get('/agristore/cart', { params });
+      if (seq !== changeSeq.current) return;
       setItems(data.data.items || []);
       setTotal(data.data.total || 0);
       setQuote(data.data.quote || null);
@@ -333,6 +340,19 @@ export default function CartScreen({ navigation }) {
 
   useEffect(() => { fetchCart(); }, [fetchCart]);
 
+  // Subtotal, delivery and total are the SERVER's quote, so after a change the
+  // cart has to be re-priced — before, the summary kept the old numbers while
+  // the line showed the new quantity. Debounced so tapping + five times costs
+  // one reload, not five.
+  const fetchCartRef = useRef(fetchCart);
+  fetchCartRef.current = fetchCart;
+  const requoteTimer = useRef(null);
+  const scheduleRequote = useCallback(() => {
+    clearTimeout(requoteTimer.current);
+    requoteTimer.current = setTimeout(() => fetchCartRef.current(), 400);
+  }, []);
+  useEffect(() => () => clearTimeout(requoteTimer.current), []);
+
   const handleRefresh = useCallback(() => { setRefreshing(true); fetchCart(); }, [fetchCart]);
 
   // ── Lines are keyed on the CART ROW, not on the product ───────────────────
@@ -349,20 +369,29 @@ export default function CartScreen({ navigation }) {
     const item = items.find(i => rowKey(i) === key);
     if (!item) return;
     const price = unitPrice(item);
+    changeSeq.current += 1;
     setItems(prev => prev.map(i => (rowKey(i) === key ? { ...i, quantity: newQty } : i)));
     setTotal(prev => prev - price * item.quantity + price * newQty);
     // The cart API is re-keyed to the listing; it still resolves a product id for
     // older clients, so this path works either way.
-    try { await api.put(`/agristore/cart/${key}`, { quantity: newQty }); }
-    catch { fetchCart(); }
+    try {
+      await api.put(`/agristore/cart/${key}`, { quantity: newQty });
+      scheduleRequote();
+    } catch (err) {
+      // Say why ("Only 5 in stock") instead of the number silently snapping back.
+      Alert.alert(t('product.error'), err.response?.data?.error?.message || t('cart.qtyError'));
+      changeSeq.current += 1;
+      fetchCart();
+    }
   }
 
   async function handleRemove(key) {
     const removed = items.find(i => rowKey(i) === key);
+    changeSeq.current += 1;
     setItems(prev => prev.filter(i => rowKey(i) !== key));
     if (removed) setTotal(prev => prev - unitPrice(removed) * removed.quantity);
-    try { await api.delete(`/agristore/cart/${key}`); refreshCart(); }
-    catch { fetchCart(); refreshCart(); }
+    try { await api.delete(`/agristore/cart/${key}`); refreshCart(); scheduleRequote(); }
+    catch { changeSeq.current += 1; fetchCart(); refreshCart(); }
   }
 
   function handleCheckout() {

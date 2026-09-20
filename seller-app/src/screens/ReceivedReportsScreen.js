@@ -35,13 +35,18 @@ import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api from '@krushisarva/shared/services/api';
 import { CropIcon } from '@krushisarva/shared/components/CropIcons';
 
-import { C, R, SP, T, riskMeta, useResponsive } from '../theme';
-import useAsyncData from '../hooks/useAsyncData';
+import { C, R, SP, T, riskLabel, riskMeta, useResponsive } from '../theme';
+import usePagedList from '../hooks/usePagedList';
 import { useEntrance } from '../hooks/useMotion';
+import { confidencePercent, reportValue } from '../utils/cropReport';
 import {
   Screen, AppHeader, Card, Chip, FilterBar, Badge, PressableRow,
-  EmptyState, ErrorState, SkeletonList,
+  EmptyState, ErrorState, ListFooter, SkeletonList,
 } from '../components/ui';
+
+// The route's default page. It used to be the whole inbox: the 21st report
+// and every older one were unreachable.
+const PAGE_SIZE = 20;
 
 const TABS = [
   { key: 'ALL', tKey: 'inbox.tabAll', fallback: 'All' },
@@ -81,6 +86,11 @@ const ReportRow = React.memo(function ReportRow({ item, index, onPress, t, now }
     farmer.village,
   ].filter(Boolean).join(' · ');
   const when = relativeTime(item.createdAt, t, now);
+  // The scan saves 'unknown' when the farmer's stage is missing, which read as
+  // "Tomato · unknown" — a placeholder is not context, so it is dropped.
+  const stage = reportValue(report.growthStage);
+  // Stored as a 0–1 fraction; rounding it directly showed every report as 0–1%.
+  const confidence = confidencePercent(report.confidenceScore);
 
   return (
     <Animated.View style={entrance}>
@@ -95,7 +105,7 @@ const ReportRow = React.memo(function ReportRow({ item, index, onPress, t, now }
             disease,
             report.cropType,
             farmerLabel,
-            report.riskLevel ? `${t('share.risk', 'Risk')}: ${report.riskLevel}` : null,
+            report.riskLevel ? `${t('share.risk', 'Risk')}: ${riskLabel(report.riskLevel, t)}` : null,
             when,
           ].filter(Boolean).join('. ')}
           accessibilityHint={t('inbox.openHint', 'Opens the full report so you can reply')}
@@ -106,9 +116,9 @@ const ReportRow = React.memo(function ReportRow({ item, index, onPress, t, now }
             {unread ? <Badge label={t('inbox.new', 'New')} color={C.brand} filled /> : null}
           </View>
 
-          {report.cropType || report.growthStage ? (
+          {report.cropType || stage ? (
             <Text style={ri.crop} numberOfLines={1}>
-              {[report.cropType, report.growthStage].filter(Boolean).join(' · ')}
+              {[report.cropType, stage].filter(Boolean).join(' · ')}
             </Text>
           ) : null}
 
@@ -121,8 +131,8 @@ const ReportRow = React.memo(function ReportRow({ item, index, onPress, t, now }
             <View style={[ri.riskPill, { backgroundColor: risk.tint }]}>
               <Ionicons name={risk.icon} size={12} color={risk.color} />
               <Text style={[ri.riskTxt, { color: risk.color }]} numberOfLines={1}>
-                {report.riskLevel || t('common.unknown', 'UNKNOWN')}
-                {report.confidenceScore != null ? ` · ${Math.round(report.confidenceScore)}%` : ''}
+                {report.riskLevel ? riskLabel(report.riskLevel, t) : t('common.unknown', 'UNKNOWN')}
+                {confidence != null ? ` · ${confidence}%` : ''}
               </Text>
             </View>
 
@@ -148,21 +158,21 @@ export default function ReceivedReportsScreen({ navigation }) {
   const { gutter, isExpanded, contentMaxWidth } = useResponsive();
   const [filter, setFilter] = useState('ALL');
 
-  const inbox = useAsyncData(
-    useCallback(({ signal }) => {
-      const params = filter === 'ALL' ? {} : { status: filter };
-      return api.get('/crop-reports/seller/inbox', { params, signal })
-        .then((res) => res.data.data || []);
+  // Paged like Orders / MyProducts. A tab change rebuilds the list from page 1;
+  // focus refreshes it so a report just opened loses its "New" badge.
+  const inbox = usePagedList({
+    mode: 'page',
+    limit: PAGE_SIZE,
+    deps: [filter],
+    refetchOnFocus: true,
+    errorFallback: t('share.loadFailed', 'Could not load reports.'),
+    fetchPage: useCallback(({ page, limit, signal }) => {
+      const params = { page, limit, ...(filter === 'ALL' ? {} : { status: filter }) };
+      return api.get('/crop-reports/seller/inbox', { params, signal });
     }, [filter]),
-    [filter],
-    {
-      initialData: [],
-      refetchOnFocus: true,
-      errorFallback: t('share.loadFailed', 'Could not load reports.'),
-    },
-  );
+  });
 
-  const items = inbox.data || [];
+  const items = inbox.items;
 
   // Recomputed once per render pass, not once per row.
   const now = useMemo(() => Date.now(), [items]);
@@ -220,6 +230,17 @@ export default function ReceivedReportsScreen({ navigation }) {
               onRefresh={inbox.refresh}
               tintColor={C.brand}
               colors={[C.brand]}
+            />
+          }
+          onEndReached={inbox.loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            <ListFooter
+              loading={inbox.loadingMore}
+              error={inbox.moreError}
+              onRetry={inbox.retryMore}
+              hasMore={inbox.hasMore}
+              itemCount={items.length}
             />
           }
           ListEmptyComponent={

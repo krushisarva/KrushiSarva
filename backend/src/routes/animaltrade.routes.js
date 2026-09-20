@@ -41,6 +41,7 @@ import { maxLen } from '../middleware/textLength.js';
 import { rateLimiter, clientIp } from '../middleware/rateLimit.js';
 import { idempotency } from '../middleware/idempotency.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtContainsAny, districtContainsAnySql } from '../utils/districtAliases.js';
 import { createUploader, uploadFiles } from '../config/cloudinary.js';
 import { imageUploadLimit } from '../middleware/uploadLimit.js';
 import prisma from '../config/db.js';
@@ -202,7 +203,9 @@ function buildWhere(f) {
   if (f.animal)   and.push({ animal: { equals: f.animal, mode: 'insensitive' } });
   if (f.breed)    and.push({ breed: { contains: f.breed, mode: 'insensitive' } });
   if (f.gender)   and.push({ gender: f.gender });
-  if (f.district) and.push({ sellerLocation: { contains: f.district, mode: 'insensitive' } });
+  // Any spelling of a renamed district: a PIN resolves to Dharashiv, a seller's
+  // location text may still say Osmanabad.
+  if (f.district) and.push(districtContainsAny('sellerLocation', f.district));
   if (f.verified === true)   and.push({ verified: true });
   if (f.vaccinated === true) and.push({ vaccinated: true });
   if (f.healthCertificate === true) and.push({ healthCertificate: true });
@@ -259,7 +262,7 @@ function buildSqlFilters(f) {
   if (f.animal)   filters.push(Prisma.sql`animal ILIKE ${f.animal}`);
   if (f.breed)    filters.push(Prisma.sql`breed ILIKE '%' || ${f.breed} || '%'`);
   if (f.gender && GENDER_SQL[f.gender]) filters.push(GENDER_SQL[f.gender]);
-  if (f.district) filters.push(Prisma.sql`"sellerLocation" ILIKE '%' || ${f.district} || '%'`);
+  if (f.district) filters.push(districtContainsAnySql('"sellerLocation"', f.district));
   if (f.verified === true)          filters.push(Prisma.sql`verified = true`);
   if (f.vaccinated === true)        filters.push(Prisma.sql`vaccinated = true`);
   if (f.healthCertificate === true) filters.push(Prisma.sql`"healthCertificate" = true`);

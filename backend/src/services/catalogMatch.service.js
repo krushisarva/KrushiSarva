@@ -31,6 +31,7 @@ import prisma from '../config/db.js';
 import { Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
 import { getSetting } from './settings.service.js';
+import { activeSellerWhere } from './buyBox.service.js';
 
 /**
  * The `%` operator tests against the session GUC pg_trgm.similarity_threshold,
@@ -44,6 +45,28 @@ const TRGM_OPERATOR_FLOOR = 0.3;
 
 /** Cap on rows pulled back from any single trigram probe. */
 const CANDIDATE_LIMIT = 25;
+
+/**
+ * The catalog rows that count for a seller's search and duplicate check.
+ *
+ * Without a seller: approved products and every product awaiting review (the
+ * admin path and the legacy create).
+ *
+ * For a seller: approved products, and products awaiting review only when THIS
+ * seller proposed them. POST /listings refuses an offer on another seller's
+ * unreviewed product, so matching one sent the seller to a product they could
+ * neither sell nor re-create — a dead end. Their own proposal now goes to review
+ * too, and the admin merges the pair; nothing goes on sale unreviewed.
+ */
+function statusWhere(sellerId) {
+  if (!sellerId) return { status: { in: ['APPROVED', 'PENDING_QC'] } };
+  return { OR: [{ status: 'APPROVED' }, { status: 'PENDING_QC', createdBySellerId: sellerId }] };
+}
+
+/** Another seller's product that is still awaiting review. */
+function isOthersUnreviewed(product, sellerId) {
+  return !!sellerId && product?.status === 'PENDING_QC' && product.createdBySellerId !== sellerId;
+}
 
 /**
  * Normalise a free-text product name for comparison.
@@ -109,20 +132,25 @@ async function thresholds() {
  * @param {number}  minScore    inclusive similarity floor
  * @param {?string} categoryId  restrict to one category when known
  * @param {?string} excludeId   the row being edited
+ * @param {?string} sellerId    see statusWhere()
  */
-async function trigramCandidates(name, minScore, categoryId, excludeId) {
+async function trigramCandidates(name, minScore, categoryId, excludeId, sellerId = null) {
   const probe = String(name || '').trim();
   if (probe.length < 3) return []; // trigrams need 3 chars to mean anything
 
   const catFilter = categoryId ? Prisma.sql`AND p."categoryId" = ${categoryId}` : Prisma.empty;
   const exclFilter = excludeId ? Prisma.sql`AND p."id" <> ${excludeId}` : Prisma.empty;
+  // Mirrors statusWhere().
+  const statusFilter = sellerId
+    ? Prisma.sql`AND (p."status" = 'APPROVED' OR (p."status" = 'PENDING_QC' AND p."createdBySellerId" = ${sellerId}))`
+    : Prisma.sql`AND p."status" IN ('APPROVED', 'PENDING_QC')`;
 
   return prisma.$queryRaw`
     SELECT p."id", p."name", p."brand", p."manufacturer", p."categoryId",
            similarity(p."name", ${probe}) AS "similarity"
     FROM "products" p
     WHERE p."name" % ${probe}
-      AND p."status" IN ('APPROVED', 'PENDING_QC')
+      ${statusFilter}
       ${catFilter}
       ${exclFilter}
       AND similarity(p."name", ${probe}) >= ${minScore}
@@ -162,18 +190,21 @@ export async function resolveCanonicalProductId(productId) {
  * Each hit carries an offer summary so the seller sees the thing that matters —
  * "3 Kendras already sell this, from ₹1,150" — before deciding to attach.
  *
+ * `sellerId` (the searching seller) leaves out other sellers' products that are
+ * still awaiting review — see statusWhere().
+ *
  * @returns {Promise<{ matchType: 'gtin'|'model'|'fuzzy'|'none', results: object[] }>}
  */
-export async function searchCatalog({ q, gtin, brand, categoryId, limit = 10 }) {
+export async function searchCatalog({ q, gtin, brand, categoryId, limit = 10, sellerId = null }) {
   const take = Math.min(Math.max(Number(limit) || 10, 1), 25);
 
   // 1. Exact GTIN — a barcode match is definitive, so it short-circuits.
   if (gtin) {
     const variant = await prisma.productVariant.findUnique({
       where: { gtin: String(gtin).trim() },
-      select: { productId: true },
+      select: { productId: true, product: { select: { status: true, createdBySellerId: true } } },
     });
-    if (variant) {
+    if (variant && !isOthersUnreviewed(variant.product, sellerId)) {
       const results = await hydrate([variant.productId]);
       if (results.length) return { matchType: 'gtin', results };
     }
@@ -185,7 +216,7 @@ export async function searchCatalog({ q, gtin, brand, categoryId, limit = 10 }) 
       where: {
         brand: { equals: String(brand).trim(), mode: 'insensitive' },
         modelNumber: { equals: String(q).trim(), mode: 'insensitive' },
-        status: { in: ['APPROVED', 'PENDING_QC'] },
+        ...statusWhere(sellerId),
       },
       select: { id: true },
       take,
@@ -196,7 +227,7 @@ export async function searchCatalog({ q, gtin, brand, categoryId, limit = 10 }) 
   // 3. Trigram on name.
   if (q) {
     const { suggest } = await thresholds();
-    const cands = await trigramCandidates(q, suggest, categoryId, null);
+    const cands = await trigramCandidates(q, suggest, categoryId, null, sellerId);
     if (cands.length) {
       const ordered = cands.slice(0, take).map((c) => c.id);
       const scoreById = new Map(cands.map((c) => [c.id, Number(c.similarity)]));
@@ -211,12 +242,14 @@ export async function searchCatalog({ q, gtin, brand, categoryId, limit = 10 }) 
 }
 
 /**
- * Load catalog rows by id, preserving nothing about order (callers re-sort), with
- * the variant list and a live offer summary per variant.
+ * Load catalog rows by id, in the order of `ids`, with the variant list (oldest
+ * first) and a live offer summary per variant. The order is deterministic
+ * because a 409's candidate list is shown to the seller; the client picks by
+ * `productId`, never by position.
  */
 async function hydrate(ids) {
   if (!ids.length) return [];
-  const products = await prisma.product.findMany({
+  const rows = await prisma.product.findMany({
     where: { id: { in: ids } },
     select: {
       id: true, name: true, nameHi: true, nameMr: true, brand: true, manufacturer: true,
@@ -225,16 +258,33 @@ async function hydrate(ids) {
       category: { select: { id: true, name: true, icon: true, color: true } },
       variants: {
         select: { id: true, attributes: true, unit: true, gtin: true, sku: true, isDefault: true },
-        orderBy: { createdAt: 'asc' },
+        // Variants created together can share a createdAt.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       },
     },
   });
+  const byId = new Map(rows.map((p) => [p.id, p]));
+  const products = ids.map((id) => byId.get(id)).filter(Boolean);
 
   const variantIds = products.flatMap((p) => p.variants.map((v) => v.id));
+  // The offer SUMMARY is gated on the seller account, like the storefront card
+  // and the buy box: "3 Kendras already sell this, from Rs 1,150" is a claim about
+  // what a buyer can actually buy, and a deactivated Kendra's price would talk the
+  // seller out of stocking something nobody is in fact selling.
+  //
+  // This does NOT weaken the duplicate gate, and the gate is why the filter goes
+  // here and not on the candidate lookups: a catalog entry is matched from
+  // `products` (GTIN / brand+model / trigram) with no reference to offers at all,
+  // so `products` — and therefore the 409's candidate list — is identical either
+  // way. Only the counts and prices decorated onto it change. Filtering the
+  // candidates themselves by live offers is what would let a duplicate through.
   const offerAgg = variantIds.length
     ? await prisma.sellerListing.groupBy({
         by: ['variantId'],
-        where: { variantId: { in: variantIds }, status: 'ACTIVE', stockQty: { gt: 0 } },
+        where: {
+          variantId: { in: variantIds }, status: 'ACTIVE', stockQty: { gt: 0 },
+          ...activeSellerWhere(),
+        },
         _count: { _all: true },
         _min: { sellingPrice: true },
       })
@@ -262,10 +312,13 @@ async function hydrate(ids) {
  * seller "this already exists — attach to it" and hands back the id to attach to,
  * which is the entire point of the flow.
  *
- * @returns {Promise<{ duplicate: boolean, reason: ?string, productId: ?string, candidates: object[] }>}
+ * `sellerId` (the seller creating) leaves other sellers' products that are still
+ * awaiting review out of the check — see statusWhere().
+ *
+ * @returns {Promise<{ duplicate: boolean, reason: ?string, productId: ?string, inReview?: boolean, candidates: object[] }>}
  */
 export async function findCatalogDuplicate({
-  categoryId, brand, manufacturer, name, modelNumber, gtin, excludeProductId = null,
+  categoryId, brand, manufacturer, name, modelNumber, gtin, excludeProductId = null, sellerId = null,
 }) {
   const none = { duplicate: false, reason: null, productId: null, candidates: [] };
   try {
@@ -274,9 +327,15 @@ export async function findCatalogDuplicate({
     if (gtin) {
       const v = await prisma.productVariant.findUnique({
         where: { gtin: String(gtin).trim() },
-        select: { productId: true },
+        select: { productId: true, product: { select: { status: true, createdBySellerId: true } } },
       });
       if (v && v.productId !== excludeProductId) {
+        // The barcode is taken whatever the product's state, so this still
+        // refuses. But another seller's unreviewed product is nothing this
+        // seller can attach to yet: no productId, and `inReview` says why.
+        if (isOthersUnreviewed(v.product, sellerId)) {
+          return { duplicate: true, reason: 'gtin', productId: null, inReview: true, candidates: [] };
+        }
         return { duplicate: true, reason: 'gtin', productId: v.productId, candidates: await hydrate([v.productId]) };
       }
     }
@@ -288,7 +347,7 @@ export async function findCatalogDuplicate({
     const exact = await prisma.product.findFirst({
       where: {
         normalizedKey: key,
-        status: { in: ['APPROVED', 'PENDING_QC'] },
+        ...statusWhere(sellerId),
         ...(excludeProductId ? { id: { not: excludeProductId } } : {}),
       },
       select: { id: true },
@@ -304,7 +363,7 @@ export async function findCatalogDuplicate({
         where: {
           brand: { equals: String(brand).trim(), mode: 'insensitive' },
           modelNumber: { equals: String(modelNumber).trim(), mode: 'insensitive' },
-          status: { in: ['APPROVED', 'PENDING_QC'] },
+          ...statusWhere(sellerId),
           ...(excludeProductId ? { id: { not: excludeProductId } } : {}),
         },
         select: { id: true },
@@ -316,7 +375,7 @@ export async function findCatalogDuplicate({
     //    seller is shown the candidates but allowed through, because a false block
     //    on a genuinely new product is a dead end for the seller with no recourse.
     const { block, suggest } = await thresholds();
-    const cands = await trigramCandidates(name, suggest, categoryId, excludeProductId);
+    const cands = await trigramCandidates(name, suggest, categoryId, excludeProductId, sellerId);
     if (!cands.length) return none;
 
     // A DIFFERENT, EXPLICIT brand is decisive: "Bt Cotton Seed" from Mahyco and

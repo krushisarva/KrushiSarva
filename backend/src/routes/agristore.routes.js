@@ -46,10 +46,12 @@
 import { Router } from 'express';
 import { body, query } from 'express-validator';
 import { authenticate, optionalAuth, requireRole } from '../middleware/auth.js';
+import { requireSellerKyc, canSell, sendKycRequired, goesLive } from '../middleware/sellerKyc.js';
 import { uuidParamGuard } from '../middleware/uuidParams.js';
 import { validate } from '../middleware/validate.js';
 import { maxLen } from '../middleware/textLength.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtIn } from '../utils/districtAliases.js';
 import prisma from '../config/db.js';
 import logger from '../utils/logger.js';
 import { cachedListing, bumpListingVersion } from '../utils/listingCache.js';
@@ -77,9 +79,11 @@ import {
 } from '../services/catalogMatch.service.js';
 import {
   getProductBuyBox, rankOffersForVariant, rankOffersForVariants, cheapestOfferByProduct, listingGeoWhere,
+  activeSellerWhere,
   invalidateBuyBox, syncListingStockStatus,
 } from '../services/buyBox.service.js';
 import { transitionTimestampFor } from '../services/sellerMetrics.service.js';
+import { planRefund, settleRefund } from '../services/orderRefund.service.js';
 import { getSetting } from '../services/settings.service.js';
 import { idempotency } from '../middleware/idempotency.js';
 import {
@@ -87,11 +91,12 @@ import {
 } from '../services/shopPricing.service.js';
 import {
   evaluateSaleEligibility, complianceIssuesFrom, getProductSafetyPanel,
+  consumeOrderBatches, restoreOrderBatches,
 } from '../services/shopCompliance.service.js';
 import { checkProductServiceability, normalizePincode } from '../services/serviceability.service.js';
 import {
   createIntent, findIntent, markIntentPaid, markIntentFailed, attachOrderToIntent,
-  receiptFor, intentPublicStatus,
+  receiptFor, intentPublicStatus, bindIntentToOrderTx, refundUnorderedPayment,
 } from '../services/shopPayment.service.js';
 import {
   holdStock, heldFor, consumeReservations, releaseReservations, reservationConfig,
@@ -415,7 +420,8 @@ router.get(
       ...(Object.keys(priceFilter).length ? { sellingPrice: priceFilter } : {}),
       // A "verified seller" badge must come from a platform-controlled field, so
       // the filter reads the seller's KYC state — never a seller-settable flag.
-      ...(req.query.verifiedSeller === 'true' ? { seller: { kycStatus: 'VERIFIED' } } : {}),
+      // One `seller` key: a deactivated seller's offers never list, verified or not.
+      ...activeSellerWhere(req.query.verifiedSeller === 'true' ? { kycStatus: 'VERIFIED' } : {}),
       ...listingGeoWhere(buyer),
     };
     and.push({
@@ -441,7 +447,7 @@ router.get(
           // whose stock still lives on the product row.
           ...(req.query.inStock === 'true' ? { stock: { gt: 0 } } : {}),
           ...(featured ? { isFeatured: true } : {}),
-          ...(buyer.district ? { OR: [{ district: { equals: buyer.district, mode: 'insensitive' } }, { district: null }] } : {}),
+          ...(buyer.district ? { OR: [{ district: districtIn(buyer.district) }, { district: null }] } : {}),
         }]),
       ],
     });
@@ -964,9 +970,13 @@ async function resolveCartTarget({ listingId, productId, variantId, buyer }) {
   if (listingId) {
     const listing = await prisma.sellerListing.findUnique({
       where: { id: listingId },
-      include: { variant: { select: { id: true, productId: true } } },
+      include: {
+        variant: { select: { id: true, productId: true } },
+        seller: { select: { isActive: true } },
+      },
     });
-    return listing || null;
+    // A deactivated seller's offer is not for sale, even by its exact id.
+    return listing && listing.seller?.isActive !== false ? listing : null;
   }
   if (!productId) return null;
   const canonical = await resolveCanonicalProductId(productId);
@@ -1107,8 +1117,11 @@ router.post(
       // concurrent adds could both pass the stock check and over-fill the cart.
       // Read + validate + write now share one transaction.
       const item = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
-        const fresh = await tx.sellerListing.findUnique({ where: { id: target.id } });
-        if (!fresh || fresh.status !== 'ACTIVE') {
+        const fresh = await tx.sellerListing.findUnique({
+          where: { id: target.id },
+          include: { seller: { select: { isActive: true } } },
+        });
+        if (!fresh || fresh.status !== 'ACTIVE' || fresh.seller?.isActive === false) {
           throw Object.assign(new Error('This offer is no longer available'), { statusCode: 400, expose: true });
         }
 
@@ -1157,10 +1170,20 @@ router.post(
   }
 );
 
-/** Find a cart row by listing id, falling back to product id for older clients. */
+/**
+ * Find the caller's cart row by listing id, then by the row's own id, then by
+ * product id for older clients.
+ *
+ * The row id matters for a line with no offer (listingId null — added for a
+ * product that has no seller listing): the app keys such a line on
+ * `listingId || id`, so it sends the ROW id. Without this lookup every +/- on
+ * that line was a 404, the app reloaded the cart, and the quantity snapped
+ * back; delete answered "deleted" and removed nothing.
+ */
 async function findCartRow(userId, key) {
   return (
     (await prisma.cartItem.findFirst({ where: { userId, listingId: key } })) ||
+    (await prisma.cartItem.findFirst({ where: { userId, id: key } })) ||
     (await prisma.cartItem.findFirst({ where: { userId, productId: key } }))
   );
 }
@@ -1175,11 +1198,16 @@ router.put(
     if (!row) return sendNotFound(res, 'Cart item');
 
     const listing = row.listingId
-      ? await prisma.sellerListing.findUnique({ where: { id: row.listingId } })
+      ? await prisma.sellerListing.findUnique({
+        where: { id: row.listingId },
+        include: { seller: { select: { isActive: true } } },
+      })
       : null;
 
     if (listing) {
-      if (listing.status !== 'ACTIVE') return sendError(res, 'This offer is no longer available', 400);
+      if (listing.status !== 'ACTIVE' || listing.seller?.isActive === false) {
+        return sendError(res, 'This offer is no longer available', 400);
+      }
       if (req.body.quantity < listing.minOrderQty) {
         return sendError(res, `This seller's minimum order is ${listing.minOrderQty}`, 400);
       }
@@ -1258,7 +1286,10 @@ async function validateCartForCheckout(tx, userId, { reservedByListing = null } 
 
   const listingIds = cartItems.map((i) => i.listingId).filter(Boolean);
   const fresh = listingIds.length
-    ? await tx.sellerListing.findMany({ where: { id: { in: listingIds } } })
+    ? await tx.sellerListing.findMany({
+      where: { id: { in: listingIds } },
+      include: { seller: { select: { isActive: true } } },
+    })
     : [];
   const freshById = new Map(fresh.map((l) => [l.id, l]));
 
@@ -1282,7 +1313,9 @@ async function validateCartForCheckout(tx, userId, { reservedByListing = null } 
       // purchase it exists to protect. INACTIVE and BLOCKED never pass — those
       // are seller and trust-and-safety decisions, not stock arithmetic.
       const passableForHolder = alreadyHeld > 0 && l?.status === 'OUT_OF_STOCK';
-      if (!l || (l.status !== 'ACTIVE' && !passableForHolder)) {
+      // A deactivated seller cannot be paid, even by a buyer already holding
+      // their units: nobody is left to confirm, ship or cancel the order.
+      if (!l || l.seller?.isActive === false || (l.status !== 'ACTIVE' && !passableForHolder)) {
         throw Object.assign(new Error(`"${label}" is no longer available from this seller`), { statusCode: 400, expose: true });
       }
       // The CATALOG row, not just the seller's offer.
@@ -1358,19 +1391,30 @@ async function validateCartForCheckout(tx, userId, { reservedByListing = null } 
  * JOIN products for the name and image, so an admin edit silently rewrote what a
  * farmer's past order said they had bought.
  */
-function withOrderItemSnapshots(orderItems, quote, eligibility) {
+function withOrderItemSnapshots(orderItems, quote, eligibility, batchStamps) {
   const extras = orderItemExtrasFromQuote(quote);
   return orderItems.map(({ cartItemId, ...item }) => {
     const extra = extras.get(cartItemId) || {};
     const verdict = item.listingId ? eligibility?.get(item.listingId) : null;
+    // The lot the transaction actually drew from, which is the one whose quantity
+    // was just reduced. The verdict's own pick is the fallback for a line that
+    // drew from nothing — a seller whose lot quantities do not cover the sale.
+    const drawn = item.listingId ? batchStamps?.get(item.listingId) : null;
     return {
       ...item,
       ...extra,
       // Which physical lot was allocated, and which label revision was in force.
       // Without these a recall cannot identify its buyers and the safety text
       // shown at purchase is unreproducible.
-      batchNumber: verdict?.batch?.batchNumber ?? null,
-      batchExpiry: verdict?.batch?.expiryDate ?? null,
+      batchNumber: drawn?.batchNumber ?? verdict?.batch?.batchNumber ?? null,
+      batchExpiry: drawn?.batchExpiry ?? verdict?.batch?.expiryDate ?? null,
+      // How many units the lot ledger actually gave up, which is NOT `quantity`
+      // when a seller's lot quantities under-cover the stock they are selling.
+      // A cancel credits back this number; without it, the difference between
+      // what was sold and what the lots held was minted onto the lot.
+      // Null only for a line no allocation ran for (nothing regulated to draw),
+      // where batchNumber is null too and the restore skips it anyway.
+      batchQuantity: drawn?.batchQuantity ?? null,
       labelVersion: verdict?.labelVersion ?? null,
     };
   });
@@ -1490,6 +1534,10 @@ router.post(
         const { orderItems, deltas, productDeltas } = await validateCartForCheckout(tx, req.user.id);
         assertCartMatchesQuote(orderItems, quote);
 
+        // Draw the regulated lines from their lots before the snapshot is written,
+        // so what order_items records is the lot whose quantity just went down.
+        const batchStamps = await consumeOrderBatches(tx, orderItems, eligibility);
+
         const o = await tx.order.create({
           data: {
             userId: req.user.id,
@@ -1506,7 +1554,7 @@ router.post(
             deliveryAddress,
             paymentMethod,
             notes,
-            items: { create: withOrderItemSnapshots(orderItems, quote, eligibility) },
+            items: { create: withOrderItemSnapshots(orderItems, quote, eligibility, batchStamps) },
           },
           include: { items: { include: { product: true } } },
         });
@@ -1558,7 +1606,10 @@ router.get('/orders', authenticate, async (req, res) => {
     prisma.order.findMany({
       where: { userId: req.user.id },
       include,
-      orderBy: { createdAt: 'desc' },
+      // id tiebreak, for the same reason as /seller/orders: two orders placed in
+      // the same millisecond tie on createdAt and the offset sort is then not
+      // total. Cheaper than reasoning about whether it can happen.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -1578,50 +1629,84 @@ router.get('/orders/:id', authenticate, async (req, res) => {
 });
 
 router.put('/orders/:id/cancel', authenticate, velocityGuard(VELOCITY_ACTIONS.REFUND), refundAbuseGuard(), async (req, res) => {
-  const order = await prisma.order.findFirst({
-    where: { id: req.params.id, userId: req.user.id },
-    include: { items: true },
-  });
-  if (!order) return sendNotFound(res, 'Order');
-  if (order.status !== 'PENDING') {
-    return sendError(res, `Cannot cancel a ${order.status.toLowerCase()} order. Only pending orders can be cancelled.`, 400);
+  let result;
+  try {
+    // Read INSIDE a Serializable transaction. The order used to be read outside
+    // it, so a seller cancelling or shipping in between went unseen: their
+    // already-restocked units were restocked a second time.
+    result = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: { id: req.params.id, userId: req.user.id },
+        include: { items: true },
+      });
+      if (!order) return { notFound: true };
+      if (order.status !== 'PENDING') return { refused: order.status };
+
+      // A line a seller has moved on (confirmed, shipped, delivered) makes the
+      // order past cancelling, even where an older rollup stored it as PENDING.
+      if (order.items.some((i) => i.status !== 'PENDING' && i.status !== 'CANCELLED')) {
+        return { refused: 'CONFIRMED' };
+      }
+
+      // Only lines still open. A line a seller already cancelled was restocked
+      // by that cancel; restocking it again minted stock.
+      const open = order.items.filter((i) => i.status === 'PENDING');
+
+      // Restock the OFFERS, not the catalog rows: stock is a property of one
+      // seller's listing, so decrementing the shared catalog row would drain every
+      // Kendra's stock for one buyer's purchase.
+      //
+      // Pre-backfill items have no listingId and their stock lives on the product
+      // row instead. This comment used to say they were "restored by the legacy
+      // path below" — there was no such path, here or anywhere else, and nothing
+      // in the codebase moved products.stock at all. Both halves are present now:
+      // checkout decrements (validateCartForCheckout), and this restores.
+      const listingDeltas = open
+        .filter((i) => i.listingId)
+        .map((i) => ({ listingId: i.listingId, delta: i.quantity }));
+      const { crossedZero } = await applyListingStockDeltas(tx, listingDeltas);
+      await syncListingStockStatus(tx, crossedZero);
+
+      const productDeltas = open
+        .filter((i) => !i.listingId && i.productId)
+        .map((i) => ({ productId: i.productId, delta: i.quantity }));
+      await applyStockDeltas(tx, productDeltas);
+
+      // The lot ledger follows the shelf. Without this the units come back to
+      // stockQty but stay drawn off their lot, so FEFO walks every lot of the
+      // offer down to zero and stops allocating a lot at all.
+      await restoreOrderBatches(tx, open);
+
+      // Paid online → the money goes back. Marked pending here, with the cancel.
+      const refundPlan = await planRefund(tx, order, order.items, open.map((i) => i.id));
+
+      await tx.orderItem.updateMany({
+        where: { id: { in: open.map((i) => i.id) } },
+        data: { status: 'CANCELLED', cancelledAt: new Date() },
+      });
+      const cancelled = await tx.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
+
+      return { cancelled, crossedZero, refundPlan };
+    }, { isolationLevel: 'Serializable' }));
+  } catch (err) {
+    return sendServerError(res, err, 'Could not cancel the order. Please try again.');
   }
 
-  const { cancelled, crossedZero } = await prisma.$transaction(async (tx) => {
-    const updated = await tx.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
+  if (result.notFound) return sendNotFound(res, 'Order');
+  if (result.refused) {
+    return sendError(res, `Cannot cancel a ${result.refused.toLowerCase()} order. Only pending orders can be cancelled.`, 400);
+  }
 
-    // Restock the OFFERS, not the catalog rows: stock is a property of one
-    // seller's listing, so decrementing the shared catalog row would drain every
-    // Kendra's stock for one buyer's purchase.
-    //
-    // Pre-backfill items have no listingId and their stock lives on the product
-    // row instead. This comment used to say they were "restored by the legacy
-    // path below" — there was no such path, here or anywhere else, and nothing
-    // in the codebase moved products.stock at all. Both halves are present now:
-    // checkout decrements (validateCartForCheckout), and this restores.
-    const listingDeltas = order.items
-      .filter((i) => i.listingId)
-      .map((i) => ({ listingId: i.listingId, delta: i.quantity }));
-    const { crossedZero } = await applyListingStockDeltas(tx, listingDeltas);
-    await syncListingStockStatus(tx, crossedZero);
-
-    const productDeltas = order.items
-      .filter((i) => !i.listingId && i.productId)
-      .map((i) => ({ productId: i.productId, delta: i.quantity }));
-    await applyStockDeltas(tx, productDeltas);
-
-    await tx.orderItem.updateMany({
-      where: { orderId: order.id },
-      data: { status: 'CANCELLED', cancelledAt: new Date() },
-    });
-
-    return { cancelled: updated, crossedZero };
-  });
-
+  const { cancelled, crossedZero, refundPlan } = result;
   if (crossedZero.length) await invalidateCatalogCaches();
   auditOrderStatusChange(req, cancelled.id, 'PENDING', 'CANCELLED').catch(() => {});
+  const refund = await settleRefund(refundPlan, { actorId: req.user.id, reason: 'buyer_cancelled', requestId: req.id });
 
-  return sendSuccess(res, { id: cancelled.id, status: cancelled.status });
+  return sendSuccess(res, {
+    id: cancelled.id,
+    status: cancelled.status,
+    ...(refundPlan ? { refundAmount: refundPlan.amount, paymentStatus: refund?.paymentStatus || 'refund_pending' } : {}),
+  });
 });
 
 // ── Payment: initiate ─────────────────────────────────────────────────────────
@@ -1785,6 +1870,13 @@ router.get('/orders/payment-status/:providerOrderId', authenticate, async (req, 
 });
 
 // ── Payment: confirm ──────────────────────────────────────────────────────────
+/** What a buyer whose payment could not become an order is told about the money. */
+function refundNotice(refund) {
+  return refund?.ok
+    ? `We have refunded ₹${refund.amount} to the account you paid from — it usually arrives in 5–7 working days. You can review your cart and order again.`
+    : 'Our team will contact you about a refund — please do not pay again.';
+}
+
 router.post(
   '/orders/confirm',
   authenticate,
@@ -1849,18 +1941,23 @@ router.post(
       if (!isQuoteCheckoutable(quote)) {
         const first = quote.issues[0];
         // The money has already moved, so this is NOT a plain rejection: the
-        // intent stays PAID and the reconciler will surface it for refund.
-        // The hold is released either way — no order is coming, so those units
-        // belong back on the shelf immediately rather than at TTL.
+        // captured amount is refunded automatically (exactly once — see
+        // refundUnorderedPayment). It used to stay PAID with "our team will
+        // contact you" and no refund anywhere. The hold is released either way —
+        // no order is coming, so those units belong back on the shelf now.
         await releaseReservations(razorpayOrderId, 'checkout blocked after payment').catch(() => {});
         await markIntentPaid({ providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId }).catch(() => {});
+        const refund = await refundUnorderedPayment({
+          providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId,
+          reason: `checkout blocked after payment: ${first.code}`, actorId: req.user.id, requestId: req.id,
+        });
         recordEvent(SHOP_EVENTS.PAYMENT_CONFIRM_FAIL);
         recordEvent(SHOP_EVENTS.CHECKOUT_BLOCKED_ISSUES);
         return sendError(
           res,
-          `Your payment went through, but your order could not be completed: ${first.message} Our team will contact you about a refund — please do not pay again.`,
+          `Your payment went through, but your order could not be completed: ${first.message} ${refundNotice(refund)}`,
           409,
-          { issues: quote.issues, paymentCaptured: true, providerOrderId: razorpayOrderId },
+          { issues: quote.issues, paymentCaptured: true, providerOrderId: razorpayOrderId, refundStarted: refund.ok },
         );
       }
 
@@ -1872,12 +1969,16 @@ router.post(
       if (held.length && intent?.cartHash && quote.fingerprint !== intent.cartHash) {
         await releaseReservations(razorpayOrderId, 'cart changed between payment and confirmation').catch(() => {});
         await markIntentPaid({ providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId }).catch(() => {});
+        const refund = await refundUnorderedPayment({
+          providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId,
+          reason: 'cart changed between payment and confirmation', actorId: req.user.id, requestId: req.id,
+        });
         recordEvent(SHOP_EVENTS.PAYMENT_CONFIRM_FAIL);
         return sendError(
           res,
-          'Your payment went through, but your cart changed while you were paying, so the order could not be completed. Our team will contact you about a refund — please do not pay again.',
+          `Your payment went through, but your cart changed while you were paying, so the order could not be completed. ${refundNotice(refund)}`,
           409,
-          { paymentCaptured: true, providerOrderId: razorpayOrderId, code: 'CART_CHANGED' },
+          { paymentCaptured: true, providerOrderId: razorpayOrderId, code: 'CART_CHANGED', refundStarted: refund.ok },
         );
       }
 
@@ -1908,6 +2009,12 @@ router.post(
           }
         }
 
+        // Draw the regulated lines from their lots, exactly as the COD path does.
+        // NOT gated on the reservation: /orders/initiate holds seller_listings
+        // only, so the lot ledger has never moved by the time we reach here, on
+        // either the consumed-hold branch or the decrement-now fallback.
+        const batchStamps = await consumeOrderBatches(tx, orderItems, eligibility);
+
         const o = await tx.order.create({
           data: {
             userId: req.user.id,
@@ -1927,10 +2034,15 @@ router.post(
             // the cart now fails at the DB (P2002) instead of creating a second
             // fully-paid order — the payment id used to live only in `notes`.
             paymentRef: razorpayPaymentId,
-            items: { create: withOrderItemSnapshots(orderItems, quote, eligibility) },
+            items: { create: withOrderItemSnapshots(orderItems, quote, eligibility, batchStamps) },
           },
           include: { items: { include: { product: true } } },
         });
+
+        // Bound in THIS transaction, under the intent's row lock: a payment
+        // already being refunded (a failed earlier confirm, or the reconciler)
+        // is refused here, so it can never also become an order.
+        if (intent) await bindIntentToOrderTx(tx, { intentId: intent.id, orderId: o.id });
 
         // Consume the hold rather than decrementing again. `consumeReservations`
         // is guarded on `status: 'HELD'`, so a replayed confirm transitions
@@ -2032,15 +2144,27 @@ router.get(
       brand: req.query.brand,
       categoryId: req.query.categoryId,
       limit: req.query.limit,
+      // Other sellers' products still in review are left out: POST /listings
+      // would refuse an offer on them.
+      sellerId: req.user.id,
     });
 
     // Tell the seller which of these they already sell, so the app can show
     // "You already have an offer here" instead of letting them hit the unique.
+    // The WHOLE offer, not just price and stock: tapping it opens the edit form
+    // straight from this object, and every field missing here was shown as a
+    // default (MOQ 1, the profile's district, 2-day dispatch). `images` is the
+    // offer's own photos; the catalog's are on the product.
     const variantIds = results.flatMap((p) => p.variants.map((v) => v.id));
     const mine = variantIds.length
       ? await prisma.sellerListing.findMany({
           where: { sellerId: req.user.id, variantId: { in: variantIds } },
-          select: { id: true, variantId: true, sellingPrice: true, stockQty: true, status: true },
+          select: {
+            id: true, variantId: true, sellingPrice: true, stockQty: true, status: true,
+            mrp: true, minOrderQty: true, dispatchSlaDays: true, sellerSku: true,
+            sellScope: true, district: true, taluka: true, village: true, state: true,
+            harvestDate: true, images: true,
+          },
         })
       : [];
     const mineByVariant = new Map(mine.map((l) => [l.variantId, l]));
@@ -2062,6 +2186,7 @@ router.post(
   '/catalog/products',
   authenticate,
   requireRole(...SELLER_ROLES),
+  requireSellerKyc, // fail before leaving an orphan entry in the QC queue
   [
     body('name').trim().notEmpty().withMessage('name required'),
     body('categoryId').notEmpty(),
@@ -2091,16 +2216,22 @@ router.post(
 
     // THE GATE. Cross-seller, pre-commit, blocking — unlike the post-hoc,
     // seller-scoped, fire-and-forget heuristic this replaces.
+    // Another seller's product still in review does not block: this seller could
+    // not attach an offer to it, so blocking was a dead end. Both proposals go to
+    // review and the admin merges them.
     const dup = await findCatalogDuplicate({
       categoryId, brand, manufacturer, name, modelNumber,
       gtin: variants[0]?.gtin,
+      sellerId: req.user.id,
     });
     if (dup.duplicate) {
       return sendError(
         res,
-        'This product is already in the catalogue. Add your price and stock to the existing listing instead of creating a duplicate.',
+        dup.inReview
+          ? 'A product with this barcode is waiting for review. You can add your offer to it once it is approved.'
+          : 'This product is already in the catalogue. Add your price and stock to the existing listing instead of creating a duplicate.',
         409,
-        { reason: dup.reason, productId: dup.productId, candidates: dup.candidates },
+        { reason: dup.reason, productId: dup.productId, inReview: !!dup.inReview, candidates: dup.candidates },
       );
     }
 
@@ -2178,14 +2309,17 @@ const LISTING_FIELDS = [
   body('stockQty').optional().isInt({ min: 0 }),
   body('dispatchSlaDays').optional().isInt({ min: 0, max: 60 }),
   body('minOrderQty').optional().isInt({ min: 1 }),
-  body('sellerSku').optional().trim(),
+  // null CLEARS these (the seller app's edit sends it for an emptied field) and
+  // listingPatch stores it as NULL. Declared nullable so clearing does not rest
+  // on trim() happening to turn null into ''.
+  body('sellerSku').optional({ nullable: true }).trim(),
   body('condition').optional().isIn(['NEW', 'REFURBISHED']),
   body('sellScope').optional().isIn(['village', 'taluka', 'district', 'state', 'all_india']),
-  body('district').optional().trim(),
-  body('taluka').optional().trim(),
-  body('village').optional().trim(),
-  body('state').optional().trim(),
-  body('harvestDate').optional().trim(),
+  body('district').optional({ nullable: true }).trim(),
+  body('taluka').optional({ nullable: true }).trim(),
+  body('village').optional({ nullable: true }).trim(),
+  body('state').optional({ nullable: true }).trim(),
+  body('harvestDate').optional({ nullable: true }).trim(),
   body('images').optional().isArray(),
   body('status').optional().isIn(['ACTIVE', 'INACTIVE']),
 ];
@@ -2217,6 +2351,78 @@ function derivedStatus(intent, stockQty) {
 }
 
 /**
+ * A buyer paying for this offer right now → the refusal to send, else null.
+ *
+ * /orders/initiate holds stock for the payment window, but the hold protects
+ * only the QUANTITY. A price or minimum-order change, a pause or a delete in
+ * that window failed the buyer's /orders/confirm after the money had moved.
+ * Those changes now wait out the hold. The wait quoted runs to the last hold's
+ * expiry (shop.reservation.ttlMinutes, 15 by default), and is never under the
+ * 2-minute sweep that releases an expired hold.
+ */
+async function paymentInFlightRefusal(db, listingId) {
+  const { _max } = await db.stockReservation.aggregate({
+    where: { listingId, status: 'HELD' },
+    _max: { expiresAt: true },
+  });
+  if (!_max.expiresAt) return null;
+  const minutes = Math.max(2, Math.ceil((_max.expiresAt.getTime() - Date.now()) / 60_000));
+  return {
+    message: `A buyer is paying for this offer right now — try again in about ${minutes} minutes.`,
+    details: { code: 'PAYMENT_IN_PROGRESS', retryAfterMinutes: minutes },
+  };
+}
+
+/** Does this patch change what a paying buyer's /orders/confirm re-checks? Stock alone does not. */
+function patchBreaksPayment(listing, data) {
+  return (data.sellingPrice !== undefined && !D(data.sellingPrice).equals(D(listing.sellingPrice)))
+    || (data.minOrderQty !== undefined && data.minOrderQty > listing.minOrderQty)
+    || (data.status === 'INACTIVE' && listing.status !== 'INACTIVE');
+}
+
+/**
+ * Why this offer cannot be deleted now, or null. Called inside the delete's
+ * Serializable transaction, so an order or hold landing concurrently conflicts
+ * with the delete instead of slipping past the check.
+ *
+ * order_items.listingId has no FK: with the offer gone, cancelling an open
+ * order had nowhere to restock and failed "sold out" — the order, and any money
+ * paid for it, stuck. (The delete also cascades the offer's ProductBatch rows.)
+ */
+async function offerDeleteRefusal(tx, listingId) {
+  const open = await tx.orderItem.count({
+    where: { listingId, status: { in: ['PENDING', 'CONFIRMED', 'SHIPPED'] } },
+  });
+  if (open) {
+    return {
+      message: `This offer has ${open} open order${open === 1 ? '' : 's'}. Deliver or cancel ${open === 1 ? 'it' : 'them'} first, or pause the offer instead of deleting it.`,
+      details: { code: 'OFFER_HAS_OPEN_ORDERS', openOrderItems: open },
+    };
+  }
+  return paymentInFlightRefusal(tx, listingId);
+}
+
+/**
+ * Which of MY offers a legacy /seller/products/:id call means.
+ *
+ * The path carries a PRODUCT id, and a seller can sell several pack sizes of
+ * one product: `findFirst` with no ordering picked any of them, so an edit could
+ * reprice — or a delete remove — the wrong pack. `listingId` (body or query)
+ * names the offer; without it, more than one match is refused, not guessed.
+ */
+async function legacyListingFor(req) {
+  const where = { sellerId: req.user.id, variant: { productId: req.params.id } };
+  const listingId = req.body?.listingId ?? req.query.listingId;
+  if (listingId) {
+    return { listing: await prisma.sellerListing.findFirst({ where: { ...where, id: listingId } }) };
+  }
+  const matches = await prisma.sellerListing.findMany({ where, take: 2 });
+  return matches.length > 1 ? { ambiguous: true } : { listing: matches[0] || null };
+}
+
+const AMBIGUOUS_LEGACY_OFFER = 'You sell more than one pack size of this product. Please update the KrushiSarva Seller app to change or delete one of them.';
+
+/**
  * STEP 2 of the add-product flow: "Sell this product". The seller supplies ONLY
  * offer fields — no name, no description, no catalog imagery. No `products` row
  * is created.
@@ -2225,6 +2431,7 @@ router.post(
   '/listings',
   authenticate,
   requireRole(...SELLER_ROLES),
+  requireSellerKyc,
   [
     body('variantId').notEmpty().isUUID(),
     body('sellingPrice').isFloat({ min: 0.01 }),
@@ -2306,7 +2513,10 @@ router.get('/listings', authenticate, requireRole(...SELLER_ROLES), async (req, 
     const [rows, total] = await Promise.all([
       prisma.sellerListing.findMany({
         where: { sellerId: req.user.id },
-        include, orderBy: { createdAt: 'desc' },
+        // id tiebreak, same reason as /seller/products below: offers created in
+        // one bulk operation share a createdAt, and an untied sort pages over
+        // them inconsistently.
+        include, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit, take: limit,
       }),
       prisma.sellerListing.count({ where: { sellerId: req.user.id } }),
@@ -2354,7 +2564,11 @@ router.patch(
   '/listings/:listingId',
   authenticate,
   requireRole(...SELLER_ROLES),
-  [...LISTING_FIELDS, ...maxLen(PRODUCT_TEXT_LIMITS)],
+  [
+    ...LISTING_FIELDS,
+    ...maxLen(PRODUCT_TEXT_LIMITS),
+    body('expectedStockQty').optional().isInt({ min: 0 }),
+  ],
   validate,
   async (req, res) => {
     const listing = await prisma.sellerListing.findUnique({ where: { id: req.params.listingId } });
@@ -2371,12 +2585,44 @@ router.patch(
     if (req.body.status !== undefined || data.stockQty !== undefined) {
       data.status = derivedStatus(req.body.status ?? (listing.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'), nextStock);
     }
+    // Resuming a paused offer puts it on sale again: same KYC gate as creating one.
+    if (goesLive(listing.status, data.status) && !(await canSell(req.user))) return sendKycRequired(res);
 
-    const updated = await prisma.sellerListing.update({
-      where: { id: listing.id },
-      data,
-      include: { variant: { include: { product: { select: { id: true, name: true } } } } },
-    });
+    // Not while a buyer is paying at the current price / minimum / status.
+    if (patchBreaksPayment(listing, data)) {
+      const busy = await paymentInFlightRefusal(prisma, listing.id);
+      if (busy) return sendError(res, busy.message, 409, busy.details);
+    }
+
+    // stockQty is the AVAILABLE count: checkout and payment holds take units off
+    // it while the seller's edit screen is open. Writing the number the screen
+    // loaded put those units back — phantom stock, then an oversell. With
+    // expectedStockQty the write only lands if stock is still what the seller
+    // saw; otherwise they are shown the live number and decide again.
+    const include = { variant: { include: { product: { select: { id: true, name: true } } } } };
+    let updated;
+    if (data.stockQty !== undefined && req.body.expectedStockQty !== undefined) {
+      const expected = parseInt(req.body.expectedStockQty, 10);
+      const { count } = await prisma.sellerListing.updateMany({
+        where: { id: listing.id, stockQty: expected },
+        data,
+      });
+      if (!count) {
+        const now = await prisma.sellerListing.findUnique({
+          where: { id: listing.id }, select: { stockQty: true },
+        });
+        return sendError(
+          res,
+          `Stock changed to ${now?.stockQty ?? 0} while you were editing (orders came in). Check it and save again.`,
+          409,
+          { currentStockQty: now?.stockQty ?? 0 },
+        );
+      }
+      // Read, not a second update: writing again would reopen the race.
+      updated = await prisma.sellerListing.findUnique({ where: { id: listing.id }, include });
+    } else {
+      updated = await prisma.sellerListing.update({ where: { id: listing.id }, data, include });
+    }
 
     // Price / stock / status all move the buy box.
     await invalidateCatalogCaches();
@@ -2393,10 +2639,14 @@ router.delete('/listings/:listingId', authenticate, requireRole(...SELLER_ROLES)
   // product and ran cartItem.deleteMany({ where: { productId } }), wiping the
   // product from EVERY buyer's cart including buyers who had chosen a different
   // Kendra. Only this seller's cart lines are cleared now.
-  await prisma.$transaction([
-    prisma.cartItem.deleteMany({ where: { listingId: listing.id } }),
-    prisma.sellerListing.delete({ where: { id: listing.id } }),
-  ]);
+  const refusal = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+    const why = await offerDeleteRefusal(tx, listing.id);
+    if (why) return why;
+    await tx.cartItem.deleteMany({ where: { listingId: listing.id } });
+    await tx.sellerListing.delete({ where: { id: listing.id } });
+    return null;
+  }, { isolationLevel: 'Serializable' }));
+  if (refusal) return sendError(res, refusal.message, 409, refusal.details);
 
   await invalidateCatalogCaches();
 
@@ -2432,6 +2682,7 @@ router.post(
   '/seller/products',
   authenticate,
   requireRole(...SELLER_ROLES),
+  requireSellerKyc,
   [
     body('name').trim().notEmpty().withMessage('name required'),
     body('categoryId').notEmpty(),
@@ -2560,10 +2811,28 @@ router.post(
 router.get('/seller/products', authenticate, requireRole(...SELLER_ROLES), async (req, res) => {
   const limit = parsePageSize(req.query.limit, 20, 50);
   const page = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
+  // Optional name search. The crop-report reply picker needs to reach ANY of
+  // the seller's offers, not only the newest page of them.
+  const search = sanitizeSearch(req.query.search);
+  const where = {
+    sellerId: req.user.id,
+    ...(search && {
+      variant: {
+        product: {
+          OR: [
+            { name:   { contains: search, mode: 'insensitive' } },
+            { nameHi: { contains: search, mode: 'insensitive' } },
+            { nameMr: { contains: search, mode: 'insensitive' } },
+            { brand:  { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      },
+    }),
+  };
 
   const [listings, total] = await Promise.all([
     prisma.sellerListing.findMany({
-      where: { sellerId: req.user.id },
+      where,
       include: {
         variant: {
           include: {
@@ -2581,7 +2850,7 @@ router.get('/seller/products', authenticate, requireRole(...SELLER_ROLES), async
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: (page - 1) * limit, take: limit,
     }),
-    prisma.sellerListing.count({ where: { sellerId: req.user.id } }),
+    prisma.sellerListing.count({ where }),
   ]);
 
   // Flatten back into the pre-split product shape old clients expect.
@@ -2598,6 +2867,13 @@ router.get('/seller/products', authenticate, requireRole(...SELLER_ROLES), async
     sellScope: l.sellScope,
     district: l.district, taluka: l.taluka, village: l.village, state: l.state,
     harvestDate: l.harvestDate,
+    // The edit form opens from this row. Without these it showed 2-day dispatch
+    // and no stock code for every offer.
+    dispatchSlaDays: l.dispatchSlaDays,
+    sellerSku: l.sellerSku,
+    // The offer's own photos. `images` is already the shared catalog imagery
+    // (spread from the product above), which old clients read as the thumbnail.
+    listingImages: l.images,
     isActive: l.status === 'ACTIVE',
     isFeatured: l.isFeatured,
   }));
@@ -2621,6 +2897,8 @@ router.put(
     body('stock').optional().isInt({ min: 0 }),
     body('minOrderQty').optional().isInt({ min: 1 }),
     body('sellScope').optional().isIn(['village', 'taluka', 'district', 'state', 'all_india']),
+    body('listingId').optional().isUUID(),
+    query('listingId').optional().isUUID(),
     ...maxLen(PRODUCT_TEXT_LIMITS),
   ],
   validate,
@@ -2628,9 +2906,8 @@ router.put(
     const CATALOG_KEYS = ['name', 'nameHi', 'nameMr', 'description', 'brand', 'manufacturer', 'countryOfOrigin', 'highlights', 'specifications', 'images', 'tags', 'subcategory', 'categoryId'];
     const attempted = CATALOG_KEYS.filter((k) => req.body[k] !== undefined);
 
-    const listing = await prisma.sellerListing.findFirst({
-      where: { sellerId: req.user.id, variant: { productId: req.params.id } },
-    });
+    const { listing, ambiguous } = await legacyListingFor(req);
+    if (ambiguous) return sendError(res, AMBIGUOUS_LEGACY_OFFER, 409, { code: 'LISTING_AMBIGUOUS' });
     if (!listing) return sendNotFound(res, 'Offer');
 
     if (attempted.length) {
@@ -2658,6 +2935,14 @@ router.put(
     } else if (data.stockQty !== undefined && listing.status !== 'BLOCKED') {
       data.status = derivedStatus(listing.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE', data.stockQty);
     }
+    // Same KYC gate as PATCH /listings/:id when a paused offer is resumed.
+    if (goesLive(listing.status, data.status) && !(await canSell(req.user))) return sendKycRequired(res);
+
+    // Same payment-window guard as PATCH /listings/:id.
+    if (patchBreaksPayment(listing, data)) {
+      const busy = await paymentInFlightRefusal(prisma, listing.id);
+      if (busy) return sendError(res, busy.message, 409, busy.details);
+    }
 
     const updated = await prisma.sellerListing.update({ where: { id: listing.id }, data });
     await invalidateCatalogCaches();
@@ -2665,16 +2950,22 @@ router.put(
   }
 );
 
-router.delete('/seller/products/:id', authenticate, requireRole(...SELLER_ROLES), async (req, res) => {
-  const listing = await prisma.sellerListing.findFirst({
-    where: { sellerId: req.user.id, variant: { productId: req.params.id } },
-  });
+const LEGACY_LISTING_ID = [query('listingId').optional().isUUID(), body('listingId').optional().isUUID()];
+
+router.delete('/seller/products/:id', authenticate, requireRole(...SELLER_ROLES), LEGACY_LISTING_ID, validate, async (req, res) => {
+  const { listing, ambiguous } = await legacyListingFor(req);
+  if (ambiguous) return sendError(res, AMBIGUOUS_LEGACY_OFFER, 409, { code: 'LISTING_AMBIGUOUS' });
   if (!listing) return sendNotFound(res, 'Offer');
 
-  await prisma.$transaction([
-    prisma.cartItem.deleteMany({ where: { listingId: listing.id } }),
-    prisma.sellerListing.delete({ where: { id: listing.id } }),
-  ]);
+  // Same guards as DELETE /listings/:listingId.
+  const refusal = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+    const why = await offerDeleteRefusal(tx, listing.id);
+    if (why) return why;
+    await tx.cartItem.deleteMany({ where: { listingId: listing.id } });
+    await tx.sellerListing.delete({ where: { id: listing.id } });
+    return null;
+  }, { isolationLevel: 'Serializable' }));
+  if (refusal) return sendError(res, refusal.message, 409, refusal.details);
   await invalidateCatalogCaches();
 
   auditAction(req, {
@@ -2693,6 +2984,43 @@ router.get('/seller/stats', authenticate, requireRole(...SELLER_ROLES), async (r
 });
 
 // ── Seller: order item status ─────────────────────────────────────────────────
+/**
+ * Where a seller may move one of their items from each status. Forward only —
+ * skipping ahead is allowed (a Kendra that hands goods over at the counter goes
+ * PENDING → DELIVERED) — and cancelling only until the goods leave. DELIVERED
+ * and CANCELLED are final.
+ *
+ * Any transition used to be accepted: DELIVERED → CANCELLED returned delivered
+ * units to stock (phantom stock), and CANCELLED → SHIPPED shipped units the
+ * cancel had already restocked (oversell).
+ */
+const SELLER_ITEM_TRANSITIONS = {
+  PENDING:   ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'],
+  CONFIRMED: ['SHIPPED', 'DELIVERED', 'CANCELLED'],
+  SHIPPED:   ['DELIVERED'],
+  DELIVERED: [],
+  CANCELLED: [],
+};
+
+/**
+ * The order's status from its items'. Only LIVE (non-cancelled) items count, so
+ * a partly cancelled order describes what is still coming.
+ *
+ * Any live item past PENDING makes the order at least CONFIRMED: one seller's
+ * DELIVERED next to another's PENDING used to roll up to PENDING, and a PENDING
+ * order is one the buyer may cancel — which restocked and cancelled goods
+ * already delivered.
+ */
+export function rollupOrderStatus(statuses) {
+  const live = statuses.filter((s) => s !== 'CANCELLED');
+  if (!statuses.length) return 'PENDING';
+  if (!live.length) return 'CANCELLED';
+  if (live.every((s) => s === 'DELIVERED')) return 'DELIVERED';
+  if (live.includes('SHIPPED')) return 'SHIPPED';
+  if (live.some((s) => s !== 'PENDING')) return 'CONFIRMED';
+  return 'PENDING';
+}
+
 router.put(
   '/seller/orders/:orderId/status',
   authenticate,
@@ -2711,13 +3039,43 @@ router.put(
       const result = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
         const mine = await tx.orderItem.findMany({
           where: { orderId, sellerId: req.user.id },
-          select: { id: true, status: true, quantity: true, listingId: true, productId: true },
+          // batchNumber comes along for the CANCELLED branch: the lot a line was
+          // drawn from is the lot its units go back to — and batchQuantity says
+          // HOW MANY that lot gave up, which is what goes back to it.
+          select: {
+            id: true, status: true, quantity: true, listingId: true, productId: true,
+            batchNumber: true, batchQuantity: true,
+          },
         });
         if (!mine.length) return null;
 
+        // Only items that may make this move are touched. Items already there
+        // are a no-op (a repeated tap), not an error.
+        const movable = mine.filter((i) => SELLER_ITEM_TRANSITIONS[i.status]?.includes(status));
+        if (!movable.length) {
+          if (mine.every((i) => i.status === status)) return { noop: true };
+          return { refused: true, from: [...new Set(mine.map((i) => i.status))] };
+        }
+
+        // Paid online → the cancelled lines' money goes back. Worked out from
+        // the lines as they are BEFORE this update, and marked pending here so
+        // it commits with the cancel.
+        let refundPlan = null;
+        if (status === 'CANCELLED') {
+          const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: {
+              id: true, paymentMethod: true, paymentStatus: true, paymentRef: true,
+              totalAmount: true, subtotal: true, deliveryFee: true, taxAmount: true, discountAmount: true,
+              items: { select: { id: true, status: true, totalPrice: true, taxAmount: true } },
+            },
+          });
+          refundPlan = await planRefund(tx, order, order.items, movable.map((i) => i.id));
+        }
+
         const now = new Date();
         await tx.orderItem.updateMany({
-          where: { orderId, sellerId: req.user.id },
+          where: { id: { in: movable.map((i) => i.id) } },
           // Transition timestamps are the ONLY source for dispatch SLA and
           // cancellation rate — without them sellerMetrics has nothing to read.
           data: { status, ...transitionTimestampFor(status, now) },
@@ -2727,35 +3085,24 @@ router.put(
         // stayed reserved against an order nobody was going to receive.
         let crossedZero = [];
         if (status === 'CANCELLED') {
-          const deltas = mine
-            .filter((i) => i.listingId && i.status !== 'CANCELLED')
+          const deltas = movable
+            .filter((i) => i.listingId)
             .map((i) => ({ listingId: i.listingId, delta: i.quantity }));
           ({ crossedZero } = await applyListingStockDeltas(tx, deltas));
           await syncListingStockStatus(tx, crossedZero);
           // Pre-backfill items, same as the buyer-cancel path above.
-          await applyStockDeltas(tx, mine
-            .filter((i) => !i.listingId && i.productId && i.status !== 'CANCELLED')
+          await applyStockDeltas(tx, movable
+            .filter((i) => !i.listingId && i.productId)
             .map((i) => ({ productId: i.productId, delta: i.quantity })));
+          // And the lot ledger, same as the buyer-cancel path above.
+          await restoreOrderBatches(tx, movable);
         }
 
         // The rollup used to run OUTSIDE the transaction, so two sellers updating
         // the same multi-seller order concurrently could each persist a rollup
         // computed from a stale read. It is inside now, under Serializable.
         const allItems = await tx.orderItem.findMany({ where: { orderId }, select: { status: true } });
-        const statuses = allItems.map((i) => i.status);
-        const live = statuses.filter((s) => s !== 'CANCELLED');
-
-        // A partially-cancelled order used to read as PENDING: `every(DELIVERED)`
-        // failed because of the cancelled item, and none of the ANY branches
-        // matched. The rollup now describes the items that are still live, so an
-        // order with one item cancelled and one delivered reads DELIVERED.
-        let orderStatus;
-        if (!statuses.length)      orderStatus = 'PENDING';
-        else if (!live.length)     orderStatus = 'CANCELLED';
-        else if (live.every((s) => s === 'DELIVERED')) orderStatus = 'DELIVERED';
-        else if (live.includes('SHIPPED'))   orderStatus = 'SHIPPED';
-        else if (live.includes('CONFIRMED')) orderStatus = 'CONFIRMED';
-        else orderStatus = 'PENDING';
+        const orderStatus = rollupOrderStatus(allItems.map((i) => i.status));
 
         const before = await tx.order.findUnique({
           where: { id: orderId },
@@ -2764,15 +3111,21 @@ router.put(
         await tx.order.update({ where: { id: orderId }, data: { status: orderStatus } });
 
         return {
-          itemsUpdated: mine.length, orderStatus, previousStatus: before?.status,
-          buyerId: before?.userId, crossedZero,
+          itemsUpdated: movable.length, orderStatus, previousStatus: before?.status,
+          buyerId: before?.userId, crossedZero, refundPlan,
         };
       }, { isolationLevel: 'Serializable' }));
 
       if (!result) return sendNotFound(res, 'Order');
+      if (result.noop) return sendSuccess(res, { itemsUpdated: 0, unchanged: true });
+      if (result.refused) {
+        const from = result.from.map((x) => x.toLowerCase()).join(' / ');
+        return sendError(res, `This order is already ${from} and cannot be marked ${status.toLowerCase()}.`, 409, { from: result.from });
+      }
       if (result.crossedZero?.length) await invalidateCatalogCaches();
 
       auditOrderStatusChange(req, orderId, result.previousStatus, result.orderStatus).catch(() => {});
+      await settleRefund(result.refundPlan, { actorId: req.user.id, reason: 'seller_cancelled', requestId: req.id });
 
       // Tell the buyer their order moved (§45).
       //
@@ -2841,7 +3194,13 @@ router.get('/seller/orders', authenticate, requireRole(...SELLER_ROLES), async (
           },
         },
       },
-      orderBy: { order: { createdAt: 'desc' } },
+      // id tiebreak: offset paging is only stable if the sort is TOTAL, and this
+      // one sorts LINES by their ORDER's createdAt — which every line of a
+      // multi-item order shares by construction. Postgres is free to order those
+      // ties differently between the query that fetches page 1 and the one that
+      // fetches page 2, so a line on a page boundary was silently repeated or
+      // skipped. Ties are the normal case here, not an edge case.
+      orderBy: [{ order: { createdAt: 'desc' } }, { id: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
     }),

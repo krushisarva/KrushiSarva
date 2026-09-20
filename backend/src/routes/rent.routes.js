@@ -45,6 +45,7 @@ import { maxLen } from '../middleware/textLength.js';
 import { rateLimiter, clientIp } from '../middleware/rateLimit.js';
 import { idempotency } from '../middleware/idempotency.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtContainsAny, districtContainsAnySql } from '../utils/districtAliases.js';
 import prisma from '../config/db.js';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendServerError, paginationMeta, parsePageSize } from '../utils/response.js';
 import { D } from '../utils/money.js';
@@ -295,7 +296,9 @@ router.get('/machinery', optionalAuth, browseLimit, async (req, res) => {
 
   const where = { status: 'ACTIVE' };
   if (category && category !== 'all') where.category = category;
-  if (district)  where.district = { contains: district, mode: 'insensitive' };
+  // Any spelling of a renamed district: the district picker sends Osmanabad, a
+  // PIN-filled listing says Dharashiv. AND, because `where.OR` is the search.
+  if (district)  where.AND = [districtContainsAny('district', district)];
   if (available === 'true') where.available = true;
   if (search) {
     where.OR = [
@@ -340,7 +343,7 @@ router.get('/machinery', optionalAuth, browseLimit, async (req, res) => {
       // hydrate just those with the full select (incl. bookings).
       const filters = [Prisma.sql`status = 'ACTIVE'`];
       if (category && category !== 'all') filters.push(Prisma.sql`category = ${category}`);
-      if (district)              filters.push(Prisma.sql`district ILIKE '%' || ${district} || '%'`);
+      if (district)              filters.push(districtContainsAnySql('district', district));
       if (available === 'true')  filters.push(Prisma.sql`available = true`);
       if (search) {
         filters.push(Prisma.sql`(name ILIKE '%' || ${search} || '%'
@@ -718,7 +721,7 @@ router.get('/labour', optionalAuth, browseLimit, async (req, res) => {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
 
   const where = { status: 'ACTIVE' };
-  if (district) where.district = { contains: district, mode: 'insensitive' };
+  if (district) where.AND = [districtContainsAny('district', district)]; // any spelling; see /machinery
   if (available === 'true') where.available = true;
   if (skill)    where.skills = { has: skill };
   if (search) {
@@ -756,7 +759,7 @@ router.get('/labour', optionalAuth, browseLimit, async (req, res) => {
       // Geo + circle + distance sort + pagination pushed to SQL — only this page's
       // rows load (memory bounded by `limit`, not the old 500-row buffer).
       const filters = [Prisma.sql`status = 'ACTIVE'`];
-      if (district)             filters.push(Prisma.sql`district ILIKE '%' || ${district} || '%'`);
+      if (district)             filters.push(districtContainsAnySql('district', district));
       if (available === 'true') filters.push(Prisma.sql`available = true`);
       if (skill)                filters.push(Prisma.sql`${skill} = ANY(skills)`);
       if (search) {

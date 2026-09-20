@@ -201,6 +201,51 @@ describe('Cart operations', () => {
 
     expect(res.status).toBe(200);
   });
+
+  // A line with no offer (listingId null) is keyed by the app on the cart ROW
+  // id (`listingId || id`) — that is the id it sends for +/- and delete.
+  describe('a line with no offer, addressed by its row id', () => {
+    let rowId;
+
+    beforeEach(async () => {
+      await prisma.cartItem.deleteMany({ where: { userId: farmer.user.id } });
+      const row = await prisma.cartItem.create({
+        data: { userId: farmer.user.id, productId, quantity: 3 },
+      });
+      rowId = row.id;
+    });
+
+    test('200 — +/- changes the quantity', async () => {
+      const res = await request(app)
+        .put(`/api/v1/agristore/cart/${rowId}`)
+        .set(farmer.headers)
+        .send({ quantity: 4 });
+
+      expect(res.status).toBe(200);
+      expect((await prisma.cartItem.findUnique({ where: { id: rowId } })).quantity).toBe(4);
+    });
+
+    test('delete removes the row', async () => {
+      const res = await request(app)
+        .delete(`/api/v1/agristore/cart/${rowId}`)
+        .set(farmer.headers);
+
+      expect(res.status).toBe(200);
+      expect(await prisma.cartItem.findUnique({ where: { id: rowId } })).toBeNull();
+    });
+
+    test('another user cannot change or delete it by its id', async () => {
+      const other = await createTestUser();
+      const put = await request(app)
+        .put(`/api/v1/agristore/cart/${rowId}`)
+        .set(other.headers)
+        .send({ quantity: 9 });
+      await request(app).delete(`/api/v1/agristore/cart/${rowId}`).set(other.headers);
+
+      expect(put.status).toBe(404);
+      expect((await prisma.cartItem.findUnique({ where: { id: rowId } })).quantity).toBe(3);
+    });
+  });
 });
 
 // ── Orders ───────────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@
  *   - `shareId` is validated; arriving with no params used to fire
  *     `GET .../inbox/undefined`.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Switch, Text, View,
@@ -49,13 +49,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 
-import { C, E, HIT, R, SP, T, alpha, formatCurrency, riskMeta, useResponsive } from '../theme';
+import { C, E, HIT, R, SP, T, alpha, formatCurrency, riskLabel, riskMeta, useResponsive } from '../theme';
 import useAsyncData from '../hooks/useAsyncData';
+import usePagedList from '../hooks/usePagedList';
 import { useNetwork } from '../hooks/useNetwork';
+import {
+  confidencePercent, treatmentLabels, isHighRisk, pickerProducts, mergeSavedReply, droppedProductCount,
+  reportValue, weatherDescription,
+} from '../utils/cropReport';
+import { openExternalUrl } from '../utils/openUrl';
 import {
   Screen, AppHeader, Card, Button, IconButton, PressableRow, Badge, FormSection, KeyboardAwareScroll,
   TextField, Field, CharCount, InlineNotice, ProgressBar, MetricRow,
-  LoadingState, ErrorState, EmptyState,
+  LoadingState, ErrorState, EmptyState, ListFooter,
   useToast,
 } from '../components/ui';
 
@@ -63,6 +69,10 @@ const MAX_RECOMMENDED = 10;
 const MIN_REPLY = 4;
 const MAX_REPLY = 2000;
 const MAX_SKU = 120;
+// The seller-products route's page cap. More load on demand, and the search
+// runs on the server, so every offer is reachable — not only the newest 50.
+const PICKER_PAGE = 50;
+const SEARCH_DEBOUNCE_MS = 350;
 
 // ── Building blocks ──────────────────────────────────────────────────────────
 
@@ -77,32 +87,38 @@ function Bullet({ children }) {
   );
 }
 
-/** Normalises the several shapes the AI pipeline emits for a treatment entry. */
-function treatmentLabel(entry) {
-  if (typeof entry === 'string') return entry;
-  if (!entry || typeof entry !== 'object') return '';
-  const name = entry.name || entry.chemical || entry.method || '';
-  const dose = entry.dose ? ` — ${entry.dose}` : '';
-  const timing = entry.timing ? ` (${entry.timing})` : '';
-  return `${name}${dose}${timing}`.trim();
-}
-
 // ── Product picker row ───────────────────────────────────────────────────────
 
+const UNAVAILABLE_LABEL = {
+  outOfStock: ['share.outOfStock', 'Out of stock'],
+  hidden: ['share.offerHidden', 'Hidden from buyers'],
+  notApproved: ['share.offerNotApproved', 'Awaiting approval'],
+};
+
 const ProductPickRow = React.memo(function ProductPickRow({ product, checked, onToggle, disabled, t }) {
-  const outOfStock = Number(product.stock) === 0;
+  // Offers the reply route drops (out of stock, hidden, awaiting approval) are
+  // listed but can't be ticked — they used to tick fine and then vanish from
+  // the sent reply without a word. A row already ticked can still be unticked.
+  const reason = product.unavailable;
+  const reasonLabel = reason && UNAVAILABLE_LABEL[reason] ? t(...UNAVAILABLE_LABEL[reason]) : null;
+  const blocked = !checked && (disabled || !!reason);
   return (
     <PressableRow
       onPress={() => onToggle(product.id)}
-      disabled={disabled && !checked}
+      disabled={blocked}
       accessibilityRole="checkbox"
-      accessibilityState={{ checked, disabled: disabled && !checked }}
+      accessibilityState={{ checked, disabled: blocked }}
       accessibilityLabel={`${product.name}. ${formatCurrency(product.price)} per ${product.unit}. ${
-        outOfStock ? t('share.outOfStock', 'out of stock') : `${product.stock} in stock`
+        reasonLabel || `${product.stock} in stock`
       }`}
-      style={[rd.productRow, checked && rd.productRowActive, disabled && !checked && { opacity: 0.45 }]}
+      style={[
+        rd.productRow,
+        checked && rd.productRowActive,
+        !checked && reason && rd.productRowUnavailable,
+        !checked && !reason && disabled && { opacity: 0.45 },
+      ]}
     >
-      <View style={[rd.checkbox, checked && rd.checkboxOn]}>
+      <View style={[rd.checkbox, checked && rd.checkboxOn, !checked && reason && rd.checkboxOff]}>
         {checked ? <Ionicons name="checkmark" size={15} color={C.onBrand} /> : null}
       </View>
 
@@ -121,10 +137,10 @@ const ProductPickRow = React.memo(function ProductPickRow({ product, checked, on
 
       <View style={{ flex: 1 }}>
         <Text style={rd.productName} numberOfLines={1}>{product.name}</Text>
-        <Text style={[rd.productMeta, outOfStock && { color: C.danger }]} numberOfLines={1}>
+        <Text style={[rd.productMeta, reason && { color: C.danger }]} numberOfLines={1}>
           {formatCurrency(product.price)}/{product.unit}
-          {outOfStock
-            ? ` · ${t('share.outOfStock', 'out of stock')}`
+          {reasonLabel
+            ? ` · ${reasonLabel}`
             : ` · ${t('myProducts.stock', { n: product.stock, unit: product.unit })}`}
         </Text>
       </View>
@@ -213,6 +229,11 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
   // Once the seller starts typing, a background refetch must not clobber the
   // draft. The old `load()` after a send did exactly that.
   const [draftDirty, setDraftDirty] = useState(false);
+  // Bumped by every edit. A send compares it before and after, so anything
+  // typed while the request was in flight stays a draft instead of being
+  // overwritten by the response.
+  const edits = useRef(0);
+  const markDirty = useCallback(() => { edits.current += 1; setDraftDirty(true); }, []);
 
   const share = useAsyncData(
     useCallback(({ signal }) => {
@@ -235,21 +256,39 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
     }
   }, [share.data, draftDirty]);
 
-  const products = useAsyncData(
-    useCallback(
-      ({ signal }) => api.get('/agristore/seller/products?limit=50', { signal })
-        .then((res) => res.data.data || []),
-      [],
-    ),
-    [],
-    { initialData: [] },
-  );
+  // Debounced, and searched by the server: it used to fetch the newest 50
+  // offers once and filter those, so the rest of a bigger shop was unreachable.
+  const [productSearch, setProductSearch] = useState('');
+  useEffect(() => {
+    const q = productQuery.trim();
+    const timer = setTimeout(() => setProductSearch(q), q ? SEARCH_DEBOUNCE_MS : 0);
+    return () => clearTimeout(timer);
+  }, [productQuery]);
 
-  const productList = products.data || [];
+  const products = usePagedList({
+    mode: 'page',
+    limit: PICKER_PAGE,
+    deps: [productSearch],
+    // One row per LISTING comes back; the picker merges them per product.
+    keyOf: (row) => row?.listingId ?? row?.id,
+    fetchPage: useCallback(({ page, limit, signal }) => api.get('/agristore/seller/products', {
+      params: { page, limit, ...(productSearch ? { search: productSearch } : {}) },
+      signal,
+    }), [productSearch]),
+  });
+
+  const productList = useMemo(() => pickerProducts(products.items), [products.items]);
   const atLimit = selectedIds.size >= MAX_RECOMMENDED;
 
+  // Search appears once the shop is big enough to need it, then stays: hiding
+  // it while a search reloads would drop the keyboard mid-word.
+  const [searchable, setSearchable] = useState(false);
+  useEffect(() => {
+    if (!searchable && products.items.length > 6) setSearchable(true);
+  }, [searchable, products.items.length]);
+
   const toggleProduct = useCallback((id) => {
-    setDraftDirty(true);
+    markDirty();
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -268,13 +307,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
       }
       return next;
     });
-  }, [toast, t]);
-
-  const filteredProducts = useMemo(() => {
-    const q = productQuery.trim().toLowerCase();
-    if (!q) return productList;
-    return productList.filter((p) => String(p.name || '').toLowerCase().includes(q));
-  }, [productList, productQuery]);
+  }, [toast, t, markDirty]);
 
   const trimmedReply = reply.trim();
   const replyError = replyTouched && trimmedReply.length > 0 && trimmedReply.length < MIN_REPLY
@@ -283,14 +316,10 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
 
   const canSend = trimmedReply.length >= MIN_REPLY && !sending && !isOffline;
 
+  // tel: skips canOpenURL — on Android 11+ it said "cannot place calls" on
+  // every phone. See utils/openUrl.js.
   const openLink = useCallback(async (url, failMsg) => {
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) throw new Error('unsupported');
-      await Linking.openURL(url);
-    } catch {
-      toast.error(failMsg);
-    }
+    if (!(await openExternalUrl(url, Linking))) toast.error(failMsg);
   }, [toast]);
 
   const callFarmer = useCallback((phone) => {
@@ -313,18 +342,35 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
       return;
     }
 
+    const sentIds = Array.from(selectedIds);
+    const editsAtSend = edits.current;
     setSending(true);
     try {
-      await api.post(`/crop-reports/seller/inbox/${shareId}/reply`, {
+      const res = await api.post(`/crop-reports/seller/inbox/${shareId}/reply`, {
         reply: trimmedReply,
         recommendedSku: sku.trim() || undefined,
-        recommendedProductIds: Array.from(selectedIds),
+        recommendedProductIds: sentIds,
         available,
       });
-      toast.success(t('share.replySentMsg', 'The farmer will be notified of your recommendation.'));
-      // The draft is now what the server holds, so refetching is safe.
-      setDraftDirty(false);
-      share.refresh();
+      const saved = res?.data?.data;
+      // The server keeps only live, in-stock offers. The picker already blocks
+      // the rest, but stock can run out between loading the list and sending.
+      const dropped = droppedProductCount(sentIds, saved);
+      if (dropped > 0) {
+        toast.warning(t('share.productsDropped', {
+          n: dropped,
+          defaultValue: 'Sent. {{n}} product(s) were left out because they are out of stock or not live.',
+        }));
+      } else {
+        toast.success(t('share.replySentMsg', 'The farmer will be notified of your recommendation.'));
+      }
+      // Reseed from what the server now holds. This used to clear `draftDirty`
+      // and refetch — and the seed effect ran at once on the PRE-send copy,
+      // snapping "in stock", the ticks and an updated reply back to old values.
+      // Edits made while the request was in flight are newer than `saved`, so
+      // they stay a draft.
+      share.setData((prev) => mergeSavedReply(prev, saved));
+      if (saved && edits.current === editsAtSend) setDraftDirty(false);
     } catch (e) {
       toast.error(safeErrorMessage(e, t('share.replyFailed', 'Could not send')));
     } finally {
@@ -342,7 +388,11 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
     );
   }
 
-  if (share.error || !share.data) {
+  // Only when there is nothing to show. A refetch that fails AFTER the report
+  // loaded (a focus refresh on a weak network, say) used to replace the whole
+  // screen — reply, ticks and all — with "Report not found"; the report is still
+  // on screen and the failure is reported inline instead.
+  if (!share.data) {
     return (
       <Screen edges={['top', 'left', 'right']}>
         <AppHeader title={t('share.notFound', 'Report not found')} onBack={() => navigation.goBack()} />
@@ -361,30 +411,47 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
   const full = report.fullReport || {};
   const treatment = full.treatment || {};
 
-  const chemicals = treatment.chemical || treatment.chemical_controls || [];
-  const organic = treatment.organic || treatment.organic_alternatives || [];
+  // Labelled here, empties dropped, so a section only renders when it has at
+  // least one line of real text. `full.pesticides` is the legacy in-Express
+  // predictor's shape, which has no `treatment` object at all.
+  const chemicals = treatmentLabels(
+    treatment.chemical || treatment.chemical_controls || full.pesticides,
+    6,
+  );
+  const organic = treatmentLabels(treatment.organic || treatment.organic_alternatives, 5);
   const symptoms = Array.isArray(report.symptoms) ? report.symptoms : [];
   const weather = report.weatherSnapshot?.current || {};
+  // The snapshot's key is `description`; this screen read `weatherDesc`, which
+  // nothing writes — so the sky condition never rendered.
+  const weatherDesc = weatherDescription(weather);
 
   const alreadyReplied = data.status === 'REPLIED';
   const risk = riskMeta(report.riskLevel);
-  const riskIsHigh = report.riskLevel === 'HIGH';
-  const confidence = Math.round(report.confidenceScore || 0);
+  // HIGH or CRITICAL — checking only 'HIGH' left the worst reports unflagged.
+  const riskIsHigh = isHighRisk(report.riskLevel);
+  const riskIsCritical = String(report.riskLevel || '').toUpperCase() === 'CRITICAL';
+  // Stored as a 0–1 fraction; rounding it directly showed every report as 0–1%.
+  const confidence = confidencePercent(report.confidenceScore) ?? 0;
 
   const farmerLocation = [farmer.village, farmer.taluka, farmer.district].filter(Boolean).join(', ')
     || (farmer.phone ? `+91 ${farmer.phone}` : '—');
 
+  // 'unknown' / '000000' are the scan routes' placeholders for "the farmer never
+  // gave us this" — the row is dropped rather than shown as a fact.
+  const pincode = reportValue(report.pincode);
+  const growthStage = reportValue(report.growthStage);
+
   const secondaryMetrics = [
     report.fieldArea ? { label: t('share.fieldArea', 'Field'), value: String(report.fieldArea) } : null,
-    report.pincode ? { label: t('share.pincode', 'Pincode'), value: String(report.pincode) } : null,
-    report.growthStage ? { label: t('share.stage', 'Stage'), value: String(report.growthStage) } : null,
+    pincode ? { label: t('share.pincode', 'Pincode'), value: pincode } : null,
+    growthStage ? { label: t('share.stage', 'Stage'), value: growthStage } : null,
   ].filter(Boolean);
 
   return (
     <Screen edges={['top', 'left', 'right']}>
       <AppHeader
         title={report.primaryDisease || t('share.unknownDisease', 'Unknown disease')}
-        subtitle={[report.cropType, report.growthStage].filter(Boolean).join(' · ')}
+        subtitle={[report.cropType, growthStage].filter(Boolean).join(' · ')}
         onBack={() => navigation.goBack()}
         titleNumberOfLines={2}
         right={
@@ -407,6 +474,22 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false}
       >
           {/* ── The evidence ── */}
+          {/* The report loaded once and a later refetch failed. Stated here, over
+              the report the seller can still read and reply to. */}
+          {share.error ? (
+            <InlineNotice variant="warning" style={{ marginBottom: SP.lg }}>
+              {t('share.refreshFailed', 'Could not refresh. Showing the report as it was last loaded.')}
+              {' '}
+              <Text
+                style={rd.refreshRetry}
+                onPress={share.retry}
+                accessibilityRole="button"
+              >
+                {t('share.retry', 'Retry')}
+              </Text>
+            </InlineNotice>
+          ) : null}
+
           <EvidenceStrip urls={report.imageUrls} t={t} onOpen={openPhoto} />
 
           {/* ── Farmer ── */}
@@ -435,7 +518,9 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
 
           {riskIsHigh ? (
             <InlineNotice variant="error" style={{ marginBottom: SP.lg }}>
-              {t('share.highRiskNote', 'High risk — the farmer needs a fast, specific recommendation.')}
+              {riskIsCritical
+                ? t('share.criticalRiskNote', 'Critical risk — the farmer needs a fast, specific recommendation.')
+                : t('share.highRiskNote', 'High risk — the farmer needs a fast, specific recommendation.')}
             </InlineNotice>
           ) : null}
 
@@ -446,7 +531,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
                 <Ionicons name={risk.icon} size={15} color={risk.color} />
                 <Text style={[rd.riskTxt, { color: risk.color }]} numberOfLines={1}>
                   {report.riskLevel
-                    ? `${t('share.risk', 'Risk')}: ${report.riskLevel}`
+                    ? `${t('share.risk', 'Risk')}: ${riskLabel(report.riskLevel, t)}`
                     : t('common.unknown', 'Unknown')}
                 </Text>
               </View>
@@ -482,16 +567,16 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
 
           {chemicals.length > 0 ? (
             <FormSection icon="flask-outline" title={t('share.aiChemicalSection', 'AI-suggested chemicals')}>
-              {chemicals.slice(0, 6).map((c, i) => (
-                <Bullet key={`chem-${i}`}>{treatmentLabel(c)}</Bullet>
+              {chemicals.map((label, i) => (
+                <Bullet key={`chem-${i}`}>{label}</Bullet>
               ))}
             </FormSection>
           ) : null}
 
           {organic.length > 0 ? (
             <FormSection icon="leaf-outline" title={t('share.organicSection', 'Organic alternatives')}>
-              {organic.slice(0, 5).map((c, i) => (
-                <Bullet key={`org-${i}`}>{treatmentLabel(c)}</Bullet>
+              {organic.map((label, i) => (
+                <Bullet key={`org-${i}`}>{label}</Bullet>
               ))}
             </FormSection>
           ) : null}
@@ -500,7 +585,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
             <FormSection icon="cloud-outline" title={t('share.weatherSection', 'Weather at scan time')}>
               <Text style={rd.bulletTxt}>
                 {weather.temp}°C, {weather.humidity}% {t('share.humidity', 'humidity')}
-                {weather.weatherDesc ? ` — ${weather.weatherDesc}` : ''}
+                {weatherDesc ? ` — ${weatherDesc}` : ''}
               </Text>
             </FormSection>
           ) : null}
@@ -509,15 +594,17 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
           <FormSection
             icon="cube-outline"
             title={t('share.productPickerSection', 'Suggest products from your shop')}
-            hint={productList.length > 0
+            hint={searchable || productList.length > 0
               ? t('share.productPickerHint', 'Select up to 10 products to recommend. The farmer can add them to cart or come collect.')
               : undefined}
           >
-            {products.isInitialLoading ? (
+            {/* Once searchable, the search box stays mounted through reloads;
+                loading / error / no-match then render below it instead. */}
+            {!searchable && products.isInitialLoading ? (
               <LoadingState />
-            ) : products.error && productList.length === 0 ? (
+            ) : !searchable && products.error && productList.length === 0 ? (
               <ErrorState error={products.error} onRetry={products.retry} compact />
-            ) : productList.length === 0 ? (
+            ) : !searchable && productList.length === 0 ? (
               <EmptyState
                 icon="cube-outline"
                 compact
@@ -555,13 +642,13 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
                       label={t('common.clear', 'Clear')}
                       variant="ghost"
                       size="sm"
-                      onPress={() => { setDraftDirty(true); setSelectedIds(new Set()); }}
+                      onPress={() => { markDirty(); setSelectedIds(new Set()); }}
                     />
                   ) : null}
                 </View>
 
                 {/* Search appears only when the list is long enough to need it. */}
-                {productList.length > 6 ? (
+                {searchable ? (
                   <TextField
                     value={productQuery}
                     onChangeText={setProductQuery}
@@ -574,21 +661,43 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
                   />
                 ) : null}
 
-                {filteredProducts.length === 0 ? (
+                {products.isInitialLoading ? (
+                  <LoadingState />
+                ) : products.error && productList.length === 0 ? (
+                  <ErrorState error={products.error} onRetry={products.retry} compact />
+                ) : productList.length === 0 ? (
                   <Text style={rd.pickerHint}>
                     {t('locationPicker.noResults', { query: productQuery, defaultValue: 'No matches.' })}
                   </Text>
                 ) : (
-                  filteredProducts.map((p) => (
-                    <ProductPickRow
-                      key={String(p.id)}
-                      product={p}
-                      checked={selectedIds.has(p.id)}
-                      onToggle={toggleProduct}
-                      disabled={atLimit}
-                      t={t}
-                    />
-                  ))
+                  <>
+                    {productList.map((p) => (
+                      <ProductPickRow
+                        key={String(p.id)}
+                        product={p}
+                        checked={selectedIds.has(p.id)}
+                        onToggle={toggleProduct}
+                        disabled={atLimit}
+                        t={t}
+                      />
+                    ))}
+                    {products.loadingMore || products.moreError ? (
+                      <ListFooter
+                        loading={products.loadingMore}
+                        error={products.moreError}
+                        onRetry={products.retryMore}
+                        hasMore={products.hasMore}
+                      />
+                    ) : products.hasMore ? (
+                      <Button
+                        label={t('share.loadMoreProducts', 'Show more products')}
+                        icon="chevron-down"
+                        variant="ghost"
+                        size="sm"
+                        onPress={products.loadMore}
+                      />
+                    ) : null}
+                  </>
                 )}
               </>
             )}
@@ -608,7 +717,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
             >
               <TextField
                 value={reply}
-                onChangeText={(v) => { setReply(v); setDraftDirty(true); }}
+                onChangeText={(v) => { setReply(v); markDirty(); }}
                 onBlur={() => setReplyTouched(true)}
                 placeholder={t('share.replyPlaceholder', 'e.g. Spray Mancozeb 75% WP @ 2g/L water at 7-day interval. 2 sprays.')}
                 label={t('share.replyLabel', 'Recommendation')}
@@ -622,7 +731,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
             <Field label={t('share.skuLabel', 'Product SKU / name in your shop (optional)')}>
               <TextField
                 value={sku}
-                onChangeText={(v) => { setSku(v); setDraftDirty(true); }}
+                onChangeText={(v) => { setSku(v); markDirty(); }}
                 placeholder={t('share.skuPlaceholder', 'e.g. Indofil M-45 500g')}
                 label={t('share.skuLabel', 'Product SKU')}
                 maxLength={MAX_SKU}
@@ -638,7 +747,7 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
               </View>
               <Switch
                 value={available}
-                onValueChange={(v) => { setAvailable(v); setDraftDirty(true); }}
+                onValueChange={(v) => { setAvailable(v); markDirty(); }}
                 trackColor={{ false: C.surfaceSunken, true: alpha(C.brand, 0.5) }}
                 thumbColor={available ? C.brand : C.surface}
                 ios_backgroundColor={C.surfaceSunken}
@@ -677,6 +786,10 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
 }
 
 const rd = StyleSheet.create({
+  // Inline "refresh failed" retry — a Text inside the notice's Text, so it
+  // inherits the warning ink and only underlines to read as tappable.
+  refreshRetry: { textDecorationLine: 'underline', fontWeight: '700' },
+
   // ── Evidence ──
   evidence: { marginBottom: SP.lg, gap: SP.sm },
   evidenceLeadWrap: {
@@ -763,6 +876,9 @@ const rd = StyleSheet.create({
     backgroundColor: C.surface,
   },
   productRowActive: { borderColor: C.brand, backgroundColor: C.brandPale },
+  // Not faded: the reason text must stay readable. Sunken + a lighter border
+  // is what says "not pickable".
+  productRowUnavailable: { borderColor: C.border, backgroundColor: C.surfaceSunken },
   checkbox: {
     width: 24, height: 24, borderRadius: R.xs,
     borderWidth: 2, borderColor: C.borderStrong,
@@ -770,6 +886,7 @@ const rd = StyleSheet.create({
     backgroundColor: C.surface,
   },
   checkboxOn: { backgroundColor: C.brand, borderColor: C.brand },
+  checkboxOff: { backgroundColor: C.surfaceSunken, borderColor: C.border },
   productThumb: { width: 44, height: 44, borderRadius: R.sm, backgroundColor: C.surfaceSunken },
   productThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
   productName: { ...T.label, color: C.text },

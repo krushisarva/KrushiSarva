@@ -15,6 +15,7 @@ import { CatalogQcPage } from './pages/CatalogQc';
 import OrdersPage from './pages/Orders';
 import ReturnsPage from './pages/Returns';
 import FinancePage from './pages/Finance';
+import PaymentIntentsPage from './pages/PaymentIntents';
 import { AnimalsPage, MachineryPage, LabourPage, BookingsPage } from './pages/Listings';
 import { PostsPage, CommentsPage, GroupsPage } from './pages/Community';
 import { AiUsagePage, AiCreditsPage, FeedbackPage, ReportsPage } from './pages/AiOps';
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/finance" element={<FinancePage />} />
+            <Route path="/payment-intents" element={<PaymentIntentsPage />} />
             <Route path="/animals" element={<AnimalsPage />} />
             <Route path="/machinery" element={<MachineryPage />} />
             <Route path="/labour" element={<LabourPage />} />

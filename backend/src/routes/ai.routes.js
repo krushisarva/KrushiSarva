@@ -2330,12 +2330,28 @@ router.post('/scan', authenticate, requireFeature('ai_scan'), aiScanLimit, (req,
 
     let sessionId = null;
     let savedReportId = null;
+
+    // authenticate() puts only { id, role } on req.user, so `req.user.language`
+    // and `req.user.pincode` below were undefined on every scan. `farmCtx` is
+    // the CLIENT's farmContext blob, so what looked like "profile first, client
+    // second" was really "client only" — and CropScanScreen sends
+    // `pincode: user?.pincode || ''`, an empty string when the profile has none,
+    // which is falsy and landed on the literal '000000'. This read makes the
+    // account the source of truth the code already claimed it was.
+    //
+    // Placed AFTER the non-result early return above, so a scan that produced
+    // nothing to persist still pays no query; one findUnique serves both fields.
+    const scanProfile = await prisma.user.findUnique({
+      where:  { id: req.user.id },
+      select: { language: true, pincode: true },
+    }).catch(() => null);   // persistence here is already best-effort
+
     try {
       const convo = await prisma.aIConversation.create({
         data: {
           userId:        req.user.id,
           title:         `Scan: ${diseaseName} — ${cropName}`,
-          language:      farmCtx.language || req.user.language || 'en',
+          language:      farmCtx.language || scanProfile?.language || 'en',
           isScanSession: true,
           messages: {
             create: [{
@@ -2363,7 +2379,9 @@ router.post('/scan', authenticate, requireFeature('ai_scan'), aiScanLimit, (req,
         const saved = await prisma.cropDiseaseReport.create({
           data: {
             userId:          req.user.id,
-            pincode:         req.user.pincode || farmCtx.pincode || '000000',
+            // Precedence unchanged (profile, then the client's blob, then the
+            // literal) — the first arm can simply reach the profile now.
+            pincode:         scanProfile?.pincode?.trim() || farmCtx.pincode || '000000',
             cropType:        farmCtx.cropName || cropName,
             growthStage:     farmCtx.cropAge != null ? String(farmCtx.cropAge) : 'unknown',
             variety:         farmCtx.variety || null,
@@ -2621,10 +2639,25 @@ router.post('/alerts', authenticate, requireFeature('ai_alerts'), aiChatLimit, a
 
   const { crop, state, dayOfSeason, irrigationType, soilType, previousCrop, landSize, currentCrops } = req.body;
 
+  // authenticate() puts only { id, role } on req.user, so `req.user.district`,
+  // `req.user.state` and `req.user.farmDetail` were undefined on every request:
+  // the defaults below were not fallbacks, they were the values. This is the
+  // SECOND way this route reached alert_service's hardcoded Nashik — the nesting
+  // bug noted further down was one, and even after that was fixed Express was
+  // still sending "Nashik" for everybody, so the advice never localised.
+  //
+  // One findUnique, narrow select, and only past the cache check above — a
+  // cached alerts response still costs no query.
+  const profile = await prisma.user.findUnique({
+    where:  { id: req.user.id },
+    select: { state: true, district: true, farmDetail: { select: { cropTypes: true } } },
+  });
+
   const farmContext = {
-    crop:          crop          || req.user.farmDetail?.cropTypes?.[0] || 'Tomato',
-    state:         state         || req.user.state || 'Maharashtra',
-    district:      req.user.district || 'Nashik',
+    crop:          crop          || profile?.farmDetail?.cropTypes?.[0] || 'Tomato',
+    state:         state         || profile?.state?.trim() || 'Maharashtra',
+    // Verbatim — utils/districtAliases.js absorbs renamed districts on read.
+    district:      profile?.district?.trim() || 'Nashik',
     day_of_season: dayOfSeason  || 45,
     season:        getCurrentSeason(),
     month:         new Date().toLocaleString('en-IN', { month: 'long' }),

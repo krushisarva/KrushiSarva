@@ -33,7 +33,9 @@ const isReady = () => redis?.status === 'ready';
 
 const CACHE_SOURCE   = 'seller:stats';
 const STATS_TTL_SEC  = 10 * 60;          // 10 min — safety net if the refresh cron is down
-const STATS_KEY      = (id) => `seller:stats:${id}`;
+// v2: revenue excludes cancelled/refunded lines and listings count offers — a
+// new key so a deploy does not keep serving the old figures until the TTL.
+const STATS_KEY      = (id) => `seller:stats:v2:${id}`;
 
 // Sellers whose dashboards were read recently — the working set the periodic
 // refresh re-warms. A rolling TTL drops sellers who stop using the dashboard so
@@ -51,11 +53,19 @@ const REFRESH_CONCURRENCY = 5;           // DB-friendly fan-out per batch
  */
 async function computeSellerStats(sellerId) {
   const [totalProducts, activeProducts, revenueAgg] = await Promise.all([
-    prisma.product.count({ where: { sellerId } }),
-    prisma.product.count({ where: { sellerId, isActive: true } }),
+    // Listings are this seller's OFFERS — the rows My Products lists (GET
+    // /seller/products), one per pack size. These counted products.sellerId,
+    // deprecated by the catalog split: an offer on an existing catalog product
+    // has no such row, so the figure was 0 or a stale legacy count.
+    prisma.sellerListing.count({ where: { sellerId } }),
+    prisma.sellerListing.count({ where: { sellerId, status: 'ACTIVE' } }),
     // Uses the denormalised orderItem.sellerId index — no join through products.
+    // Only this seller's own lines, and only live ones: a cancelled line (or an
+    // order an admin refunded — its lines keep their last status) was counted
+    // as money earned. Line totals only: the delivery fee is charged once per
+    // order, not per seller, so it is not any one seller's revenue.
     prisma.orderItem.aggregate({
-      where: { sellerId },
+      where: { sellerId, status: { not: 'CANCELLED' }, order: { status: { not: 'REFUNDED' } } },
       _sum: { totalPrice: true, quantity: true },
     }),
   ]);

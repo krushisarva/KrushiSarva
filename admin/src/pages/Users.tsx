@@ -10,7 +10,7 @@ import { Toolbar, SearchInput, FilterSelect, DescList } from '../components/filt
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
 import { useViewAs, type ActiveViewAs } from '../lib/viewAs';
-import { formatDate, formatDateTime, relativeTime, titleCase } from '../lib/format';
+import { formatDate, formatDateTime, offersPulledNote, relativeTime, titleCase } from '../lib/format';
 
 const ROLES = ['FARMER', 'VERIFIED_FARMER', 'LABOUR_PROVIDER', 'MACHINERY_OWNER', 'SELLER', 'ADMIN'];
 const KYC = ['PENDING', 'SUBMITTED', 'VERIFIED', 'REJECTED'];
@@ -86,6 +86,10 @@ interface UserDetail {
   recent: { orders: any[]; conversations: any[]; audit: any[] };
 }
 
+/** PATCH /admin/users/:id response — `listingsDeactivated` counts the seller's
+ *  live offers the same transaction pulled off sale. */
+interface UserUpdated { id: string; role: string; isActive: boolean; listingsDeactivated?: number }
+
 export function UserDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -112,14 +116,21 @@ export function UserDetailPage() {
 
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['user', id] }); qc.invalidateQueries({ queryKey: ['user-audit', id] }); };
 
+  // Deactivating an account — and demoting a seller — pulls that seller's live
+  // AgriStore offers in the same transaction and returns `listingsDeactivated`.
+  // Report it: the admin needs to know the write reached the catalogue.
   const setActive = useMutation({
-    mutationFn: (vars: { isActive: boolean; reason: string }) => apiPatch(`/admin/users/${id}`, vars),
-    onSuccess: () => { toast.success('User updated'); invalidate(); },
+    mutationFn: (vars: { isActive: boolean; reason: string }) => apiPatch<UserUpdated>(`/admin/users/${id}`, vars),
+    onSuccess: (res) => {
+      const what = res?.isActive === false ? 'Account deactivated' : res?.isActive === true ? 'Account reactivated' : 'User updated';
+      toast.success(`${what}${offersPulledNote(res?.listingsDeactivated)}`);
+      invalidate();
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
   const changeRole = useMutation({
-    mutationFn: (vars: { role: string; reason: string }) => apiPatch(`/admin/users/${id}`, vars),
-    onSuccess: () => { toast.success('Role changed'); setNewRole(''); invalidate(); },
+    mutationFn: (vars: { role: string; reason: string }) => apiPatch<UserUpdated>(`/admin/users/${id}`, vars),
+    onSuccess: (res) => { toast.success(`Role changed${offersPulledNote(res?.listingsDeactivated)}`); setNewRole(''); invalidate(); },
     onError: (e) => toast.error(errorMessage(e)),
   });
   const forceLogout = useMutation({

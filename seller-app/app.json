@@ -4,6 +4,13 @@
     "slug": "krushisarva-seller",
     "scheme": "krushisarva-seller",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c9c3335e-0727-4fba-a3eb-dd10f653b50c",
+      "fallbackToCacheTimeout": 0
+    },
     "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",

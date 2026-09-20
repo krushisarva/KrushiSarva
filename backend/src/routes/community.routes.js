@@ -1,8 +1,9 @@
 /**
  * Community Routes
- * GET  /api/v1/community/posts          ?category&search&page&limit
+ * GET  /api/v1/community/posts          ?category&search&page&limit&scope&district&city
  * GET  /api/v1/community/posts/:id
- * POST /api/v1/community/posts          (auth, multipart)
+ * POST /api/v1/community/posts          (auth, multipart) — scope? all|district|city,
+ *                                        the district/city itself from the author's profile
  * DELETE /api/v1/community/posts/:id    (auth) — soft-delete; owner or ADMIN (moderator)
  * POST /api/v1/community/posts/:id/like (auth) — toggle
  * POST /api/v1/community/posts/:id/bookmark (auth) — toggle
@@ -23,6 +24,7 @@ import {
 } from '../utils/response.js';
 import { stripHtml } from '../utils/encrypt.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtIn } from '../utils/districtAliases.js';
 import { archiveResource } from '../services/softDelete.service.js';
 
 const router = Router();
@@ -58,18 +60,25 @@ router.get(
     // scope=all → show all posts
     // scope=district&district=Ahmednagar → posts for that district + all-scope posts
     // scope=city&city=Sangamner → posts for that city + all-scope posts
+    //
+    // districtIn, not `equals`: a post written in Dharashiv is stored under
+    // whichever spelling its author's profile carries, so exact matching split the
+    // one district's feed in two. It also makes the city branch safe when no
+    // district was sent — `{ equals: undefined }` is "no condition" to Prisma, so
+    // that branch used to pull in EVERY district's posts; an empty spelling list
+    // matches nothing.
     if (scope === 'district' && district) {
       where.AND = [{
         OR: [
           { scope: 'ALL' },
-          { scope: 'DISTRICT', district: { equals: district, mode: 'insensitive' } },
+          { scope: 'DISTRICT', district: districtIn(district) },
         ],
       }];
     } else if (scope === 'city' && city) {
       where.AND = [{
         OR: [
           { scope: 'ALL' },
-          { scope: 'DISTRICT', district: { equals: district, mode: 'insensitive' } },
+          { scope: 'DISTRICT', district: districtIn(district) },
           { scope: 'CITY', city: { equals: city, mode: 'insensitive' } },
         ],
       }];
@@ -142,10 +151,66 @@ router.post(
     body('description').trim().isLength({ min: 10, max: 5000 }),
     body('category').isIn(['crop-tips', 'market', 'weather', 'pest-disease', 'success', 'general']),
     body('tags').optional().isArray(),
+    // The feed is READ with lower-case words (?scope=district); the column is the
+    // upper-case PostScope enum. Accept either so a client can send back exactly
+    // the word it filters with. `values: 'falsy'` so a form field left empty is
+    // "not sent" rather than an invalid value.
+    body('scope').optional({ values: 'falsy' })
+      .customSanitizer((v) => String(v).trim().toUpperCase())
+      .isIn(['ALL', 'DISTRICT', 'CITY']).withMessage('must be all, district or city'),
   ],
   validate,
   async (req, res) => {
     const { title, description, category, tags } = req.body;
+
+    // ── Where the post is published ──────────────────────────────────────────
+    // This create set neither `scope` nor `district`, so every post made through
+    // the API fell to the schema default (ALL). The district arm of GET /posts
+    // (`scope: 'DISTRICT'`) therefore had no producer at all and could only ever
+    // match rows written directly to the database — the district feed had no way
+    // to fill up.
+    //
+    // The CLIENT chooses the scope; the district/city the row is stamped with
+    // comes from the author's own profile and never from the request body. A
+    // client-supplied district would let any account publish into any district's
+    // feed, and the read side cannot filter that back out.
+    //
+    // Absent scope still means ALL, exactly as the schema default did, so an app
+    // build that knows nothing about this field keeps posting to everyone.
+    const requested = req.body.scope || 'ALL';
+    let scope = 'ALL';
+    let district = null;
+    let city = null;
+
+    if (requested !== 'ALL') {
+      // authenticate() puts only { id, role } on req.user, so the author's
+      // location needs its own read. It is a primary-key probe, and only a
+      // scoped post pays for it — an ALL post costs no extra query.
+      const author = await prisma.user.findUnique({
+        where:  { id: req.user.id },
+        select: { district: true, city: true },
+      });
+      // Stored in whatever spelling the profile carries — Osmanabad stays
+      // Osmanabad. districtIn() on the read side expands a renamed district to
+      // all of its names, so normalising here would gain nothing and would
+      // quietly rewrite what the farmer entered.
+      const authorDistrict = author?.district?.trim() || null;
+      const authorCity     = author?.city?.trim() || null;
+
+      // A scoped row whose scoping column is NULL matches NO feed: `district IN
+      // (…)` never matches NULL, and the ALL arm does not apply either. Rather
+      // than accept a post into a black hole when the profile has no location,
+      // fall back to the scope that is always visible. The response carries the
+      // scope actually stored, so the client can tell the farmer what happened.
+      if (requested === 'DISTRICT' && authorDistrict) {
+        scope = 'DISTRICT';
+        district = authorDistrict;
+      } else if (requested === 'CITY' && authorCity) {
+        scope = 'CITY';
+        city = authorCity;
+      }
+    }
+
     const images = await uploadFiles(req.files || [], 'community');
 
     const post = await prisma.post.create({
@@ -154,6 +219,7 @@ router.post(
         title: stripHtml(title), description: stripHtml(description), category,
         images,
         tags: tags || [],
+        scope, district, city,
       },
       include: { author: { select: { id: true, name: true, avatar: true } } },
     });

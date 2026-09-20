@@ -27,9 +27,16 @@ const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
 /** Remembered across calls so a re-render or a refocus does not re-POST. */
 let lastRegisteredToken = null;
 
+/**
+ * This device's token as soon as it is minted — even if the POST then failed,
+ * a row may survive from an earlier launch. Logout hands it to the server.
+ */
+let deviceToken = null;
+
 /** Test-only: forget the memo so cases do not leak into each other. */
 export function _resetPushRegistration() {
   lastRegisteredToken = null;
+  deviceToken = null;
 }
 
 /**
@@ -103,6 +110,7 @@ export async function registerForPushNotifications() {
 
     const token = await acquireToken();
     if (!token) return null;
+    deviceToken = token;
 
     // The token is stable per install, so re-POSTing it on every foreground is
     // pure noise. The server upsert is idempotent either way — this saves the
@@ -122,6 +130,17 @@ export async function registerForPushNotifications() {
     if (DEV) console.warn('[push] registration failed:', err?.message);
     return null;
   }
+}
+
+/**
+ * This device's Expo push token if one was minted in this app session, else
+ * null. Read it on logout, BEFORE the session is cleared, and send it with
+ * POST /auth/logout: the server deletes the row mapping it to the account that
+ * is leaving. Forgetting the memo alone (below) did nothing server-side, so the
+ * old account's pushes kept arriving until someone else logged in.
+ */
+export function getDevicePushToken() {
+  return deviceToken;
 }
 
 /**

@@ -34,6 +34,7 @@
 import prisma from '../config/db.js';
 import { getSetting } from './settings.service.js';
 import { cachedListing, bumpListingVersion } from '../utils/listingCache.js';
+import { districtIn, talukaIn } from '../utils/districtAliases.js';
 import logger from '../utils/logger.js';
 
 const NS_BUYBOX = 'agristore:buybox';
@@ -84,10 +85,18 @@ export function listingGeoWhere(buyer = {}) {
   const { district, taluka, village, state } = buyer;
   if (!district && !taluka && !village && !state) return {};
 
-  const ci = (v) => ({ equals: v, mode: 'insensitive' });
+  // A district matches under any of its names: the farmer app stores the new
+  // one (Dharashiv), the seller app's listings the old one (Osmanabad). The
+  // headquarters taluka of each renamed district was renamed with it and is
+  // spelled the same way, so a taluka-scoped offer needs the same treatment.
+  const ci = (field, v) => {
+    if (field === 'district') return districtIn(v);
+    if (field === 'taluka')   return talukaIn(v);
+    return { equals: v, mode: 'insensitive' };
+  };
   const scopeClause = (scope, field, value) =>
     value
-      ? { AND: [{ sellScope: scope }, { OR: [{ [field]: ci(value) }, { [field]: null }] }] }
+      ? { AND: [{ sellScope: scope }, { OR: [{ [field]: ci(field, value) }, { [field]: null }] }] }
       : { sellScope: scope };
 
   return {
@@ -99,6 +108,29 @@ export function listingGeoWhere(buyer = {}) {
       scopeClause('village',  'village',  village),
     ],
   };
+}
+
+/**
+ * Seller eligibility, as a Prisma `where` fragment against seller_listings.
+ *
+ * An offer is only as live as the account behind it. A deactivated seller cannot
+ * log in to confirm, dispatch or cancel, so an ACTIVE listing of theirs that wins
+ * the buy box takes the buyer's money for an order nobody will ever act on.
+ * Admin deactivation (PATCH /admin/users/:id) now pulls the seller's listings,
+ * but rows written before that fix — or by any path that flips users.isActive
+ * without going through that route — would still be ACTIVE. So every query that
+ * decides what a buyer can see or buy checks the account as well.
+ *
+ * Prisma emits this as `LEFT JOIN users ON users.id = sellerId` — one primary-key
+ * probe per candidate row the listing index has already narrowed, not a scan.
+ *
+ * `isActive` is spread LAST so a caller merging its own seller predicate (e.g.
+ * the verified-seller filter's kycStatus) cannot switch the gate off.
+ *
+ * @param {object} [sellerWhere]  extra seller predicates to merge in
+ */
+export function activeSellerWhere(sellerWhere = {}) {
+  return { seller: { ...sellerWhere, isActive: true } };
 }
 
 /** min-max normalise so that LOWER raw values score HIGHER. All-equal → 1. */
@@ -164,6 +196,7 @@ export async function rankOffersForVariants(variantIds, buyer = {}) {
       variantId: { in: ids },
       status: 'ACTIVE',
       stockQty: { gt: 0 },
+      ...activeSellerWhere(),
       ...listingGeoWhere(buyer),
     },
     include: OFFER_INCLUDE,
@@ -330,6 +363,9 @@ export async function cheapestOfferByProduct(productIds, buyer = {}) {
       variantId: { in: variants.map((v) => v.id) },
       status: 'ACTIVE',
       stockQty: { gt: 0 },
+      // Same gate as the ranking: a card must not advertise "from ₹X" off an
+      // offer the product page would then refuse to show.
+      ...activeSellerWhere(),
       ...listingGeoWhere(buyer),
     },
     select: { variantId: true, sellingPrice: true, mrp: true, stockQty: true, sellerId: true },

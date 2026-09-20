@@ -280,6 +280,19 @@ export async function cleanupTestData() {
     prisma.postBookmark.deleteMany(),
     prisma.comment.deleteMany(),
     prisma.post.deleteMany(),
+    // Groups. GroupMessage.sender and Group.createdBy are plain relations with
+    // no onDelete, i.e. RESTRICT — so a suite that creates a group or posts a
+    // group message blocks `user.deleteMany()` below, aborts this transaction
+    // and leaves EVERY table populated for the next suite. Members and messages
+    // cascade from the group, but they are deleted first anyway so the order
+    // holds even if a cascade is ever relaxed.
+    prisma.groupMessage.deleteMany(),
+    prisma.groupMember.deleteMany(),
+    prisma.group.deleteMany(),
+    // broadcast_logs keys the admin off a loose `sentBy` scalar with no FK, so
+    // nothing removes it with the user. A leaked broadcast inflates the next
+    // suite's admin-broadcast history assertions.
+    prisma.broadcastLog.deleteMany(),
     // Direct messages FK the User on BOTH sides and are not cascaded, so any
     // suite that creates a DM would otherwise block `user.deleteMany()` below —
     // which aborts this whole transaction and leaves every table populated for

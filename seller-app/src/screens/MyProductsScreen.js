@@ -47,6 +47,7 @@ import { C, HIT, R, SP, T, alpha, formatCurrency, useResponsive } from '../theme
 import usePagedList from '../hooks/usePagedList';
 import { useEntrance } from '../hooks/useMotion';
 import { useNetwork } from '../hooks/useNetwork';
+import { refusalMessage } from '../utils/apiError';
 import {
   Screen, Card, Button, PressableRow, Badge,
   EmptyState, ErrorState, ListFooter, SkeletonList, InlineNotice,
@@ -64,6 +65,15 @@ const UNIT_LABELS = {
 };
 
 const PAGE_SIZE = 20;
+
+/**
+ * One row = one OFFER. The shim flattens a listing into the product shape, so
+ * `id` is the shared catalog product id and two pack sizes of one product share
+ * it. Keys, busy flags and the optimistic toggle/delete all went by `id`, so
+ * hiding the 450 g pack flipped the 1 kg row too, and deleting one removed both
+ * from the screen. `id` is the fallback for a row with no listingId.
+ */
+const rowKey = (it) => it?.listingId ?? it?.id;
 
 // ── Product card ─────────────────────────────────────────────────────────────
 
@@ -247,7 +257,7 @@ export default function MyProductsScreen({ navigation }) {
     // catalog product id: two pack sizes of one product yield two rows with the
     // same `id`. The hook dedupes across pages by this key, so without
     // listingId the second pack size would vanish on whichever page it landed.
-    keyOf: (it) => it?.listingId ?? it?.id,
+    keyOf: rowKey,
     errorFallback: t('myProducts.loadError', 'Could not load your products.'),
     fetchPage: useCallback(({ page, limit, signal }) =>
       api.get(`/agristore/seller/products?page=${page}&limit=${limit}`, { signal }), []),
@@ -258,6 +268,10 @@ export default function MyProductsScreen({ navigation }) {
   // Editing goes straight to the OFFER, not to the shared catalog row. The list
   // is served by /agristore/seller/products, which is now a shim over
   // seller_listings and carries listingId + variantId on every item.
+  //
+  // Every offer field goes through: the form shows what it is given and falls
+  // back to defaults for the rest (dispatchSlaDays was never on the row, so every
+  // edit showed — and saved — 2 days).
   const handleEdit = useCallback((item) => {
     navigation.navigate('AddProduct', {
       intent: 'attach',
@@ -269,12 +283,15 @@ export default function MyProductsScreen({ navigation }) {
         stockQty: item.stock,
         minOrderQty: item.minOrderQty,
         dispatchSlaDays: item.dispatchSlaDays,
+        sellerSku: item.sellerSku,
         sellScope: item.sellScope,
         district: item.district,
         taluka: item.taluka,
         village: item.village,
         state: item.state,
         harvestDate: item.harvestDate,
+        // The offer's own photos. `item.images` is the shared catalog imagery.
+        images: item.listingImages,
       },
       catalogProduct: {
         id: item.id, name: item.name, brand: item.brand,
@@ -292,11 +309,12 @@ export default function MyProductsScreen({ navigation }) {
   // showing the OLD value with no explanation, so the product silently stayed
   // visible when they meant to hide it.
   const handleToggle = useCallback(async (item) => {
-    if (busyIds.has(item.id)) return;
+    const key = rowKey(item);
+    if (busyIds.has(key)) return;
     const next = !item.isActive;
 
-    markBusy(item.id, true);
-    setItems((prev) => prev.map((p2) => (p2.id === item.id ? { ...p2, isActive: next } : p2)));
+    markBusy(key, true);
+    setItems((prev) => prev.map((p2) => (rowKey(p2) === key ? { ...p2, isActive: next } : p2)));
 
     try {
       // Pause/resume MY OFFER. This used to PUT isActive onto the PRODUCT row,
@@ -308,13 +326,15 @@ export default function MyProductsScreen({ navigation }) {
       const payload = data?.data;
       const confirmed = payload?.status ? payload.status === 'ACTIVE' : payload?.isActive;
       if (typeof confirmed === 'boolean' && confirmed !== next) {
-        setItems((prev) => prev.map((p2) => (p2.id === item.id ? { ...p2, isActive: confirmed } : p2)));
+        setItems((prev) => prev.map((p2) => (rowKey(p2) === key ? { ...p2, isActive: confirmed } : p2)));
       }
     } catch (e) {
-      setItems((prev) => prev.map((p2) => (p2.id === item.id ? { ...p2, isActive: item.isActive } : p2)));
-      toast.error(safeErrorMessage(e, t('myProducts.updateStatusError', 'Could not update visibility.')));
+      setItems((prev) => prev.map((p2) => (rowKey(p2) === key ? { ...p2, isActive: item.isActive } : p2)));
+      // A refused change (409/403) carries the server's reason; show it.
+      toast.error(refusalMessage(e)
+        || safeErrorMessage(e, t('myProducts.updateStatusError', 'Could not update visibility.')));
     } finally {
-      markBusy(item.id, false);
+      markBusy(key, false);
     }
   }, [busyIds, markBusy, setItems, toast, t]);
 
@@ -331,9 +351,10 @@ export default function MyProductsScreen({ navigation }) {
 
     // Remove immediately so the list feels instant, and restore in place if the
     // server rejects it.
-    const index = items.findIndex((p2) => p2.id === item.id);
-    markBusy(item.id, true);
-    setItems((prev) => prev.filter((p2) => p2.id !== item.id));
+    const key = rowKey(item);
+    const index = items.findIndex((p2) => rowKey(p2) === key);
+    markBusy(key, true);
+    setItems((prev) => prev.filter((p2) => rowKey(p2) !== key));
 
     try {
       // Removes MY OFFER only. The old DELETE soft-deleted the product AND ran
@@ -344,14 +365,16 @@ export default function MyProductsScreen({ navigation }) {
       toast.success(t('myProducts.deleted', { name: item.name, defaultValue: `${item.name} deleted` }));
     } catch (e) {
       setItems((prev) => {
-        if (prev.some((p2) => p2.id === item.id)) return prev;
+        if (prev.some((p2) => rowKey(p2) === key)) return prev;
         const restored = [...prev];
         restored.splice(Math.max(0, index), 0, item);
         return restored;
       });
-      toast.error(safeErrorMessage(e, t('myProducts.deleteError', 'Could not delete this product.')));
+      // A refused delete (409 — e.g. open orders on this offer) says why.
+      toast.error(refusalMessage(e)
+        || safeErrorMessage(e, t('myProducts.deleteError', 'Could not delete this product.')));
     } finally {
-      markBusy(item.id, false);
+      markBusy(key, false);
     }
   }, [confirm, items, markBusy, setItems, toast, t]);
 
@@ -362,7 +385,7 @@ export default function MyProductsScreen({ navigation }) {
       onEdit={handleEdit}
       onDelete={handleDelete}
       onToggle={handleToggle}
-      busy={busyIds.has(item.id)}
+      busy={busyIds.has(rowKey(item))}
       // Mutations need the network; showing them as tappable while offline
       // just produces a failure toast a second later.
       disabled={isOffline}
@@ -370,9 +393,10 @@ export default function MyProductsScreen({ navigation }) {
   ), [handleEdit, handleDelete, handleToggle, busyIds, isOffline]);
 
   // FlatList requires a string key, and the API has been seen returning rows
-  // with no id at all (soft-deleted joins). Fall back to the index.
+  // with no id at all (soft-deleted joins). Fall back to the index. Keyed by
+  // offer — two pack sizes of one product used to collide on the product id.
   const keyExtractor = useCallback(
-    (item, index) => (item?.id != null ? String(item.id) : `row-${index}`),
+    (item, index) => (rowKey(item) != null ? String(rowKey(item)) : `row-${index}`),
     [],
   );
 

@@ -28,6 +28,7 @@ import { AuthProvider, useAuth } from '@krushisarva/shared/context/AuthContext';
 // native module, so shared/ stays importable by any app that lacks it.
 import * as phoneAuth from '@krushisarva/shared/services/firebasePhoneAuth';
 import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
+import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 
 import BootScreen from './src/components/BootScreen';
@@ -35,11 +36,14 @@ import { FeedbackProvider } from './src/components/ui';
 import { NetworkProvider } from './src/hooks/useNetwork';
 
 function RootNavigator() {
-  const { isLoggedIn, loading } = useAuth();
+  const { isLoggedIn, loading, restoreFailed } = useAuth();
 
   // Restoring the session. A branded boot screen instead of a bare spinner —
   // this is the first thing a seller sees on every cold start.
   if (loading) return <BootScreen label="Signing you in…" />;
+
+  // Saved session, server unreachable at startup: offer Retry, not an OTP.
+  if (!isLoggedIn && restoreFailed) return <ServerUnreachableScreen />;
 
   // Same OTP login as the buyer app — one account works in both. Sellers who
   // haven't finished KYC are routed to BusinessProfile by SellerNavigator.

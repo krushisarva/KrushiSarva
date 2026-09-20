@@ -9,7 +9,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { Modal } from '../components/Modal';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, offersPulledNote } from '../lib/format';
 
 interface AdminRow {
   id: string;
@@ -122,9 +122,13 @@ export default function TeamPage() {
   const params = useMemo(() => ({}), []);
   const list = useKeyset<AdminRow>('/admin/team', params);
 
+  // Revoking also pulls that admin's live AgriStore offers in the same
+  // transaction (backend admin/team.routes.js) and reports how many — same
+  // report as a KYC rejection and an account deactivation.
   const revoke = useMutation({
-    mutationFn: (vars: { id: string; reason: string }) => apiPost(`/admin/team/${vars.id}/revoke`, { reason: vars.reason }),
-    onSuccess: () => { toast.success('Admin access revoked'); setEditing(null); invalidate('/admin/team'); },
+    mutationFn: (vars: { id: string; reason: string }) =>
+      apiPost<{ listingsDeactivated?: number }>(`/admin/team/${vars.id}/revoke`, { reason: vars.reason }),
+    onSuccess: (res) => { toast.success(`Admin access revoked${offersPulledNote(res?.listingsDeactivated)}`); setEditing(null); invalidate('/admin/team'); },
     onError: (e) => toast.error(errorMessage(e)),
   });
 

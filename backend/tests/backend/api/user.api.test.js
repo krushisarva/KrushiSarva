@@ -146,6 +146,29 @@ describe('PUT /api/v1/users/me', () => {
     expect(res.status).toBe(400);
   });
 
+  // A stored PIN that no longer resolves blocks the seller form until the field
+  // is emptied, so emptying it has to be a real clear. A fresh user keeps this
+  // out of the shared farmer's write quota.
+  test('200 — an empty pincode clears the stored one and leaves the district', async () => {
+    const { headers } = await createTestUser();
+
+    const set = await request(app)
+      .put('/api/v1/users/me')
+      .set(headers)
+      .send({ pincode: '422305', district: 'Nashik' });
+    expect(set.status).toBe(200);
+    expect(set.body.data.pincode).toBe('422305');
+
+    const cleared = await request(app)
+      .put('/api/v1/users/me')
+      .set(headers)
+      .send({ pincode: '' });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.pincode).toBeNull();
+    expect(cleared.body.data.district).toBe('Nashik');
+  });
+
   test('400 — invalid language', async () => {
     const res = await request(app)
       .put('/api/v1/users/me')
@@ -237,6 +260,45 @@ describe('PUT /api/v1/users/me', () => {
     expect(profile.body.data.role).toBe('FARMER');
   });
 
+  // The seller app sends every account that isn't already a seller to
+  // BusinessProfile, and this save is the consent that promotes it. Only FARMER
+  // was promoted, so a LABOUR_PROVIDER or MACHINERY_OWNER was told "not a seller
+  // account yet" on every save and every seller route kept 403-ing. The roles
+  // accepted here mirror SELLER_FLIP_FROM in routes/admin/kyc.routes.js.
+  const consentSave = {
+    sellerConsent: true,
+    businessType: 'individual_farmer',
+    district: 'Pune', taluka: 'Haveli', village: 'Wagholi', state: 'Maharashtra',
+    gstOptOut: true, gstNumber: '',
+  };
+
+  test.each(['FARMER', 'VERIFIED_FARMER', 'LABOUR_PROVIDER', 'MACHINERY_OWNER'])(
+    '200 — %s opting in is promoted to SELLER, with fresh tokens',
+    async (role) => {
+      const { user, headers } = await createTestUser({ role });
+
+      const res = await request(app).put('/api/v1/users/me').set(headers).send(consentSave);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.role).toBe('SELLER');
+      // The role lives in the JWT, so the flip has to re-issue it or every
+      // seller request keeps presenting the old role.
+      expect(res.body.data.tokens?.accessToken).toBeTruthy();
+      expect((await prisma.user.findUnique({ where: { id: user.id } })).role).toBe('SELLER');
+    },
+  );
+
+  test('an ADMIN is never demoted to SELLER by opting in', async () => {
+    const { user, headers } = await createTestUser({ role: 'ADMIN' });
+
+    const res = await request(app).put('/api/v1/users/me').set(headers).send(consentSave);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.role).toBe('ADMIN');
+    expect(res.body.data.tokens).toBeUndefined();
+    expect((await prisma.user.findUnique({ where: { id: user.id } })).role).toBe('ADMIN');
+  });
+
   test('400 — no fields to update', async () => {
     const res = await request(app)
       .put('/api/v1/users/me')
@@ -282,6 +344,128 @@ describe('PUT /api/v1/users/me/farm', () => {
       .put('/api/v1/users/me/farm')
       .set(farmer.headers)
       .send({ landAcres: -10 });
+
+    expect(res.status).toBe(400);
+  });
+
+  // The same clear-by-empty-string contract PUT /me honours for the user's own
+  // address. `pincode` and `landAcres` were answered with a 400 here, because
+  // their format validators ran on '' — so a PIN typed wrong once was on the
+  // farm for good. Fresh users keep these off the shared farmer's write quota.
+  test('200 — an empty pincode clears the stored one and leaves the village', async () => {
+    const { headers } = await createTestUser();
+
+    const set = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ pincode: '422305', village: 'Vani' });
+    expect(set.status).toBe(200);
+    expect(set.body.data.pincode).toBe('422305');
+
+    const cleared = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ pincode: '' });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.pincode).toBeNull();
+    expect(cleared.body.data.village).toBe('Vani');
+  });
+
+  test('200 — an empty landAcres clears it, and 0 acres is stored as 0', async () => {
+    const { headers } = await createTestUser();
+
+    const set = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ landAcres: 4.25 });
+    expect(set.status).toBe(200);
+    expect(set.body.data.landAcres).toBe(4.25);
+
+    const cleared = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ landAcres: '' });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.landAcres).toBeNull();
+
+    // 0 is inside the validator's own `min: 0`, so it must survive the handler —
+    // the old `landAcres ? parseFloat(...) : undefined` dropped it on create.
+    const zero = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ landAcres: 0 });
+    expect(zero.status).toBe(200);
+    expect(zero.body.data.landAcres).toBe(0);
+  });
+
+  // Emptying a free-text box always returned 200, but stored '' — so "cleared"
+  // and "never filled in" were two different rows and every reader had to know
+  // about both. They clear to NULL now, like every other field on this route.
+  test('200 — emptied text fields are stored as NULL, not the empty string', async () => {
+    const { headers } = await createTestUser();
+
+    const set = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ village: 'Vani', district: 'Nashik', state: 'Maharashtra', soilType: 'Black', irrigationType: 'Drip' });
+    expect(set.status).toBe(200);
+
+    const cleared = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ village: '', district: '', state: '', soilType: '', irrigationType: '' });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.village).toBeNull();
+    expect(cleared.body.data.district).toBeNull();
+    expect(cleared.body.data.state).toBeNull();
+    expect(cleared.body.data.soilType).toBeNull();
+    expect(cleared.body.data.irrigationType).toBeNull();
+  });
+
+  // A whitespace-only box is an emptied box: `.trim()` sanitises it to '' before
+  // the handler sees it, so it must take the same NULL path.
+  test('200 — a whitespace-only village clears to NULL', async () => {
+    const { headers } = await createTestUser();
+
+    await request(app).put('/api/v1/users/me/farm').set(headers).send({ village: 'Vani' });
+    const cleared = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ village: '   ' });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.village).toBeNull();
+  });
+
+  // Clearing must stay a deliberate act: a body that omits a field leaves it be.
+  test('200 — an omitted field is left alone, not cleared', async () => {
+    const { headers } = await createTestUser();
+
+    await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ pincode: '422305', village: 'Vani', landAcres: 3 });
+
+    const res = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(headers)
+      .send({ village: 'Dindori' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.village).toBe('Dindori');
+    expect(res.body.data.pincode).toBe('422305');
+    expect(res.body.data.landAcres).toBe(3);
+  });
+
+  // The escape hatch is for EMPTY, not for malformed: a non-empty PIN of the
+  // wrong shape is still refused.
+  test('400 — a non-empty pincode still has to be six digits', async () => {
+    const res = await request(app)
+      .put('/api/v1/users/me/farm')
+      .set(farmer.headers)
+      .send({ pincode: '1234' });
 
     expect(res.status).toBe(400);
   });

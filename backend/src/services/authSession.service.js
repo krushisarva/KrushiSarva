@@ -28,11 +28,19 @@ import { wantsCookieAuth, setRefreshCookie, setCsrfCookie } from '../utils/cooki
 import { generateCsrfToken } from '../middleware/csrf.js';
 
 // The exact projection /verify-otp uses. tokenVersion is needed to sign the
-// access token and is stripped before the user object leaves the server.
+// access token and isActive to refuse a deactivated account; both are stripped
+// before the user object leaves the server.
 const USER_SELECT = {
   id: true, phone: true, name: true, role: true, language: true,
   onboardingStep: true, activeFarmId: true, totalFarms: true, tokenVersion: true,
+  isActive: true,
 };
+
+// Shown on the login screen as-is (shared/services/api.js safeErrorMessage keys
+// on ACCOUNT_INACTIVE_CODE), so it must stay safe and actionable.
+export const ACCOUNT_INACTIVE_CODE = 'ACCOUNT_INACTIVE';
+export const ACCOUNT_INACTIVE_MESSAGE =
+  'This account has been deactivated. Please contact KrushiSarva support.';
 
 /**
  * @param {object}  args
@@ -50,6 +58,19 @@ export async function issueSessionForVerifiedPhone({ req, res, phone, name, logi
   // login, and the response never reveals which one happened beyond isNewUser.
   const existing = await prisma.user.findUnique({ where: { phone }, select: USER_SELECT });
   const isNewUser = !existing;
+
+  // A deactivated account must not get a session. Every authenticated request
+  // (middleware/auth.js) and every refresh already refuse one, but login did
+  // not: it minted a fresh pair, the very next request 401'd, and the app looked
+  // signed in while every screen failed. Refuse here, before anything is minted,
+  // so it holds for every path that proves a phone. Not written as AUTH_LOGIN —
+  // login risk and geo anomaly read those rows as prior successful logins.
+  if (existing && existing.isActive === false) {
+    await auditAuthEvent(existing.id, AUTH_ACTIONS.LOGIN_BLOCKED, req.ip, {
+      outcome: 'blocked', reason: 'account_inactive', loginMethod,
+    });
+    throw Object.assign(new Error(ACCOUNT_INACTIVE_MESSAGE), { accountInactive: true });
+  }
 
   let user = existing;
   if (isNewUser) {
@@ -132,8 +153,8 @@ export async function issueSessionForVerifiedPhone({ req, res, phone, name, logi
       .catch(() => {});
   }
 
-  // Don't leak the internal tokenVersion in the API response.
-  const { tokenVersion: _tv, ...safeUser } = user;
+  // Don't leak the internal tokenVersion (or the isActive gate) in the API response.
+  const { tokenVersion: _tv, isActive: _active, ...safeUser } = user;
 
   const body = { accessToken, isNewUser, user: safeUser };
   if (stepUp) body.stepUp = true;

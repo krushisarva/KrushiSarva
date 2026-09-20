@@ -130,7 +130,7 @@ describe('district and taluka', () => {
     expect(canonicalDistrict('ahilyanagar')).toBe('Ahmednagar');
   });
   test('a district outside the list is dropped, not silently resubmitted', () => {
-    expect(canonicalDistrict('Mumbai City')).toBe('');
+    expect(canonicalDistrict('Indore')).toBe('');
     expect(canonicalDistrict('Belagavi')).toBe('');
     expect(canonicalDistrict('  pune ')).toBe('Pune');
   });
@@ -140,9 +140,22 @@ describe('district and taluka', () => {
     expect(canonicalTaluka('', 'Haveli')).toBe('');
   });
   test('a stored location the picker cannot show starts empty', () => {
-    const form = initialFormFromUser({ district: 'Mumbai City', taluka: 'Andheri', sellerProfile: null });
+    const form = initialFormFromUser({ district: 'Belagavi', taluka: 'Athani', sellerProfile: null });
     expect(form.district).toBe('');
     expect(form.taluka).toBe('');
+  });
+  // Both Mumbai districts and several talukas were missing, so a Kendra there
+  // could never pass validation.
+  test('the Mumbai districts and the talukas the list used to miss are accepted', () => {
+    const form = initialFormFromUser({ district: 'Mumbai Suburban', taluka: 'Andheri', sellerProfile: null });
+    expect(form).toMatchObject({ district: 'Mumbai Suburban', taluka: 'Andheri' });
+    const valid = (district, taluka) => validateBusinessProfile({ ...validNewSeller, district, taluka });
+    for (const [district, taluka] of [
+      ['Mumbai City', 'Mumbai City'], ['Mumbai Suburban', 'Kurla'], ['Solapur', 'Madha'],
+      ['Pune', 'Pune City'], ['Thane', 'Thane'], ['Latur', 'Jalkot'], ['Gadchiroli', 'Desaiganj (Wadsa)'],
+    ]) {
+      expect(valid(district, taluka)).toEqual({});
+    }
   });
 });
 
@@ -330,6 +343,28 @@ describe('buildBusinessProfilePayload', () => {
     expect(buildBusinessProfilePayload({ ...initialFormFromUser(storedSeller), name: 'Patil Agro' }, storedSeller).name)
       .toBe('Patil Agro');
   });
+
+  // The picker shows Dharashiv as Osmanabad. Saving that back renamed the
+  // seller on every save, so farmers (whose app stores Dharashiv) lost them.
+  test('a district stored under its new name keeps it on an unrelated save', () => {
+    const dharashiv = { ...storedSeller, district: 'Dharashiv', taluka: 'Tuljapur', village: 'Tuljapur' };
+    const form = initialFormFromUser(dharashiv);
+    expect(form.district).toBe('Osmanabad');
+    const payload = buildBusinessProfilePayload({ ...form, village: 'Sindphal' }, dharashiv);
+    expect(payload).toMatchObject({ district: 'Dharashiv', taluka: 'Tuljapur', village: 'Sindphal' });
+
+    const ahilyanagar = { ...storedSeller, district: 'Ahilyanagar', taluka: 'Rahuri' };
+    expect(buildBusinessProfilePayload(initialFormFromUser(ahilyanagar), ahilyanagar).district).toBe('Ahilyanagar');
+  });
+
+  test('picking a different district sends the picked one', () => {
+    const dharashiv = { ...storedSeller, district: 'Dharashiv', taluka: 'Tuljapur' };
+    const form = applyFieldChange(initialFormFromUser(dharashiv), 'district', 'Latur');
+    expect(buildBusinessProfilePayload({ ...form, taluka: 'Ausa' }, dharashiv).district).toBe('Latur');
+    // …and an old name on file stays the old name.
+    expect(buildBusinessProfilePayload(initialFormFromUser({ ...storedSeller, district: 'Osmanabad', taluka: 'Tuljapur' }),
+      { ...storedSeller, district: 'Osmanabad' }).district).toBe('Osmanabad');
+  });
 });
 
 describe('server field errors', () => {
@@ -396,11 +431,22 @@ describe('PIN code', () => {
     expect(firstErrorKey({ district: 'x', pincode: 'y' })).toBe('pincode');
   });
 
-  test('only a new, non-empty PIN is sent', () => {
+  test('only a changed PIN is sent', () => {
     const seller = { ...storedSeller, pincode: '412207' };
     expect(buildBusinessProfilePayload(form({ pincode: '412207' }), seller)).not.toHaveProperty('pincode');
-    expect(buildBusinessProfilePayload(form({ pincode: '' }), seller)).not.toHaveProperty('pincode');
     expect(buildBusinessProfilePayload(form({ pincode: '413102' }), seller).pincode).toBe('413102');
+    // Nothing stored, nothing typed: no reason to write the field at all.
+    expect(buildBusinessProfilePayload(form({ pincode: '' }), storedSeller)).not.toHaveProperty('pincode');
+  });
+
+  test('emptying the field clears the stored PIN and keeps the district', () => {
+    const seller = { ...storedSeller, pincode: '412207' };
+    const payload = buildBusinessProfilePayload(form({ pincode: '' }), seller);
+    // '' is what the API reads as "clear it". Dropping it left a PIN that fails
+    // lookup on the account, blocking every later save.
+    expect(payload.pincode).toBe('');
+    expect(payload.district).toBe(form().district);
+    expect(payload.taluka).toBe(form().taluka);
   });
 
   test('changing the PIN counts as an unsaved change', () => {

@@ -19,6 +19,7 @@ import axios from 'axios';
 import prisma from '../config/db.js';
 import { ENV } from '../config/env.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtSpellings, districtContainsAny } from '../utils/districtAliases.js';
 import logger from '../utils/logger.js';
 
 const DATA_GOV_BASE     = 'https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070';
@@ -273,8 +274,11 @@ async function queryDB(commodity, state, district, withinDays = 90) {
     commodity: { contains: safeCommodity, mode: 'insensitive' },
     state:     { contains: safeState, mode: 'insensitive' },
     priceDate: { gte: since },
+    // Every spelling of a renamed district: Agmarknet still publishes most of
+    // these markets under the old name, so a farmer whose profile says Dharashiv
+    // matched nothing and fell through to state-wide prices below.
+    ...(safeDistrict ? districtContainsAny('district', safeDistrict) : {}),
   };
-  if (safeDistrict) where.district = { contains: safeDistrict, mode: 'insensitive' };
   const rows = await prisma.mandiPrice.findMany({
     where, orderBy: { priceDate: 'desc' }, take: 300,
   });
@@ -286,7 +290,7 @@ async function queryDB(commodity, state, district, withinDays = 90) {
   // let the DB return only those rows.
   if (rows.length < 5 && district) {
     if (rows.length >= 3) return rows;
-    delete where.district;
+    delete where.OR; // the district clause — districtContainsAny() puts it there
     return prisma.mandiPrice.findMany({
       where, orderBy: { priceDate: 'desc' }, take: 300,
     });
@@ -357,11 +361,13 @@ export async function getMandiPrices(commodity, state, district = null) {
         // Persist everything (all districts) so future requests hit DB cache
         persistToDB(allState).catch(() => {});
 
-        // Filter to the requested district (if any)
-        const result = district
-          ? allState.filter(r =>
-              r.district?.toLowerCase().includes(district.toLowerCase())
-            )
+        // Filter to the requested district (if any), under any of its spellings
+        const spellings = districtSpellings(district).map(d => d.toLowerCase());
+        const result = spellings.length
+          ? allState.filter(r => {
+              const d = r.district?.toLowerCase() || '';
+              return spellings.some(name => d.includes(name));
+            })
           : allState;
 
         // If district filter gave nothing fall back to full state list
@@ -616,12 +622,19 @@ const DISTRICT_MANDIS = {
 };
 
 export function getNearbyMandiNames(district) {
-  const key = (district || '').toLowerCase().replace(/[\s.]/g, '');
-  // Direct match first
-  if (DISTRICT_MANDIS[key]) return DISTRICT_MANDIS[key];
-  // Partial match
-  for (const [k, v] of Object.entries(DISTRICT_MANDIS)) {
-    if (key.includes(k) || k.includes(key)) return v;
+  // Every spelling, because this table is keyed by the names Agmarknet uses — the
+  // old ones — so 'Dharashiv' matched no key and the route answered 404.
+  // A blank district now yields no spellings and returns []: the partial match
+  // below treats '' as a substring of every key, so it used to hand back whichever
+  // district happened to be first in the table.
+  for (const name of districtSpellings(district)) {
+    const key = name.toLowerCase().replace(/[\s.]/g, '');
+    // Direct match first
+    if (DISTRICT_MANDIS[key]) return DISTRICT_MANDIS[key];
+    // Partial match
+    for (const [k, v] of Object.entries(DISTRICT_MANDIS)) {
+      if (key.includes(k) || k.includes(key)) return v;
+    }
   }
   return [];
 }

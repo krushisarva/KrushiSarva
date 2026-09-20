@@ -33,15 +33,25 @@ import crypto from 'crypto';
 import prisma from '../config/db.js';
 import logger from '../utils/logger.js';
 import { D, toMinorUnits } from '../utils/money.js';
-import { fetchPayment, fetchOrderPayments, isMockPayments } from './payment.service.js';
+import { fetchPayment, fetchOrderPayments, isMockPayments, processRefund } from './payment.service.js';
 import { releaseReservations } from './stockReservation.service.js';
 import { recordEvent, SHOP_EVENTS } from './shopMetrics.service.js';
+import { auditLog } from './audit.service.js';
 
 /** Intents older than this that never got paid are treated as abandoned. */
 const INTENT_EXPIRY_MINUTES = 30;
 
 /** Terminal states — the reconciler does not revisit these. */
 const TERMINAL = new Set(['ORDER_CREATED', 'FAILED', 'CANCELLED', 'REFUNDED', 'EXPIRED']);
+
+/** The money is on its way back: no order may be made from this payment. */
+const REFUNDING = ['REFUND_INITIATED', 'REFUNDED'];
+
+/** An intent that produced an order or a refund; a late "paid" must not move it. */
+const SETTLED = ['ORDER_CREATED', ...REFUNDING];
+
+/** Prefix of `failureReason` when the automatic refund's gateway call failed. */
+export const AUTO_REFUND_FAILED = 'AUTO-REFUND FAILED';
 
 export function receiptFor(userId) {
   // Unique per intent. The old receipt was `cart_${userId}`, identical for every
@@ -85,15 +95,26 @@ export async function findIntent(providerOrderId) {
  */
 export async function markIntentPaid({ providerOrderId, providerPaymentId, amountPaise }) {
   try {
-    return await prisma.paymentIntent.update({
-      where: { providerOrderId },
+    // Never regress a state that already produced an order or a refund. This
+    // was an unconditional write, and payment.captured routinely lands AFTER
+    // confirm: PAID over REFUND_INITIATED put a refunded payment back in the
+    // orphan queue, where a late confirm could still turn it into an order.
+    const { count } = await prisma.paymentIntent.updateMany({
+      where: { providerOrderId, status: { notIn: SETTLED } },
       data: {
-        // Never regress a state that already produced an order.
         status: 'PAID',
         providerPaymentId,
         ...(amountPaise != null ? { amountPaise } : {}),
       },
     });
+    // Settled: still record which payment it was, if that is not yet known.
+    if (!count && providerPaymentId) {
+      await prisma.paymentIntent.updateMany({
+        where: { providerOrderId, providerPaymentId: null },
+        data: { providerPaymentId },
+      });
+    }
+    return await prisma.paymentIntent.findUnique({ where: { providerOrderId } });
   } catch (err) {
     if (err?.code === 'P2025') return null; // no such intent
     // P2002 on providerPaymentId: this payment id is already recorded against a
@@ -130,6 +151,115 @@ export async function attachOrderToIntent({ providerOrderId, orderId }) {
     }
     if (err?.code === 'P2025') return null;
     throw err;
+  }
+}
+
+/**
+ * INSIDE /orders/confirm's order transaction: bind the intent to the order
+ * being created. Refused once a refund has claimed the intent, and it holds the
+ * intent's row lock until commit — so for one payment an order and an automatic
+ * refund are mutually exclusive, whichever lands first.
+ */
+export async function bindIntentToOrderTx(tx, { intentId, orderId }) {
+  const { count } = await tx.paymentIntent.updateMany({
+    where: { id: intentId, status: { notIn: REFUNDING } },
+    data: { status: 'ORDER_CREATED', orderId },
+  });
+  if (!count) {
+    throw Object.assign(
+      new Error('This payment has already been refunded, so no order was created. Please review your cart and order again.'),
+      { statusCode: 409, expose: true, code: 'PAYMENT_REFUNDED' },
+    );
+  }
+}
+
+/**
+ * Give back a captured payment that no order will be made from.
+ *
+ * Every "your payment went through, but…" path used to end in "our team will
+ * contact you" and nothing else — processRefund had no caller on this path, so
+ * the money sat captured until a human noticed.
+ *
+ * Exactly once: the refund rides an atomic transition of the intent to
+ * REFUND_INITIATED, allowed only while no order owns it. A retried confirm and
+ * the reconciler race for that one transition and the losers refund nothing;
+ * bindIntentToOrderTx refuses a refunding intent, so a late confirm cannot turn
+ * the same payment into an order as well.
+ *
+ * A failed gateway call leaves the intent REFUND_INITIATED with failureReason
+ * "AUTO-REFUND FAILED: …" — in the admin orphan queue — and is not retried: a
+ * timed-out refund may have gone through.
+ *
+ * Never throws.
+ * @returns {Promise<{ ok: boolean, amount?: string, status?: string, reason?: string }>}
+ */
+export async function refundUnorderedPayment({ providerOrderId, providerPaymentId = null, reason, actorId = null, requestId = null }) {
+  try {
+    const intent = await prisma.paymentIntent.findUnique({ where: { providerOrderId } });
+    const paymentId = providerPaymentId || intent?.providerPaymentId;
+    // No intent row means no claim to make it exactly-once: left for a human.
+    if (!intent || !paymentId) return { ok: false, reason: 'NO_INTENT' };
+    const amount = D(intent.amount).toFixed(2);
+
+    if (await prisma.order.findUnique({ where: { paymentRef: paymentId }, select: { id: true } })) {
+      return { ok: false, reason: 'ORDER_EXISTS' };
+    }
+
+    const { count } = await prisma.paymentIntent.updateMany({
+      where: { id: intent.id, orderId: null, status: { notIn: [...SETTLED, 'CANCELLED'] } },
+      data: {
+        status: 'REFUND_INITIATED',
+        ...(intent.providerPaymentId !== paymentId ? { providerPaymentId: paymentId } : {}),
+        failureReason: null,
+        reconciledAt: new Date(),
+        reconcileNote: `auto-refund: ${reason}`.slice(0, 500),
+      },
+    });
+    if (!count) {
+      // Someone else claimed it. Report whether that refund is under way.
+      const now = await prisma.paymentIntent.findUnique({
+        where: { id: intent.id }, select: { status: true, failureReason: true },
+      });
+      const started = REFUNDING.includes(now?.status) && !String(now?.failureReason || '').startsWith(AUTO_REFUND_FAILED);
+      return { ok: started, amount, status: now?.status, reason: 'ALREADY_CLAIMED' };
+    }
+
+    let refund;
+    try {
+      refund = await processRefund(paymentId, intent.amountPaise);
+    } catch (err) {
+      const error = String(err?.message || err).slice(0, 300);
+      await prisma.paymentIntent.updateMany({
+        where: { id: intent.id, status: 'REFUND_INITIATED' },
+        data: { failureReason: `${AUTO_REFUND_FAILED}: ${error}`.slice(0, 500) },
+      }).catch(() => {});
+      recordEvent(SHOP_EVENTS.PAYMENT_CAPTURED_NO_ORDER);
+      logger.error({ intentId: intent.id, providerOrderId, providerPaymentId: paymentId, amount, error },
+        '[ALERT][ShopPayment] automatic refund FAILED — refund by hand');
+      await auditLog({
+        userId: actorId, action: 'PAYMENT_REFUND_FAILED', entity: 'PaymentIntent', entityId: intent.id,
+        after: { status: 'REFUND_INITIATED' }, requestId,
+        metadata: { reason, amount, providerOrderId, providerPaymentId: paymentId, error },
+      }).catch(() => {});
+      return { ok: false, amount, reason: 'GATEWAY_FAILED' };
+    }
+
+    const status = refund?.status === 'processed' ? 'REFUNDED' : 'REFUND_INITIATED';
+    if (status === 'REFUNDED') {
+      await prisma.paymentIntent.updateMany({
+        where: { id: intent.id, status: 'REFUND_INITIATED' }, data: { status },
+      }).catch(() => {});
+    }
+    logger.warn({ intentId: intent.id, providerOrderId, amount, refundId: refund?.id }, '[ShopPayment] captured payment with no order refunded');
+    await auditLog({
+      userId: actorId, action: 'PAYMENT_REFUND', entity: 'PaymentIntent', entityId: intent.id,
+      after: { status }, requestId,
+      metadata: { reason, amount, providerOrderId, refundId: refund?.id ?? null, mock: Boolean(refund?.mock) },
+    }).catch(() => {});
+    return { ok: true, amount, status };
+  } catch (err) {
+    logger.error({ err, providerOrderId }, '[ALERT][ShopPayment] automatic refund could not be started');
+    return { ok: false, reason: 'ERROR' };
   }
 }
 
@@ -188,16 +318,20 @@ export function webhookEventId(payload) {
  *
  * Four outcomes per intent:
  *   captured, order already exists   → bind and finish
- *   captured, NO order               → PAID + flagged for support: the farmer's
- *                                      money is with us and they have nothing.
- *                                      Deliberately NOT auto-ordered here — the
- *                                      cart is long gone and stock may have sold,
- *                                      so inventing an order would be worse than
- *                                      escalating a refund.
+ *   captured, NO order               → PAID + flagged: the farmer's money is with
+ *                                      us and they have nothing. Past the expiry
+ *                                      window it is REFUNDED automatically
+ *                                      (refundUnorderedPayment). Deliberately
+ *                                      NOT auto-ordered — the cart is long gone
+ *                                      and stock may have sold, so inventing an
+ *                                      order would be worse than a refund.
  *   failed                           → FAILED, with the gateway's reason
  *   no payment at all, past expiry   → EXPIRED (abandoned checkout)
  *
- * @returns {Promise<{scanned:number, paid:number, failed:number, expired:number, orphanedPaid:number}>}
+ * `orphanedPaid` counts captured payments still needing a human: too young to
+ * refund yet, or the automatic refund failed.
+ *
+ * @returns {Promise<{scanned:number, paid:number, failed:number, expired:number, orphanedPaid:number, refunded:number}>}
  */
 export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 200 } = {}) {
   const cutoff = new Date(Date.now() - olderThanMinutes * 60_000);
@@ -212,7 +346,7 @@ export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 
   // `unknown` counts intents the gateway could not answer for this pass. It is
   // not a failure to fix here — it is the signal that reconciliation is blind,
   // which matters because the alternative (guessing) loses money.
-  const stats = { scanned: stale.length, paid: 0, failed: 0, expired: 0, orphanedPaid: 0, unknown: 0 };
+  const stats = { scanned: stale.length, paid: 0, failed: 0, expired: 0, orphanedPaid: 0, refunded: 0, unknown: 0 };
   if (!stale.length || isMockPayments()) return stats;
 
   for (const intent of stale) {
@@ -258,6 +392,19 @@ export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 
             },
           }).catch(() => {});
           stats.paid += 1;
+        } else if (intent.createdAt < expiryCutoff) {
+          // Past any payment window and still no order: the money goes back.
+          // The refund claims the intent atomically, so a later pass, a retried
+          // confirm or the webhook cannot refund it again — and a confirm that
+          // arrives after this is refused rather than creating an order.
+          await releaseReservations(intent.providerOrderId, 'captured payment with no order').catch(() => {});
+          const refund = await refundUnorderedPayment({
+            providerOrderId: intent.providerOrderId,
+            providerPaymentId: captured.id,
+            reason: 'captured payment with no order (reconciled)',
+          });
+          if (refund.ok) stats.refunded += 1;
+          else stats.orphanedPaid += 1;
         } else {
           await prisma.paymentIntent.update({
             where: { id: intent.id },
@@ -265,7 +412,7 @@ export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 
               status: 'PAID',
               providerPaymentId: captured.id,
               reconciledAt: new Date(),
-              reconcileNote: 'PAID WITH NO ORDER — needs manual refund or fulfilment',
+              reconcileNote: `PAID WITH NO ORDER — refunded automatically if still without one after ${INTENT_EXPIRY_MINUTES} min`,
             },
           }).catch(() => {});
           stats.orphanedPaid += 1;
@@ -324,9 +471,38 @@ export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 
  *
  * "Payment is being confirmed" is a distinct state from "payment failed", and
  * showing the second when the first is true is how a farmer pays twice.
+ *
+ * A refund is its own answer. REFUND_INITIATED used to fall through to PENDING,
+ * which the app renders as "No money was taken. You can try again" — said to a
+ * farmer whose money HAS been taken and is on its way back. REFUNDING and
+ * REFUNDED are additive states: an older build does not know them and keeps its
+ * existing fallback, so nothing breaks, while a current build can say the truth.
  */
 export function intentPublicStatus(intent) {
   if (!intent) return { state: 'UNKNOWN' };
+  if (intent.status === 'REFUND_INITIATED') {
+    // The gateway call may have failed (failureReason "AUTO-REFUND FAILED: …").
+    // The money is still owed either way, but promising 5–7 working days for a
+    // refund no provider has accepted yet would be the wrong promise.
+    const handOff = String(intent.failureReason || '').startsWith(AUTO_REFUND_FAILED);
+    return {
+      state: 'REFUNDING',
+      orderId: intent.orderId || null,
+      refundPending: !handOff,
+      message: handOff
+        ? 'Your payment could not become an order. Our team is arranging your refund — please do not pay again.'
+        : 'Your payment is being refunded — it reaches the account you paid from in 5–7 working days.',
+    };
+  }
+  if (intent.status === 'REFUNDED') {
+    return {
+      state: 'REFUNDED',
+      orderId: intent.orderId || null,
+      // `reason` is kept for builds that read it on a terminal state.
+      reason: intent.failureReason || null,
+      message: 'Your payment has been refunded — it reaches the account you paid from in 5–7 working days.',
+    };
+  }
   if (TERMINAL.has(intent.status)) {
     return {
       state: intent.status,

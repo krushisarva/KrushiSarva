@@ -9,14 +9,39 @@ import { Toolbar, FilterSelect, DescList } from '../components/filters';
 import { Drawer } from '../components/Modal';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
-import { formatINR, formatDateTime } from '../lib/format';
+import { formatINR, formatDateTime, deliveryAddressLines } from '../lib/format';
 
 const STATUSES = ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
-const PAYMENTS = ['pending', 'paid', 'failed', 'refunded'];
+const PAYMENTS = ['pending', 'paid', 'failed', 'refund_pending', 'partially_refunded', 'refunded'];
 
 interface OrderRow { id: string; status: string; paymentStatus: string; totalAmount: number; createdAt: string; user?: { name: string | null }; _count?: { items: number } }
 interface OrderDetail extends OrderRow { deliveryAddress: Record<string, unknown> | null; items: { id: string; quantity: number; unitPrice: number; totalPrice: number; product?: { name: string } }[]; user?: { name: string | null; phone: string; district: string | null } }
 interface TimelineEntry { id: string; action: string; after?: { status?: string; paymentStatus?: string } | null; metadata?: { reason?: string | null; refundAmount?: number | null } | null; createdAt: string }
+
+// ── Delivery address ────────────────────────────────────────────────────
+// Support reads this out to a courier, so every line the order carries is
+// printed — flat, landmark and any unrecognised key included. The assembly is
+// `deliveryAddressLines` in lib/format.ts; this only styles it.
+function DeliveryAddress({ addr }: { addr: Record<string, unknown> | null }) {
+  const view = deliveryAddressLines(addr);
+  const lineClass = (key: string) =>
+    (key === 'name' ? 'font-medium text-slate-800' : key === 'phone' ? 'font-mono' : undefined);
+
+  return (
+    <div>
+      <h4 className="mb-2 text-sm font-medium text-slate-700">
+        Delivery address{view.type ? ` · ${view.type.toLowerCase()}` : ''}
+        <span className="ml-1 font-normal text-slate-400">(phone masked)</span>
+      </h4>
+      <div className="space-y-0.5 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        {view.redacted && <p className="text-slate-500">Erased under a DPDP erasure request.</p>}
+        {view.lines.map((l) => <p key={l.key} className={lineClass(l.key)}>{l.text}</p>)}
+        {view.extras.length > 0 && <p className="text-xs text-slate-500">{view.extras.join(' · ')}</p>}
+        {view.empty && <p className="text-slate-400">No address recorded on this order.</p>}
+      </div>
+    </div>
+  );
+}
 
 export default function OrdersPage() {
   const toast = useToast();
@@ -90,15 +115,7 @@ export default function OrdersPage() {
               </ul>
             </div>
 
-            {d.deliveryAddress && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-slate-700">Delivery (phone masked)</h4>
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  {[d.deliveryAddress.name, d.deliveryAddress.street, d.deliveryAddress.city, d.deliveryAddress.state, d.deliveryAddress.pincode].filter(Boolean).join(', ')}
-                  {d.deliveryAddress.phone ? ` · ${String(d.deliveryAddress.phone)}` : ''}
-                </p>
-              </div>
-            )}
+            <DeliveryAddress addr={d.deliveryAddress} />
 
             <div className="space-y-3 border-t border-slate-100 pt-4">
               <h4 className="text-sm font-medium text-slate-700">Update</h4>

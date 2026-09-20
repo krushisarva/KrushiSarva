@@ -36,6 +36,7 @@ export const NAV: NavGroup[] = [
   ]},
   { title: 'Finance', scope: 'FINANCE', items: [
     { label: 'Finance', to: '/finance', icon: Wallet, scope: 'FINANCE', keywords: 'payout settlement ledger seller commission balance reference' },
+    { label: 'Payment Intents', to: '/payment-intents', icon: IndianRupee, scope: 'FINANCE', keywords: 'razorpay orphaned paid no order stuck money refund failed auto-refund reconcile' },
   ]},
   { title: 'Rentals & Trade', items: [
     { label: 'Animals', to: '/animals', icon: Beef },

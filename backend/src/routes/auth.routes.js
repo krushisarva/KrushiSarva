@@ -25,7 +25,7 @@ import { auditAuthEvent, AUTH_ACTIONS, maskPhone } from '../services/audit.servi
 import { normalizeIndianMobile, indianMobileBody } from '../utils/phone.js';
 import { sendOtp, verifyOtp } from '../services/otp.service.js';
 import { verifyFirebaseIdToken, verifyFirebaseReauth, isFirebaseAuthEnabled } from '../services/firebaseAuth.service.js';
-import { issueSessionForVerifiedPhone } from '../services/authSession.service.js';
+import { issueSessionForVerifiedPhone, ACCOUNT_INACTIVE_CODE } from '../services/authSession.service.js';
 import { checkOtpLock, clearOtpLockout } from '../services/otpLockout.service.js';
 import { otpPowGate } from '../services/proofOfWork.service.js';
 import { reportSecurityEvent } from '../services/incident.service.js';
@@ -153,6 +153,7 @@ router.post(
       });
       return sendCreated(res, payload);
     } catch (err) {
+      if (err.accountInactive) return sendError(res, err.message, 403, { code: ACCOUNT_INACTIVE_CODE });
       logger.error({ err }, '[Auth] verify-otp error');
       return sendError(res, 'Authentication failed', 500);
     }
@@ -260,6 +261,7 @@ router.post(
       await clearOtpLockout(phone);
       return sendCreated(res, payload);
     } catch (err) {
+      if (err.accountInactive) return sendError(res, err.message, 403, { code: ACCOUNT_INACTIVE_CODE });
       logger.error({ err }, '[Auth] firebase-login error');
       return sendError(res, 'Authentication failed', 500);
     }
@@ -447,6 +449,8 @@ router.post(
 // ── POST /logout ───────────────────────────────────────────────────────────────
 // refreshToken comes from the body (mobile) or the cookie (web). Either way we
 // revoke the whole lineage and clear the cookie.
+// pushToken (optional) is this device's Expo token: its row is removed so the
+// account signing out stops receiving pushes on a handset it has left.
 router.post(
   '/logout',
   authenticate,
@@ -460,6 +464,13 @@ router.post(
       // denylist), so logout is atomic on the stateless access token too — not
       // just the refresh lineage. Bounded to the token's remaining life.
       if (req.auth?.jti) await denylistAccessToken(req.auth.jti, req.auth.exp);
+      // Scoped to the caller: a token that has since been claimed by another
+      // account on this device is theirs and stays. Not validated up front —
+      // a malformed value must not fail the logout; it simply matches nothing.
+      const { pushToken } = req.body;
+      if (typeof pushToken === 'string' && pushToken.length <= 200) {
+        await prisma.pushToken.deleteMany({ where: { token: pushToken, userId: req.user.id } });
+      }
       clearRefreshCookie(res);
       clearCsrfCookie(res);
       await auditAuthEvent(req.user.id, AUTH_ACTIONS.LOGOUT, req.ip, { outcome: 'success' });

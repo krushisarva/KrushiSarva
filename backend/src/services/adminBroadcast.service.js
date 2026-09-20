@@ -12,6 +12,7 @@ import prisma from '../config/db.js';
 import { sendPushToUser } from './push.service.js';
 import { mapLimit } from '../utils/mapLimit.js';
 import { getSetting } from './settings.service.js';
+import { districtIn } from '../utils/districtAliases.js';
 
 // Hard safety ceiling on a single broadcast's fan-out. The runtime
 // `broadcast.maxRecipients` AppSetting may LOWER this (ops tuning) but can never
@@ -27,7 +28,10 @@ const FANOUT_CONCURRENCY = 25;
 function audienceWhere({ district, state, role, crop } = {}) {
   const where = { isActive: true };
   if (role) where.role = role;
-  if (district) where.district = { equals: district, mode: 'insensitive' };
+  // Every spelling of a renamed district. Half a district's users store the old
+  // name and half the new one, so an exact match silently dropped them from the
+  // audience — and the estimate that previewed it agreed, so nothing looked wrong.
+  if (district) where.district = districtIn(district);
   if (state) where.state = { equals: state, mode: 'insensitive' };
   if (crop) where.farmDetail = { cropTypes: { has: crop } };
   return where;

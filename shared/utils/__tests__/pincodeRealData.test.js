@@ -19,6 +19,10 @@ test('413102 Baramati — a plain village pincode fills every picker', () => {
   expect(pickerValues('413102')).toEqual({ state: 'Maharashtra', district: 'Pune', taluka: 'Baramati' });
 });
 
+test('413209 Madha — a taluka the list used to miss (captured 2026-09-19)', () => {
+  expect(pickerValues('413209')).toEqual({ state: 'Maharashtra', district: 'Solapur', taluka: 'Madha' });
+});
+
 test('402201 Alibag — "Raigarh(MH)" is Raigad', () => {
   expect(pickerValues('402201')).toEqual({ state: 'Maharashtra', district: 'Raigad', taluka: 'Alibag' });
 });

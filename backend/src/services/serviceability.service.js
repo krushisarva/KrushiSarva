@@ -28,6 +28,8 @@
 import prisma from '../config/db.js';
 import { getSetting } from './settings.service.js';
 import { cachedListing } from '../utils/listingCache.js';
+import { districtIn, isSameDistrict } from '../utils/districtAliases.js';
+import { activeSellerWhere } from './buyBox.service.js';
 
 const NS_SERVICEABILITY = 'agristore:serviceability';
 const SERVICEABILITY_TTL = 300;
@@ -85,7 +87,7 @@ function pickRow(rows, { pincode, district, state }) {
   const byRank = (r) => {
     if (r.pincode && r.pincode === pincode) return 0;
     if (r.pincodePrefix && prefix && r.pincodePrefix === prefix) return 1;
-    if (r.district && district && r.district.toLowerCase() === district.toLowerCase()) return 2;
+    if (r.district && district && isSameDistrict(r.district, district)) return 2;
     if (r.state && state && r.state.toLowerCase() === state.toLowerCase()) return 3;
     return 99;
   };
@@ -138,7 +140,8 @@ export async function resolveServiceability({ sellerIds = [], pincode, district 
       OR: [
         { pincode: pin },
         { pincodePrefix: prefix },
-        ...(district ? [{ district: { equals: district, mode: 'insensitive' } }] : []),
+        // Any spelling: a seller's area may say Osmanabad for a Dharashiv buyer.
+        ...(district ? [{ district: districtIn(district) }] : []),
         ...(state ? [{ state: { equals: state, mode: 'insensitive' } }] : []),
       ],
     },
@@ -216,7 +219,14 @@ export async function checkProductServiceability({ productId, pincode }) {
 
   const { data } = await cachedListing(NS_SERVICEABILITY, `${productId}:${pin}`, SERVICEABILITY_TTL, async () => {
     const listings = await prisma.sellerListing.findMany({
-      where: { variant: { productId }, status: 'ACTIVE', stockQty: { gt: 0 } },
+      // Same seller gate as the buy box. A pulled seller's offer must not promise
+      // a delivery date: they cannot log in to dispatch it, and the product page
+      // is not showing that offer in the first place — this answered "when will
+      // it reach me" off an offer nobody can buy.
+      where: {
+        variant: { productId }, status: 'ACTIVE', stockQty: { gt: 0 },
+        ...activeSellerWhere(),
+      },
       select: { sellerId: true, seller: { select: { name: true } } },
       take: 50,
     });

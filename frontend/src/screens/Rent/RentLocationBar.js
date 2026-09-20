@@ -251,11 +251,15 @@ export function RentLocationSheet({
   const [pinText, setPinText] = useState('');
   const pin = usePincodeAutofill({
     pincode: pinText,
-    values: { district: prefs.district || '', taluka: prefs.taluka || '' },
-    fields: { district: 'district', taluka: 'taluka' },
+    // state is fixed to Maharashtra so a PIN from another state arrives with
+    // its state in the patch: the district NAME alone can't tell states apart
+    // (Bihar has an Aurangabad too).
+    values: { state: 'Maharashtra', district: prefs.district || '', taluka: prefs.taluka || '' },
+    fields: { state: 'state', district: 'district', taluka: 'taluka' },
     strict: ['district', 'taluka'],
     enabled: visible && prefs.source === SOURCE.DISTRICT,
     onChange: (patch) => {
+      if (patch.state && patch.state !== 'Maharashtra') return;
       const district = 'district' in patch ? toDistrictListName(patch.district) : prefs.district;
       if ('district' in patch && patch.district && !district) return;
       const next = {};
@@ -267,8 +271,9 @@ export function RentLocationSheet({
       setPrefs(next);
     },
   });
-  const pinOutsideList = pin.status === 'found' && !!pin.summary?.district
-    && !toDistrictListName(pin.summary.district);
+  const pinOutsideList = pin.status === 'found' && (
+    (!!pin.summary?.state && pin.summary.state !== 'Maharashtra')
+    || (!!pin.summary?.district && !toDistrictListName(pin.summary.district)));
 
   const gpsSub = coords
     ? t('rent.srcGpsLive', 'Using your current position')

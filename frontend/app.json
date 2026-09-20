@@ -4,6 +4,13 @@
     "slug": "cropsetu",
     "scheme": "krushisarva",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/819a15f8-7b06-4288-a94e-d49ddc6d3dc1",
+      "fallbackToCacheTimeout": 0
+    },
     "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",

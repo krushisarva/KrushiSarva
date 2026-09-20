@@ -221,7 +221,13 @@ export default function DiagnosisResultScreen({ navigation, route }) {
 
   const addRecommendedToCart = async (product) => {
     try {
-      await api.post('/agristore/cart', { productId: product.id, quantity: product.minOrderQty || 1 });
+      const quantity = product.minOrderQty || 1;
+      // listingId buys THIS Kendra's offer. productId alone resolves to the buy-box
+      // winner — possibly another shop at another price. productId stays as the
+      // fallback for pre-split products, which have no listing.
+      await api.post('/agristore/cart', product.listingId
+        ? { listingId: product.listingId, quantity }
+        : { productId: product.id, quantity });
       Alert.alert(t('share.addedToCartTitle', 'Added'), t('share.addedToCartBody', { name: product.name, defaultValue: '{{name}} added to your cart.' }));
     } catch (err) {
       Alert.alert(t('error', 'Error'), err?.response?.data?.error?.message || t('share.cartFailed', 'Could not add to cart.'));

@@ -34,6 +34,7 @@ import { invalidateSaleBlocks, findAffectedBuyers } from '../../services/shopCom
 import { bumpListingVersion } from '../../utils/listingCache.js';
 import { invalidateBuyBox } from '../../services/buyBox.service.js';
 import { getSetting } from '../../services/settings.service.js';
+import { AUTO_REFUND_FAILED } from '../../services/shopPayment.service.js';
 import logger from '../../utils/logger.js';
 
 const REGULATED_KINDS = [
@@ -905,13 +906,20 @@ export const paymentIntentsRouter = Router();
 
 /**
  * The queue that matters most: PAID intents with no order. Each row is a farmer
- * whose money was taken and who has nothing to show for it.
+ * whose money was taken and who has nothing to show for it. Includes automatic
+ * refunds whose gateway call failed (REFUND_INITIATED + "AUTO-REFUND FAILED").
+ *
+ * `refundFailed=true` narrows that to only those failures — the rows a human has
+ * to finish by hand. An automatic refund that is merely under way
+ * (REFUND_INITIATED, no failureReason) or done (REFUNDED) needs nobody, so
+ * support cannot work the queue if the two are mixed together.
  */
 paymentIntentsRouter.get(
   '/',
   [
     query('status').optional().isIn(['CREATED', 'PENDING', 'PAID', 'ORDER_CREATED', 'FAILED', 'CANCELLED', 'REFUND_INITIATED', 'REFUNDED', 'EXPIRED']),
     query('orphaned').optional().isBoolean(),
+    query('refundFailed').optional().isBoolean(),
     query('limit').optional().isInt({ min: 1, max: 100 }),
   ],
   validate,
@@ -919,7 +927,17 @@ paymentIntentsRouter.get(
     try {
       const where = {};
       if (req.query.status) where.status = req.query.status;
-      if (req.query.orphaned === 'true') { where.status = 'PAID'; where.orderId = null; }
+      if (req.query.refundFailed === 'true') {
+        where.status = 'REFUND_INITIATED';
+        where.failureReason = { startsWith: AUTO_REFUND_FAILED };
+      } else if (req.query.orphaned === 'true') {
+        delete where.status;
+        where.orderId = null;
+        where.OR = [
+          { status: 'PAID' },
+          { status: 'REFUND_INITIATED', failureReason: { startsWith: AUTO_REFUND_FAILED } },
+        ];
+      }
 
       const { cursor, limit } = listParams(req);
       const page = await keysetList(prisma.paymentIntent, {

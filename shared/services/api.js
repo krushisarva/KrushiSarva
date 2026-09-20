@@ -45,7 +45,13 @@ export async function saveTokens({ accessToken, refreshToken, userId }) {
   await Promise.all(ops);
 }
 
+// Bumped by every clearTokens(). A refresh already in flight when the session
+// was cleared — logout stops waiting on its server call after a few seconds —
+// compares it before writing, so it cannot put the ended session back.
+let tokenGeneration = 0;
+
 export async function clearTokens() {
+  tokenGeneration += 1;
   await Promise.all([
     deleteItem(STORAGE_KEYS.ACCESS_TOKEN),
     deleteItem(STORAGE_KEYS.REFRESH_TOKEN),
@@ -62,6 +68,18 @@ export const getUserId       = () => getItem(STORAGE_KEYS.USER_ID);
 // ── Safe error message ────────────────────────────────────────────────────────
 // Never forward raw server error strings to the UI — they may contain stack
 // traces, SQL snippets, or internal paths. Map to generic user-facing messages.
+//
+// Exception: a 403/409 carrying one of these codes is a deliberate refusal
+// whose message the server writes for people, as a fixed string. "No
+// permission" / "A conflict occurred" hid the reason and the way out.
+const HUMAN_REFUSAL_CODES = new Set([
+  'ACCOUNT_INACTIVE',       // login: deactivated account (authSession.service.js)
+  'KYC_REQUIRED',           // selling before KYC is verified (middleware/sellerKyc.js)
+  'PAYMENT_IN_PROGRESS',    // offer change while a buyer is paying — says how long to wait
+  'OFFER_HAS_OPEN_ORDERS',  // offer delete with undelivered orders
+  'LISTING_AMBIGUOUS',      // old app build editing one of several pack sizes
+]);
+
 export function safeErrorMessage(error, fallback = 'Something went wrong. Please try again.') {
   if (!error) return fallback;
   if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return null;
@@ -71,6 +89,11 @@ export function safeErrorMessage(error, fallback = 'Something went wrong. Please
   if (status === 400) return 'Invalid request. Please check your details and try again.';
   if (status === 401) return 'Session expired. Please log in again.';
   if (status === 402) return error.response?.data?.error?.message || 'Insufficient credits.';
+  const refusal = error.response?.data?.error;
+  if ((status === 403 || status === 409) && HUMAN_REFUSAL_CODES.has(refusal?.details?.code)
+      && typeof refusal.message === 'string' && refusal.message.trim()) {
+    return refusal.message.trim();
+  }
   if (status === 403) return 'You do not have permission to perform this action.';
   if (status === 404) return 'The requested resource was not found.';
   if (status === 409) return 'A conflict occurred. Please refresh and try again.';
@@ -102,7 +125,10 @@ const baseConfig = {
 };
 
 // Default: snappy. For everything except AI scan / orchestrator pipelines.
-const api   = axios.create({ ...baseConfig, timeout: 15_000  });
+// Named because the token-refresh posts (plain axios, not this instance) must
+// restate it — see REFRESH_TIMEOUT_MS.
+const API_TIMEOUT_MS = 15_000;
+const api   = axios.create({ ...baseConfig, timeout: API_TIMEOUT_MS });
 
 // AI: long-running. Crop scan can take 30–90 s on the 5-agent pipeline,
 // and up to 120 s when the cascade-into-ensemble flow escalates (Gemini
@@ -215,6 +241,26 @@ function processQueue(error, token = null) {
   failedQueue = [];
 }
 
+// ── Session-expired broadcast ─────────────────────────────────────────────────
+// performRefresh() is where a live session actually dies mid-use, and it used
+// to die silently: the tokens were cleared but AuthContext, which only looks at
+// sessionExpired during the cold-start restore, kept isLoggedIn true. The app
+// still looked signed in and every screen failed. AuthProvider subscribes here
+// and returns the user to Login.
+const sessionExpiredListeners = new Set();
+
+/** Subscribe to "the session was ended by the server". Returns an unsubscribe. */
+export function onSessionExpired(listener) {
+  sessionExpiredListeners.add(listener);
+  return () => { sessionExpiredListeners.delete(listener); };
+}
+
+function notifySessionExpired() {
+  sessionExpiredListeners.forEach((listener) => {
+    try { listener(); } catch { /* one bad listener must not break the refresh path */ }
+  });
+}
+
 // Core refresh: POST /auth/refresh (web cookie / native body), persist the new
 // tokens, and resolve with the new access token. Dedupes concurrent callers via
 // the shared isRefreshing flag + failedQueue so only ONE network refresh runs at
@@ -245,6 +291,17 @@ function noteTransientRefreshFailure() {
   refreshCooldownUntil = Date.now() + Math.round(ceiling * (0.5 + Math.random() * 0.5));
 }
 
+// The refresh posts go through PLAIN axios (the instances would loop on their
+// own 401), so they never inherited the instance timeout — and axios's default
+// is 0, wait forever. React Native's Android client sets no deadline of its own
+// either. A refresh on a connection that dropped mid-flight therefore never
+// settled: isRefreshing stayed up, every later 401 queued behind it for good,
+// and on a cold start the boot screen spun until the app was killed.
+//
+// A timeout arrives as ECONNABORTED with no response — not definitive — so the
+// session is kept and the cooldown above applies.
+const REFRESH_TIMEOUT_MS = API_TIMEOUT_MS;
+
 async function performRefresh() {
   if (isRefreshing) {
     // Wait for the in-flight refresh; resolve with its new access token.
@@ -262,6 +319,10 @@ async function performRefresh() {
   }
 
   isRefreshing = true;
+  // What the waiters in failedQueue receive — settled in `finally`, see there.
+  let newToken = null;
+  let failure  = null;
+  const generation = tokenGeneration;
   try {
     let data;
 
@@ -275,6 +336,7 @@ async function performRefresh() {
         {},
         {
           withCredentials: true,
+          timeout: REFRESH_TIMEOUT_MS,
           headers: { 'X-Auth-Transport': 'cookie', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
         },
       ));
@@ -289,7 +351,14 @@ async function performRefresh() {
       ({ data } = await axios.post(
         `${API_BASE_URL}/auth/refresh`,
         { userId, refreshToken },
+        { timeout: REFRESH_TIMEOUT_MS },
       ));
+    }
+
+    // Signed out while this was in flight. Saving now would resurrect the
+    // session the user just ended — or overwrite the next user's.
+    if (generation !== tokenGeneration) {
+      throw new Error('Signed out while the token refresh was in flight');
     }
 
     await saveTokens({
@@ -298,12 +367,11 @@ async function performRefresh() {
       userId:       IS_WEB ? undefined : await getUserId(),
     });
 
-    const newToken = data.data.accessToken;
+    newToken = data.data.accessToken;
     noteRefreshSuccess();
-    processQueue(null, newToken);
     return newToken;
   } catch (err) {
-    processQueue(err, null);
+    failure = err;
 
     // Only a DEFINITIVE rejection may destroy the session.
     //
@@ -334,11 +402,21 @@ async function performRefresh() {
     // rotation happened and those tokens are intact — destroying a session
     // because a village shares one NAT'd IP would be the opposite of the point.
     // Only a 5xx means the handler itself ran and threw.
-    const mayBeSpent = (err.response?.status ?? 0) >= 500;
-    const definitive = isDefinitiveAuthFailure(err);
+    //
+    // Signed out meanwhile (the generation check above, or a failure landing
+    // after logout cleared up): the tokens are already gone — and may by now be
+    // the NEXT login's — so whatever happened here must neither clear them nor
+    // announce an expiry.
+    const signedOut  = generation !== tokenGeneration;
+    const mayBeSpent = !signedOut && (err.response?.status ?? 0) >= 500;
+    const definitive = !signedOut && isDefinitiveAuthFailure(err);
 
-    if (definitive || mayBeSpent) await clearTokens();
-    else noteTransientRefreshFailure();
+    if (definitive || mayBeSpent) {
+      await clearTokens();
+      notifySessionExpired();
+    } else if (!signedOut) {
+      noteTransientRefreshFailure();
+    }
 
     // `sessionExpired` keeps its original meaning — the session is genuinely
     // over — so existing consumers still route to Login only when they should.
@@ -349,11 +427,19 @@ async function performRefresh() {
     // called clearTokens() set it, so consumers route to Login in exactly the
     // cases where the credentials are gone.
     throw Object.assign(err, {
-      sessionExpired: definitive || mayBeSpent,
+      sessionExpired: signedOut || definitive || mayBeSpent,
       refreshFailed:  true,
     });
   } finally {
+    // Drop the flag and settle every waiter in ONE synchronous step, so nothing
+    // can queue in between. The failure path used to reject the queue first and
+    // only then `await clearTokens()` with the flag still up: a 401 landing
+    // during that await saw isRefreshing, queued, and was never settled — the
+    // queue had already been drained — so that request, and the screen awaiting
+    // it, hung for good. It also handed waiters the error before sessionExpired
+    // was set on it.
     isRefreshing = false;
+    processQueue(failure, newToken);
   }
 }
 
@@ -432,6 +518,48 @@ export async function getValidAccessToken() {
  */
 export async function forceRefreshAccessToken() {
   try { return await performRefresh(); } catch { return null; }
+}
+
+// Long enough for a live connection to answer, short enough that "Log out" on a
+// dead one still feels like it did something.
+const LOGOUT_WAIT_MS = 5_000;
+
+/**
+ * Server half of logging out — call BEFORE clearing tokens, while the request
+ * can still authenticate.
+ *
+ * Sends the refresh token so the server can revoke its lineage (it used to get
+ * an empty body, found nothing to revoke, and the "logged out" refresh token
+ * stayed valid for its full life). On web it rides in the httpOnly cookie
+ * instead. `pushToken` is this device's Expo token, so the server stops pushing
+ * this account's notifications to a handset it has left.
+ *
+ * Best-effort and bounded: resolves — never rejects — within LOGOUT_WAIT_MS,
+ * whatever the network does, because signing out locally must not depend on
+ * reaching the server. A refresh it set off and abandoned cannot write tokens
+ * back afterwards (see tokenGeneration).
+ *
+ * @returns {Promise<boolean>} true if the server confirmed the logout in time
+ */
+export async function revokeSessionOnServer({ pushToken } = {}) {
+  let timer;
+  try {
+    const body = {};
+    if (!IS_WEB) {
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) body.refreshToken = refreshToken;
+    }
+    if (pushToken) body.pushToken = pushToken;
+
+    const request = api.post('/auth/logout', body, { timeout: LOGOUT_WAIT_MS })
+      .then(() => true, () => false);
+    const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve(false), LOGOUT_WAIT_MS); });
+    return await Promise.race([request, deadline]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 attachInterceptors(api);

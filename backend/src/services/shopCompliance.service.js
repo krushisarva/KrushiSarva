@@ -39,6 +39,7 @@
 import prisma from '../config/db.js';
 import { getSetting } from './settings.service.js';
 import { cachedListing, bumpListingVersion } from '../utils/listingCache.js';
+import { applyBatchQuantityDeltas } from '../utils/stockBatch.js';
 import logger from '../utils/logger.js';
 
 const NS_SALEBLOCKS = 'agristore:saleblocks';
@@ -339,7 +340,16 @@ export async function evaluateSaleEligibility({ lines = [], buyer = {}, now = ne
 
       // Dispatch the earliest-expiring sellable lot — FEFO, so short-dated stock
       // clears first instead of ageing into a write-off.
-      allow(listingId, { batch: sellable[0], labelVersion: compliance.labelVersion || null });
+      //
+      // The whole sellable set rides along, still in FEFO order: consumeOrderBatches
+      // re-reads exactly these lots inside the checkout transaction and draws the
+      // ordered quantity from them, so the minimum-shelf-life and status policy
+      // decided here is the one the lot decrement obeys.
+      allow(listingId, {
+        batch: sellable[0],
+        sellableBatches: sellable,
+        labelVersion: compliance.labelVersion || null,
+      });
       continue;
     }
 
@@ -439,6 +449,138 @@ export async function requiresComplianceApproval(product) {
     return !!compliance && compliance.regulatedKind !== 'NONE';
   }
   return true;
+}
+
+/**
+ * Draw an order's regulated lines from their lots, inside the order's own
+ * transaction. Returns the lot to stamp on each line, keyed by listingId.
+ *
+ * WHY AT ORDER CREATION, and not on dispatch as ProductBatch.quantity's schema
+ * comment used to promise: the lot is CHOSEN at order creation, because
+ * order_items.batchNumber freezes it there and that snapshot is the only thing a
+ * later recall can search. Nothing reduced the lot at all, so FEFO handed every
+ * order the same earliest-expiring lot for ever, and a recall of the lot that
+ * physically shipped found none of its buyers. Reducing it at dispatch instead
+ * would leave the same hole for every order placed before the first parcel goes
+ * out — which is most of them. Reducing it here, in the same Serializable
+ * transaction that decrements seller_listings.stockQty, keeps the per-lot
+ * breakdown in step with the number it breaks down.
+ *
+ * The candidate lots come from the verdict, so the shelf-life and status policy is
+ * the one evaluateSaleEligibility applied — but their QUANTITIES are re-read here.
+ * The verdict was computed before the transaction opened, and two farmers checking
+ * out the same offer must not both be allocated the same units. Reading the rows
+ * this transaction then updates is also what gives Serializable something to
+ * conflict on, so the loser replays against the winner's committed quantities.
+ *
+ * A line whose quantity spans two lots draws from both and is stamped with the
+ * earlier-expiring one: order_items carries a single batchNumber, so the split
+ * itself cannot be recorded without a schema change.
+ */
+export async function consumeOrderBatches(tx, orderItems = [], eligibility) {
+  const stamp = new Map();
+  if (!eligibility?.size) return stamp;
+
+  const plans = [];
+  for (const item of orderItems) {
+    if (!item.listingId || !(item.quantity > 0)) continue;
+    const candidates = eligibility.get(item.listingId)?.sellableBatches;
+    if (candidates?.length) plans.push({ listingId: item.listingId, quantity: item.quantity, candidates });
+  }
+  if (!plans.length) return stamp;
+
+  const rows = await tx.productBatch.findMany({
+    where: {
+      OR: plans.map((p) => ({
+        listingId: p.listingId,
+        batchNumber: { in: p.candidates.map((b) => b.batchNumber) },
+      })),
+    },
+    select: { listingId: true, batchNumber: true, expiryDate: true, quantity: true, status: true },
+  });
+  const fresh = new Map(rows.map((r) => [`${r.listingId} ${r.batchNumber}`, r]));
+
+  const deltas = [];
+  for (const plan of plans) {
+    let remaining = plan.quantity;
+    let firstDrawn = null;
+    for (const candidate of plan.candidates) {
+      if (remaining <= 0) break;
+      const row = fresh.get(`${plan.listingId} ${candidate.batchNumber}`);
+      // Re-checked rather than trusted: an admin may have quarantined or recalled
+      // the lot between the quote and this transaction, and held stock never ships.
+      if (!row || row.quantity <= 0 || !SELLABLE_BATCH_STATES.has(row.status)) continue;
+      const take = Math.min(remaining, row.quantity);
+      deltas.push({ listingId: plan.listingId, batchNumber: row.batchNumber, delta: -take });
+      if (!firstDrawn) firstDrawn = row;
+      remaining -= take;
+    }
+    // What the lots ACTUALLY gave up, which is not `plan.quantity` whenever a
+    // draw was clamped above. Stamped on the line so the cancel can put back what
+    // was taken instead of what was sold; without it the difference was minted
+    // onto the lot. Recorded even when it is zero — a line stamped with the
+    // verdict's lot (below) that this transaction could not draw from at all must
+    // credit nothing back, not its whole quantity.
+    stamp.set(plan.listingId, {
+      batchNumber: firstDrawn?.batchNumber ?? null,
+      batchExpiry: firstDrawn?.expiryDate ?? null,
+      batchQuantity: plan.quantity - remaining,
+    });
+    if (remaining > 0) {
+      // The lots account for fewer units than the offer just sold. stockQty is the
+      // number the sale was validated against, so the order stands — the gap is
+      // the seller's lot bookkeeping, and it is logged rather than swallowed.
+      logger.warn(
+        { listingId: plan.listingId, ordered: plan.quantity, unallocated: remaining },
+        '[Compliance] lot quantities do not cover the units sold',
+      );
+    }
+  }
+
+  await applyBatchQuantityDeltas(tx, deltas);
+  return stamp;
+}
+
+/**
+ * Put cancelled units back on the lot they came from — the mirror of
+ * consumeOrderBatches, driven by the frozen order_items snapshot, so it runs
+ * wherever stock is restored (buyer cancel, seller cancel).
+ *
+ * Credits back what the lots GAVE UP (order_items.batchQuantity), not what the
+ * line sold. Those two numbers differ whenever a draw was clamped — a seller
+ * whose lot quantities under-cover the stockQty they are offering. Crediting
+ * `quantity` there put back more than had ever been taken: a lot of 3 that
+ * covered 3 of a 5-unit line came back as 5, so the ledger over-reported the
+ * physical shelf to a recall and FEFO went on allocating two units that did not
+ * exist. Bounded by the seller's own data-entry error, and stockQty — the
+ * oversell guarantee — is unaffected either way.
+ *
+ * A line that spanned two lots credits all of its DRAWN units to the lot it was
+ * stamped with. The total returns to the shelf either way and only the split is
+ * approximate; the alternative — crediting nothing back — walks every lot down to
+ * zero and takes the offer out of FEFO allocation altogether.
+ *
+ * batchQuantity is NULL on every line written before that column existed, and
+ * what those orders drew is not recoverable from anything that was stored. The
+ * line quantity stands in for it: it is what those orders already credited back,
+ * so no in-flight order changes behaviour when this ships, and it is the right
+ * number for every offer whose lots covered its stock — which is the normal case
+ * and was the only case before the clamp. Crediting nothing for them instead
+ * would be a fresh, systematic under-credit across every pre-existing order, and
+ * that is the failure this function exists to prevent.
+ */
+export async function restoreOrderBatches(tx, items = []) {
+  const deltas = [];
+  for (const i of items) {
+    if (!i.listingId || !i.batchNumber) continue;
+    const credit = i.batchQuantity ?? i.quantity;
+    // `0` is a real, recorded answer — a line whose lots were all gone by the
+    // time the transaction ran drew nothing and gets nothing back.
+    if (!(credit > 0)) continue;
+    deltas.push({ listingId: i.listingId, batchNumber: i.batchNumber, delta: credit });
+  }
+  if (!deltas.length) return;
+  await applyBatchQuantityDeltas(tx, deltas);
 }
 
 /**

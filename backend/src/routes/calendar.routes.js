@@ -44,6 +44,21 @@ router.post('/generate', authenticate, generateCalendarRules, validate, async (r
   const validSeasons = ['kharif', 'rabi', 'zaid'];
   const resolvedSeason = validSeasons.includes(season) ? season : 'kharif';
 
+  // authenticate() puts only { id, role } on req.user, so the farmer's own
+  // location needs its own read. Without it `req.user.state`/`req.user.district`
+  // were undefined on EVERY request and the fallbacks below were not fallbacks
+  // at all — they were the only values that could ever be stored, so every
+  // calendar in the country was stamped Maharashtra / '' regardless of who made
+  // it. One primary-key probe, on a path that already does a cropMaster lookup
+  // and a nested create, so the extra round trip is noise.
+  //
+  // Neither field is accepted in the request body here (see generateCalendarRules),
+  // so there is no client-supplied value to outrank: profile, then the literal.
+  const profile = await prisma.user.findUnique({
+    where:  { id: req.user.id },
+    select: { state: true, district: true },
+  });
+
   try {
     const calendar = await generateCalendar({
       userId:    req.user.id,
@@ -51,8 +66,11 @@ router.post('/generate', authenticate, generateCalendarRules, validate, async (r
       season:    resolvedSeason,
       year:      String(new Date(sowingDate).getFullYear()),
       sowingDate,
-      state:     req.user.state    || 'Maharashtra',
-      district:  req.user.district || '',
+      state:     profile?.state?.trim()    || 'Maharashtra',
+      // Stored verbatim — Osmanabad stays Osmanabad. The read side expands a
+      // renamed district to all of its spellings (utils/districtAliases.js), so
+      // normalising here would only rewrite what the farmer entered.
+      district:  profile?.district?.trim() || '',
       fieldName: fieldName?.trim() || null,
     });
 

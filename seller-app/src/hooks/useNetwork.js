@@ -13,12 +13,15 @@
  *
  * The result is deliberately conservative: we only claim "offline" after a real
  * request failed, so we never show an offline banner to someone who is online.
+ * A lone TIMEOUT is not that evidence — see utils/network.js for why, and for
+ * the rule that replaced it.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
 import axios from 'axios';
 import api from '@krushisarva/shared/services/api';
 import { API_BASE_URL } from '@krushisarva/shared/constants/config';
+import { createOfflineDetector, isConnectivityError } from '../utils/network';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -29,18 +32,9 @@ const PROBE_TIMEOUT_MS = 6_000;
 
 const NetworkContext = createContext(null);
 
-/** True when this axios error means "the request never reached the server". */
-export function isConnectivityError(error) {
-  if (!error) return false;
-  if (error.response) return false;                       // server answered → not a connectivity issue
-  if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return false;
-  return (
-    error.message === 'Network Error' ||
-    error.code === 'ERR_NETWORK' ||
-    error.code === 'ECONNABORTED' ||
-    error.code === 'ETIMEDOUT'
-  );
-}
+// Re-exported from its new home so the screens and data hooks that classify a
+// FAILED REQUEST ("you appear to be offline") keep importing it from here.
+export { isConnectivityError };
 
 export function NetworkProvider({ children }) {
   const [isOnline, setIsOnline] = useState(() => (IS_WEB ? navigator?.onLine !== false : true));
@@ -52,6 +46,12 @@ export function NetworkProvider({ children }) {
   const onlineRef = useRef(isOnline);
   onlineRef.current = isOnline;
 
+  // Decides whether a failed request is evidence that the DEVICE is offline.
+  // One instance per provider, created on first render so every caller below
+  // shares the same accumulated evidence.
+  const detectorRef = useRef(null);
+  if (!detectorRef.current) detectorRef.current = createOfflineDetector();
+
   const clearProbe = useCallback(() => {
     if (probeTimer.current) {
       clearTimeout(probeTimer.current);
@@ -62,6 +62,7 @@ export function NetworkProvider({ children }) {
   const goOnline = useCallback(() => {
     clearProbe();
     probeStep.current = 0;
+    detectorRef.current?.reset();
     if (!onlineRef.current) {
       onlineRef.current = true;
       setIsOnline(true);
@@ -135,12 +136,19 @@ export function NetworkProvider({ children }) {
   // ── Native + web: learn from the API client itself ────────────────────────
   // Registered here (not inside shared/services/api.js) so the buyer app's
   // behaviour is untouched — this interceptor only exists in the seller process.
+  //
+  // The detector is what keeps ONE slow endpoint from being read as an outage:
+  // a hard transport failure flips us offline at once, a timeout only once a
+  // second, different request has timed out inside the same short window.
   useEffect(() => {
     const id = api.interceptors.response.use(
-      (response) => { goOnline(); return response; },
+      (response) => { goOnline(); return response; },   // goOnline() resets the detector
       (error) => {
-        if (isConnectivityError(error)) goOffline();
-        else if (error?.response) goOnline();   // server answered → we have a link
+        if (error?.response) {                  // server answered → we have a link
+          goOnline();
+        } else if (detectorRef.current.record(error)) {
+          goOffline();
+        }
         return Promise.reject(error);
       },
     );

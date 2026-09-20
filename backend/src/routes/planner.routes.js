@@ -147,15 +147,39 @@ router.post('/generate', authenticate, requireFeature('ai_planner'), generateTas
 
   const { crop, state, dayOfSeason } = req.body;
 
-  // Build farm context
+  // authenticate() puts only { id, role } on req.user — no name, no location and
+  // certainly no `farmDetail` relation. So every `req.user.X` below read
+  // undefined on EVERY request for EVERY farmer, and the `|| default` arms were
+  // not fallbacks but the only reachable values: this prompt said
+  // "Nashik / Farmer" to a farmer in Ludhiana, in Guntur, anywhere. district and
+  // farmerName go straight into the Gemini prompt (PLANNER_PROMPT in
+  // services/ai.chat.service.js: `- State : ${ctx.state}, ${ctx.district}`), so
+  // the location the advice is written for was a constant.
+  //
+  // One findUnique with a narrow select covers all four fields — the farmDetail
+  // join included, because `farmDetail.cropTypes` was dead for exactly the same
+  // reason. This route calls an LLM and reserves credits; a primary-key probe is
+  // not the expensive part of it.
+  const profile = await prisma.user.findUnique({
+    where:  { id: req.user.id },
+    select: {
+      name: true, state: true, district: true,
+      farmDetail: { select: { cropTypes: true } },
+    },
+  });
+
+  // Build farm context. Body still outranks the profile wherever the client may
+  // legitimately send a value (crop, state, dayOfSeason) — unchanged precedence;
+  // the profile simply now sits where `undefined` used to, ahead of the literal.
   const farmContext = {
-    crop:        crop        || req.user.farmDetail?.cropTypes?.[0] || 'Tomato',
-    state:       state       || req.user.state  || 'Maharashtra',
-    district:    req.user.district  || 'Nashik',
+    crop:        crop        || profile?.farmDetail?.cropTypes?.[0] || 'Tomato',
+    state:       state       || profile?.state?.trim()  || 'Maharashtra',
+    // Stored/sent verbatim — see utils/districtAliases.js on the read side.
+    district:    profile?.district?.trim() || 'Nashik',
     dayOfSeason: dayOfSeason || 45,
     season:      getCurrentSeason(),
     month:       new Date().toLocaleString('en-IN', { month: 'long' }),
-    farmerName:  req.user.name || 'Farmer',
+    farmerName:  profile?.name?.trim() || 'Farmer',
   };
 
   // RESERVE before the Gemini call. This route used to reach the LLM with no
