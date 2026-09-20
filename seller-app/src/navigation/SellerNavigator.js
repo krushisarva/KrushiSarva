@@ -19,12 +19,12 @@
  * Gesture/animation behaviour honours the OS "Reduce Motion" setting — the fade
  * interpolator was previously unconditional.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators, TransitionPresets } from '@react-navigation/stack';
 
-import linking from './linking';
+import { createLinking } from './linking';
 import { navigationRef } from './navigationRef';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
@@ -33,6 +33,7 @@ import { hasSellerRole } from '@krushisarva/shared/utils/roles';
 
 import { C, SP, T } from '../theme';
 import { useReducedMotion } from '../hooks/useMotion';
+import usePushNavigation from '../hooks/usePushNavigation';
 
 import SellerDashboard      from '../screens/DashboardScreen';
 import SellerMyProducts     from '../screens/MyProductsScreen';
@@ -102,7 +103,21 @@ export default function SellerNavigator() {
   // GST number on file, and that account was sent to a dashboard where stats,
   // products and orders all 403 — with no path back to the form whose save
   // would have promoted it.
-  const initialRouteName = hasSellerRole(user) ? 'SellerDashboard' : 'BusinessProfile';
+  const isSeller = hasSellerRole(user);
+  const initialRouteName = isSeller ? 'SellerDashboard' : 'BusinessProfile';
+
+  // Deep links honour that same gate. `linking` is built ONCE (a new object on
+  // every render re-runs the container's linking effects) and reads the answer
+  // through a ref, so a URL arriving after the KYC form promoted this account
+  // is judged on what is true now, not on what was true at mount.
+  const sellerRef = useRef(isSeller);
+  sellerRef.current = isSeller;
+  const linking = useMemo(() => createLinking(() => sellerRef.current), []);
+
+  // Tapping a push opens what it is about — a new crop report opens THAT report.
+  // Only for an account that can load those screens; an account still on the KYC
+  // form would be dropped onto a screen whose every request 403s.
+  usePushNavigation(isSeller);
 
   return (
     <NavigationContainer ref={navigationRef} linking={linking} onStateChange={() => markActivity()}>

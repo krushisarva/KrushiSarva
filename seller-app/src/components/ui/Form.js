@@ -22,7 +22,7 @@
  *     accessibilityLabel/accessibilityHint, and marks itself invalid
  *   - errors surface on blur or on submit, never while the user is still
  *     typing the first character
- *   - each field can register its Y position so the form can scroll to the
+ *   - each field takes a ref, so the form can measure it and scroll to the
  *     first invalid one on submit
  */
 import React, { forwardRef, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -37,8 +37,8 @@ import { useRevealFocusedField } from './KeyboardAwareScroll';
 /**
  * The ref resolves to the field's outer view, so a form can measure it against
  * its ScrollView (or call scrollIntoView on web) to reveal the first error.
- * `onLayoutY` reports y relative to the field's PARENT, which is only the scroll
- * offset when the field sits directly in the ScrollView.
+ * Measure; do not use onLayout's y — it is relative to the field's PARENT (a
+ * section card, a two-column row), not the scroll offset.
  */
 export const Field = forwardRef(function Field({
   label,
@@ -55,21 +55,14 @@ export const Field = forwardRef(function Field({
    */
   secure,
   secureLabel,
-  /** (y:number) => void — lets the parent scroll to this field on error. */
-  onLayoutY,
   testID,
 }, ref) {
-  const handleLayout = useCallback((e) => {
-    onLayoutY?.(e.nativeEvent.layout.y);
-  }, [onLayoutY]);
-
   return (
     <View
       ref={ref}
       // A measured view must not be flattened away by Fabric.
       collapsable={ref ? false : undefined}
       style={[fs.wrap, style]}
-      onLayout={onLayoutY ? handleLayout : undefined}
       testID={testID}
     >
       {label ? (

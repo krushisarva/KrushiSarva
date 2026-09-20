@@ -20,7 +20,9 @@ import { ADMIN_ACTIONS } from '../../services/audit.service.js';
 const router = Router();
 
 const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
-const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded'];
+// refund_pending / partially_refunded are set by the automatic refund on cancel
+// (orderRefund.service.js); refund_pending is the queue an admin works from.
+const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refund_pending', 'partially_refunded', 'refunded'];
 
 /** Mask the phone inside a delivery-address JSON blob (PII) for default responses. */
 function maskAddress(addr) {

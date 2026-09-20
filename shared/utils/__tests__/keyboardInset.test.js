@@ -1,4 +1,4 @@
-import { androidKeyboardInset, revealScrollOffset } from '../keyboardInset';
+import { androidKeyboardInset, bottomSheetLift, revealScrollOffset } from '../keyboardInset';
 
 describe('androidKeyboardInset', () => {
   test('keyboard closed → no padding', () => {
@@ -59,5 +59,32 @@ describe('revealScrollOffset', () => {
   test('nothing measured yet → no scroll', () => {
     expect(revealScrollOffset({ blockTop: 100, blockHeight: 100, viewportHeight: 0 })).toBeNull();
     expect(revealScrollOffset({ blockTop: undefined, blockHeight: 100, viewportHeight })).toBeNull();
+  });
+});
+
+describe('bottomSheetLift', () => {
+  test('keyboard closed → clear of the navigation bar / home indicator, not a fixed 16', () => {
+    expect(bottomSheetLift({ platform: 'android', keyboardHeight: 0, androidInset: 0, bottomInset: 48 })).toBe(48);
+    expect(bottomSheetLift({ platform: 'ios', keyboardHeight: 0, bottomInset: 34 })).toBe(34);
+  });
+
+  test('Android keyboard open → the keyboard strip for the modal root (keyboard + nav bar)', () => {
+    const androidInset = androidKeyboardInset({ keyboardHeight: 300, bottomInset: 48, restHeight: 780, height: 780 });
+    expect(bottomSheetLift({ platform: 'android', keyboardHeight: 300, androidInset, bottomInset: 48 })).toBe(348);
+  });
+
+  test('Android window that resized for the keyboard → nothing added twice', () => {
+    const androidInset = androidKeyboardInset({ keyboardHeight: 300, bottomInset: 48, restHeight: 780, height: 432 });
+    expect(bottomSheetLift({ platform: 'android', keyboardHeight: 300, androidInset, bottomInset: 48 })).toBe(0);
+  });
+
+  test('iOS keyboard open → its height, which already covers the home indicator', () => {
+    expect(bottomSheetLift({ platform: 'ios', keyboardHeight: 336, bottomInset: 34 })).toBe(336);
+  });
+
+  test('web has no keyboard events → just the inset; bad input is never negative or NaN', () => {
+    expect(bottomSheetLift({ platform: 'web', keyboardHeight: 0, bottomInset: 0 })).toBe(0);
+    expect(bottomSheetLift({ platform: 'android', keyboardHeight: NaN, bottomInset: undefined })).toBe(0);
+    expect(bottomSheetLift({ platform: 'android', keyboardHeight: 300, androidInset: -20, bottomInset: 48 })).toBe(0);
   });
 });

@@ -10,8 +10,10 @@
 // Put `onRootLayout` on the screen's outermost view: its height with the
 // keyboard closed is the reference for "did the window resize after all".
 //
-// Inputs inside a <Modal> are not covered: Android reports keyboard changes from
-// the activity's root view, not from the dialog window a Modal opens.
+// Inside a <Modal>: Android reports keyboard changes from the activity's root
+// view, reading the IME from that window's insets, not from the dialog window a
+// Modal opens. So put `onRootLayout` on the modal's own full-screen view, never
+// the screen's; seller-app SelectSheet does this with `height` on iOS.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform } from 'react-native';
@@ -28,7 +30,8 @@ function initialKeyboardHeight() {
 
 /**
  * @param bottomInset bottom safe-area inset (the navigation bar)
- * @returns {{ inset: number, visible: boolean, visibleRef: { current: boolean }, onRootLayout: Function }}
+ * @returns {{ inset: number, height: number, visible: boolean, visibleRef: { current: boolean }, onRootLayout: Function }}
+ *   `height` is the raw keyboard*Show height (0 when hidden), on every platform.
  */
 export function useKeyboardRoom(bottomInset) {
   const [keyboard, setKeyboard] = useState(() => {
@@ -77,5 +80,5 @@ export function useKeyboardRoom(bottomInset) {
     })
     : 0;
 
-  return { inset, visible: keyboard.visible, visibleRef, onRootLayout };
+  return { inset, height: keyboard.height, visible: keyboard.visible, visibleRef, onRootLayout };
 }

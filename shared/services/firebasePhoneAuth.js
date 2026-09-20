@@ -57,12 +57,85 @@ function fb() {
  *   confirmFirebaseOtp(). Holds the verificationId; there is no way to re-derive
  *   it, so losing it means the user must request a new code.
  */
+// Firebase requires E.164. The rest of the app stores/handles the 10-digit
+// national form, and the backend re-normalizes whatever comes back, so +91 is
+// added only at this boundary.
+const toE164 = (phone) => `+91${phone}`;
+
+/** The Firebase user signed in for exactly this number, or null. */
+function signedInUserFor(auth, phone) {
+  const user = auth.currentUser;
+  return user && user.phoneNumber === toE164(phone) ? user : null;
+}
+
+async function idTokenOf(user) {
+  // User.getIdToken() still exists as an instance method in v26; getIdToken(user)
+  // is the modular equivalent. Prefer the method, fall back to the function.
+  const idToken = typeof user.getIdToken === 'function'
+    ? await user.getIdToken()
+    : await fb().getIdToken(user);
+
+  if (!idToken) throw new Error('Firebase did not return an ID token.');
+  return idToken;
+}
+
 export async function sendFirebaseOtp(phone) {
-  const { getAuth, signInWithPhoneNumber } = fb();
-  // Firebase requires E.164. The rest of the app stores/handles the 10-digit
-  // national form, and the backend re-normalizes whatever comes back, so +91 is
-  // added only at this boundary.
-  return signInWithPhoneNumber(getAuth(), `+91${phone}`);
+  const { getAuth, signInWithPhoneNumber, signOut } = fb();
+  const auth = getAuth();
+  // Start signed out. instantVerificationToken() reads a signed-in user for this
+  // number as "Firebase just verified it". A Firebase session left over from an
+  // earlier login would otherwise pass for that — and anyone holding the
+  // handset could skip the SMS entirely.
+  if (auth.currentUser) await signOut(auth);
+  return signInWithPhoneNumber(auth, toE164(phone));
+}
+
+/**
+ * Android can verify a number with NO code to type: "instant verification"
+ * (Play Services vouches for the SIM, and no SMS is sent at all) or
+ * auto-retrieval (it reads the SMS itself). Either way React Native Firebase
+ * signs the user in natively and the confirmation handle is spent — the farmer
+ * sat on the OTP screen waiting for an SMS that never came.
+ *
+ * Resolves the ID token of the user Firebase signed in for this number, or null
+ * when it did not. `waitMs` allows for the sign-in reaching JS just after the
+ * send resolved: the auth-state event and the send's own result cross the
+ * native bridge separately, in no guaranteed order.
+ *
+ * Only meaningful after sendFirebaseOtp(), which signs out first — so a user
+ * found here can only have come from that verification.
+ *
+ * @param {string} phone  10-digit number the code was sent to
+ * @param {number=} waitMs how long to wait for the sign-in event (0 = just look)
+ * @returns {Promise<string|null>} Firebase ID token, or null
+ */
+export async function instantVerificationToken(phone, waitMs = 0) {
+  const { getAuth, onAuthStateChanged } = fb();
+  const auth = getAuth();
+  let user = signedInUserFor(auth, phone);
+
+  if (!user && waitMs > 0) {
+    user = await new Promise((resolve) => {
+      let done = false;
+      let unsubscribe = null;
+      const finish = (found) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (unsubscribe) unsubscribe();
+        resolve(found);
+      };
+      const timer = setTimeout(() => finish(null), waitMs);
+      unsubscribe = onAuthStateChanged(auth, () => {
+        const found = signedInUserFor(auth, phone);
+        if (found) finish(found);
+      });
+      // The listener can fire synchronously, before `unsubscribe` was assigned.
+      if (done) unsubscribe();
+    });
+  }
+
+  return user ? idTokenOf(user) : null;
 }
 
 /**
@@ -74,24 +147,28 @@ export async function sendFirebaseOtp(phone) {
  *
  * @param {object} confirmation handle from sendFirebaseOtp()
  * @param {string} code 6-digit OTP the user entered
+ * @param {string=} phone the number the code was sent to — lets a code that
+ *   Android already auto-retrieved still complete (see below)
  * @returns {Promise<string>} Firebase ID token
  */
-export async function confirmFirebaseOtp(confirmation, code) {
+export async function confirmFirebaseOtp(confirmation, code, phone) {
   if (!confirmation) {
     throw new Error('No verification in progress. Please request a new code.');
   }
-  const credential = await confirmation.confirm(code);
+  let credential;
+  try {
+    credential = await confirmation.confirm(code);
+  } catch (err) {
+    // Auto-retrieval got there first: Android read the SMS and signed this
+    // number in, which spends the handle, so confirm() fails for a code that
+    // was right. The sign-in it made is the proof we need.
+    const token = phone ? await instantVerificationToken(phone).catch(() => null) : null;
+    if (token) return token;
+    throw err;
+  }
   const user = credential?.user;
   if (!user) throw new Error('Firebase returned no user for that code.');
-
-  // User.getIdToken() still exists as an instance method in v26; getIdToken(user)
-  // is the modular equivalent. Prefer the method, fall back to the function.
-  const idToken = typeof user.getIdToken === 'function'
-    ? await user.getIdToken()
-    : await fb().getIdToken(user);
-
-  if (!idToken) throw new Error('Firebase did not return an ID token.');
-  return idToken;
+  return idTokenOf(user);
 }
 
 /**

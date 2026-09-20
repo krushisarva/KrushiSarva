@@ -42,7 +42,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, resendSeconds } from '../context/AuthContext';
 import { isValidPhone, normalizePhone } from '../utils/validators';
 import {
   activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
@@ -56,7 +56,11 @@ const HERO = require('../assets/khet/welcome-hero.jpg');
 const STEPS = { WELCOME: 'welcome', PHONE: 'phone', OTP: 'otp' };
 const LANGS = ['हिन्दी', 'English', 'मराठी', 'தமிழ்', 'తెలుగు', 'ಕನ್ನಡ', 'বাংলা'];
 const OTP_LEN = OTP_LENGTH;
-const RESEND_SECONDS = 30;
+// How long "Resend" stays disabled is provider-dependent and comes from
+// AuthContext as `otpResendSeconds` (60 s on Firebase, 30 s on MSG91);
+// resendSeconds() there applies the safe fallback if it is ever missing. The
+// hard-coded 30 that used to live here offered a Firebase resend at half the
+// minute Google enforces — a tap that reports success and sends no SMS.
 
 // Each platform reads a different hint; passing another platform's value logs
 // a prop warning and switches autofill off.
@@ -115,7 +119,7 @@ const WEB_SHRINK = IS_WEB ? { minHeight: 0 } : null;
 const SCROLL_GROW = IS_WEB ? { flexGrow: 0 } : null;
 
 export default function LoginScreen() {
-  const { sendOtp, verifyOtp } = useAuth();
+  const { sendOtp, verifyOtp, otpResendSeconds } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(STEPS.WELCOME);
@@ -238,9 +242,13 @@ export default function LoginScreen() {
     try {
       const result = await sendOtp(phone);
       if (!mountedRef.current || attempt !== sendAttemptRef.current) return;
+      // Android verified the number on the device (Firebase instant
+      // verification): already signed in, no SMS is coming, and RootNavigator
+      // is replacing this screen — so no code step to show.
+      if (result?.signedIn) return;
       setPhoneDisplay(phone);
       setStep(STEPS.OTP);
-      setResendIn(RESEND_SECONDS);
+      setResendIn(resendSeconds(otpResendSeconds));
       resetCode();
       // Demo mode: server returns the OTP when SMS is not configured — auto-fill.
       const devOtp = result?.data?.devOtp ?? result?.devOtp;

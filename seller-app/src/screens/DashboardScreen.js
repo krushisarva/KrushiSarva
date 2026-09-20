@@ -49,6 +49,7 @@ import DashboardStatIcon from '@krushisarva/shared/components/DashboardStatIcons
 import { C, E, GRAD, HIT, R, SP, T, alpha, formatCurrency, useResponsive } from '../theme';
 import { useCountUp, usePulse, useEntrance, useReducedMotion } from '../hooks/useMotion';
 import useAsyncData from '../hooks/useAsyncData';
+import { orderItemUnit, sellerStatusByOrder, sellerStatusOf } from '../utils/sellerOrders';
 import {
   Screen, Card, SectionTitle, Avatar, StatusPill, CountBadge, Rule,
   Button, PressableRow, EmptyState, ErrorState, Skeleton, SkeletonCard,
@@ -127,11 +128,13 @@ function QuickAction({ icon, label, onPress, index, width, animated }) {
 
 // ── Recent order row ─────────────────────────────────────────────────────────
 
-const OrderRow = React.memo(function OrderRow({ item, index, t, last }) {
+// `status` is this seller's status on the order (sellerStatusOf), not the
+// all-seller order.status — the same value the Orders screen shows.
+const OrderRow = React.memo(function OrderRow({ item, status, index, t, last }) {
   const entrance = useEntrance({ index, distance: 12, stagger: 45 });
   const buyer = item.order?.user?.name?.trim();
   const phone = item.order?.user?.phone;
-  const qty = t('dash.qty', { n: item.quantity, unit: item.product?.unit || '' });
+  const qty = t('dash.qty', { n: item.quantity, unit: orderItemUnit(item) });
   const amount = formatCurrency(item.totalPrice);
   const name = item.product?.name || t('common.untitled', 'Untitled product');
 
@@ -150,7 +153,7 @@ const OrderRow = React.memo(function OrderRow({ item, index, t, last }) {
       </View>
       <View style={d.orderSide}>
         <Text style={d.orderAmt} numberOfLines={1}>{amount}</Text>
-        <StatusPill status={item.order?.status} t={t} size="sm" />
+        <StatusPill status={status} t={t} size="sm" />
       </View>
     </Animated.View>
   );
@@ -174,10 +177,16 @@ export default function DashboardScreen({ navigation }) {
 
   // Each panel owns its own request. A failing inbox count no longer wipes the
   // revenue figure — the old Promise.all rejected the whole batch.
+  //
+  // refetchOnFocus: the dashboard is the stack root, so it stays mounted while
+  // the seller confirms orders or reads reports on the screens above it, and
+  // came back showing the figures and unread count from when the app opened.
+  // The hook skips the focus refetch until the first load has landed, so mount
+  // is still a single request per panel.
   const stats = useAsyncData(
     useCallback(({ signal }) => api.get('/agristore/seller/stats', { signal }).then((r) => r.data.data), []),
     [],
-    { errorFallback: t('dash.statsError', 'Could not load your performance figures.') },
+    { refetchOnFocus: true, errorFallback: t('dash.statsError', 'Could not load your performance figures.') },
   );
 
   const orders = useAsyncData(
@@ -186,7 +195,7 @@ export default function DashboardScreen({ navigation }) {
       [],
     ),
     [],
-    { initialData: [], errorFallback: t('dash.ordersError', 'Could not load recent orders.') },
+    { refetchOnFocus: true, initialData: [], errorFallback: t('dash.ordersError', 'Could not load recent orders.') },
   );
 
   const inbox = useAsyncData(
@@ -196,7 +205,7 @@ export default function DashboardScreen({ navigation }) {
       [],
     ),
     [],
-    { initialData: 0 },
+    { refetchOnFocus: true, initialData: 0 },
   );
 
   const refreshing = stats.refreshing || orders.refreshing || inbox.refreshing;
@@ -255,6 +264,7 @@ export default function DashboardScreen({ navigation }) {
 
   const wideLedger = statColumns >= 3;
   const recent = orders.data || [];
+  const recentStatus = useMemo(() => sellerStatusByOrder(orders.data), [orders.data]);
   const constrain = isExpanded && { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' };
 
   return (
@@ -440,6 +450,7 @@ export default function DashboardScreen({ navigation }) {
                 <OrderRow
                   key={String(item.id ?? i)}
                   item={item}
+                  status={sellerStatusOf(item, recentStatus)}
                   index={i}
                   t={t}
                   last={i === recent.length - 1}

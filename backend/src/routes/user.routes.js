@@ -4,6 +4,10 @@
  * PUT  /api/v1/users/me                → update name, avatar, language, location,
  *                                        businessType, gst, taluka, village
  * PUT  /api/v1/users/me/seller-profile → upsert bank account + KYC documents
+ *   (both: changing Aadhaar/PAN/payout account sends a VERIFIED or REJECTED
+ *    KYC back to SUBMITTED for admin review — see kycReviewReset — and a
+ *    PENDING account's first Aadhaar/PAN submits it — see kycFirstSubmit.
+ *    Minors may not store any of these fields on either route.)
  * PUT  /api/v1/users/me/farm           → upsert farm details
  * POST /api/v1/users/me/push-token     → register Expo push token
  *
@@ -24,7 +28,7 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { rateLimiter, clientIp } from '../middleware/rateLimit.js';
-import { authenticate, requireRole, blockMinors } from '../middleware/auth.js';
+import { authenticate, requireRole, blockMinors, MINOR_BLOCKED_MESSAGE } from '../middleware/auth.js';
 import { uuidParamGuard } from '../middleware/uuidParams.js';
 import { isMinorDob } from '../utils/age.js';
 import { isSensitivePiiUpdate } from '../constants/pii.js';
@@ -125,6 +129,113 @@ function calcProfileCompletion(user, sellerProfile) {
 // [C1] Never expose full Aadhaar, PAN, or bank account numbers.
 const safeSellerProfile = maskSensitiveFields;
 
+// ── Helper: sanitised bank/KYC plaintext from a request body ──────────────────
+// [L5] stripHtml / uppercase FIRST, so the ciphertext decrypts back to the clean
+// canonical value — and so the KYC re-review below compares like with like.
+function bankKycPlaintext({ bankHolderName, bankName, bankAccountNumber, bankIfsc, aadharNumber, panNumber }) {
+  const plain = {};
+  if (bankHolderName    !== undefined) plain.bankHolderName    = stripHtml(bankHolderName);
+  if (bankName          !== undefined) plain.bankName          = stripHtml(bankName);
+  if (bankAccountNumber !== undefined) plain.bankAccountNumber = bankAccountNumber;
+  if (bankIfsc          !== undefined) plain.bankIfsc          = bankIfsc?.toUpperCase();
+  if (aadharNumber      !== undefined) plain.aadharNumber      = aadharNumber;
+  if (panNumber         !== undefined) plain.panNumber         = panNumber?.toUpperCase();
+  return plain;
+}
+
+/** [C2] Encrypt every value for storage ('' stays '' — encrypt is a no-op on it). */
+const encryptEach = (plain) =>
+  Object.fromEntries(Object.entries(plain).map(([k, v]) => [k, encrypt(v)]));
+
+// ── KYC re-review when identity or payout details change ─────────────────────
+// An admin's VERIFY or REJECT is a decision about one specific Aadhaar, PAN and
+// payout account. Once any of them changes, that decision no longer describes
+// what is on file, so the account goes back to SUBMITTED — the status the admin
+// KYC queue shows by default. Without this a VERIFIED seller could swap in
+// someone else's bank account and keep the badge, and a REJECTED seller who
+// corrected their details stayed REJECTED, outside the queue, for good.
+//
+// bankName is left out on purpose: payouts route on account number + IFSC, and
+// the bank name is a label — "SBI" → "State Bank of India" must not unverify a
+// shop. GST is not part of the KYC review. PENDING and SUBMITTED accounts are
+// already awaiting a decision, so they are left alone.
+// Roles that "become a seller" when the account opts in by submitting the
+// business profile. Mirrors SELLER_FLIP_FROM in routes/admin/kyc.routes.js,
+// which flips the same roles on KYC approval — the two must agree, or an
+// account the admin queue would promote can never reach the queue. FARMER alone
+// left LABOUR_PROVIDER and MACHINERY_OWNER stuck on the seller app's
+// BusinessProfile screen: every save answered "not a seller account yet" and
+// every seller route kept 403-ing.
+const SELLER_FLIP_FROM = new Set(['FARMER', 'VERIFIED_FARMER', 'LABOUR_PROVIDER', 'MACHINERY_OWNER']);
+
+const KYC_REVIEW_FIELDS = ['aadharNumber', 'panNumber', 'bankAccountNumber', 'bankIfsc', 'bankHolderName'];
+const KYC_REREVIEW_FROM = new Set(['VERIFIED', 'REJECTED']);
+const KYC_REVIEW_STATUS = 'SUBMITTED';
+// The old approval and the old rejection reason both described details that are
+// no longer on file. licenceVerifiedAt stays: licence fields aren't editable here.
+const KYC_RESET_PROFILE = { kycVerifiedAt: null, kycRejectedReason: null };
+
+// Retyping the same PAN, or "ramesh  patil" as "Ramesh Patil", is not a new identity.
+const kycComparable = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+/**
+ * The re-review an update triggers, or null. `user` is the row as it was BEFORE
+ * this write, with its sellerProfile; `plain` is bankKycPlaintext() of the body.
+ *
+ * Stored values are decrypted to compare: encrypt() draws a fresh IV per call, so
+ * two encryptions of the same value never match. One we cannot decrypt (retired
+ * key, corruption) counts as changed — nobody can show an admin reviewed it.
+ */
+function kycReviewReset(user, plain) {
+  if (!KYC_REREVIEW_FROM.has(user?.kycStatus)) return null;
+  const stored = user.sellerProfile;
+  const fields = KYC_REVIEW_FIELDS.filter((f) => {
+    if (plain[f] === undefined) return false;
+    const before = stored?.[f] ? decrypt(stored[f]) : '';
+    return before == null || kycComparable(before) !== kycComparable(plain[f]);
+  });
+  return fields.length
+    ? { from: user.kycStatus, action: AUDIT_ACTIONS.KYC_RESUBMIT, metadata: { changedFields: fields } }
+    : null;
+}
+
+// ── First KYC submission ─────────────────────────────────────────────────────
+// PENDING is the schema default for EVERY account, so it cannot mean "waiting
+// for an admin", and the admin KYC queue lists SUBMITTED. A new seller's first
+// Aadhaar/PAN therefore never reached a reviewer — and selling now requires
+// VERIFIED (middleware/sellerKyc.js). Once an identity number is on file the
+// account is SUBMITTED: the same point at which the seller app starts showing
+// "pending review" (kycState in seller-app/src/utils/businessProfile.js).
+const KYC_ID_FIELDS = ['aadharNumber', 'panNumber'];
+
+function kycFirstSubmit(user, plain) {
+  if (user?.kycStatus !== 'PENDING') return null;
+  // On file after this write: the body's value if it carries one, else the stored
+  // one. Ciphertext is non-empty exactly when the plaintext is (encrypt('') === '').
+  const fields = KYC_ID_FIELDS.filter((f) => (plain[f] !== undefined ? plain[f] : user.sellerProfile?.[f]));
+  return fields.length
+    ? { from: user.kycStatus, action: AUDIT_ACTIONS.KYC_SUBMIT, metadata: { idFields: fields } }
+    : null;
+}
+
+/** The move to SUBMITTED a bank/KYC write triggers, or null. Same arguments as kycReviewReset. */
+const kycSubmission = (user, plain) => kycReviewReset(user, plain) ?? kycFirstSubmit(user, plain);
+
+// Audited after commit, so a rolled-back write leaves no trail. Field NAMES only.
+function auditKycSubmission(req, change) {
+  auditAction(req, {
+    action:   change.action,
+    entity:   'User',
+    entityId: req.user.id,
+    before:   { kycStatus: change.from },
+    after:    { kycStatus: KYC_REVIEW_STATUS },
+    metadata: change.metadata,
+  }).catch(() => {});
+}
+
+// Thrown inside the PUT /me transaction to roll it back; answered with blockMinors' 403.
+const MINOR_KYC_REFUSED = new Error('Minors may not store identity or payout details');
+
 // ── GET /me ───────────────────────────────────────────────────────────────────
 router.get('/me', async (req, res) => {
   try {
@@ -204,7 +315,10 @@ router.put(
     body('language').optional().isIn(['en', 'hi', 'mr']),
     body('notificationsEnabled').optional().isBoolean(),
     body('statusQuote').optional().trim().isLength({ max: 200 }),
-    body('pincode').optional().matches(/^\d{6}$/),
+    // `values: 'falsy'` lets the client clear a stored PIN by sending '' (→ NULL
+    // below), the same escape hatch `email` uses; anything non-empty must still
+    // be six digits.
+    body('pincode').optional({ values: 'falsy' }).matches(/^\d{6}$/),
     body('district').optional().trim().isLength({ max: 100 }),
     body('taluka').optional().trim().isLength({ max: 100 }),
     body('village').optional().trim().isLength({ max: 100 }),
@@ -259,8 +373,6 @@ router.put(
         pincode, district, taluka, village, city, state,
         lat, lng, dateOfBirth,
         businessType, gstNumber, gstOptOut,
-        bankHolderName, bankName, bankAccountNumber, bankIfsc,
-        aadharNumber, panNumber,
       } = req.body;
 
       // Upload avatar if file was attached
@@ -294,7 +406,9 @@ router.put(
       }
       if (avatar      !== undefined) userData.avatar      = avatar;
       if (statusQuote !== undefined) userData.statusQuote = stripHtml(statusQuote);
-      if (pincode     !== undefined) userData.pincode     = pincode;
+      // '' (or null) clears the PIN → NULL. The seller form sends it when the
+      // field is emptied; without it a wrong stored PIN could never be removed.
+      if (pincode     !== undefined) userData.pincode     = pincode || null;
       if (district    !== undefined) userData.district    = district;
       if (taluka      !== undefined) userData.taluka      = taluka;
       if (village     !== undefined) userData.village     = village;
@@ -311,15 +425,15 @@ router.put(
         userData.isMinor     = dateOfBirth === null ? false : isMinorDob(dateOfBirth);
       }
       if (businessType !== undefined) userData.businessType = businessType;
-      // FARMER → SELLER promotion is now CONSENT-GATED, not a side-effect of
-      // setting businessType. The caller must explicitly opt in via
+      // Promotion to SELLER (from any SELLER_FLIP_FROM role) is CONSENT-GATED,
+      // not a side-effect of setting businessType. The caller must opt in via
       // `sellerConsent: true`; the actual role flip + a SELLER_ONBOARDING
       // ConsentRecord are then written atomically inside the transaction below
       // (so the role only ever changes alongside recorded consent — DPDP §5).
       // The role lives in the JWT, so fresh tokens are re-issued at the end of
       // this handler when the flip happens. [DPDP §9] A minor is never promoted.
       const sellerConsent = req.body.sellerConsent === true || req.body.sellerConsent === 'true';
-      const wantsSeller   = sellerConsent && req.user.role === 'FARMER';
+      const wantsSeller   = sellerConsent && SELLER_FLIP_FROM.has(req.user.role);
       if (resolvedGstOptOut !== undefined) userData.gstOptOut = resolvedGstOptOut;
       // [M4] Use the already-resolved boolean, not the raw body string.
       // [C2] GST is a financial identifier — encrypt at rest. The empty
@@ -330,30 +444,45 @@ router.put(
         userData.gstNumber = encrypt(gstPlain);
       }
 
-      // ── 2. Build SellerProfile payload — [C2] encrypt before write ─────────
-      const hasBankOrKyc = [
-        bankHolderName, bankName, bankAccountNumber, bankIfsc,
-        aadharNumber, panNumber,
-      ].some((v) => v !== undefined);
+      // ── 2. Build SellerProfile payload — plaintext now, [C2] encrypted at write
+      const spPlain = bankKycPlaintext(req.body);
+      const hasBankOrKyc = Object.keys(spPlain).length > 0;
 
       if (!Object.keys(userData).length && !hasBankOrKyc) {
         return sendError(res, 'No fields to update', 400);
       }
 
       // ── 3. Run updates in a transaction ────────────────────────────────────
+      let kycReset = null;
       const [updatedUser] = await prisma.$transaction(async (tx) => {
         let user = await tx.user.findUnique({
           where: { id: req.user.id },
           include: { sellerProfile: true },
         });
 
+        const effectiveMinor = userData.isMinor !== undefined ? userData.isMinor : user.isMinor;
+
+        // [DPDP §9] Minors may not store identity or payout details — what
+        // blockMinors refuses on /me/seller-profile and /me/kyc-documents, which
+        // write the same fields. Minor on file OR by this request's dob. Blank
+        // values (the seller app sends them for unfilled fields) carry nothing
+        // and are dropped, so the rest of a minor's profile still saves.
+        const minor = user.isMinor === true || effectiveMinor === true;
+        if (minor && Object.values(spPlain).some(Boolean)) throw MINOR_KYC_REFUSED;
+        const writeBankKyc = hasBankOrKyc && !minor;
+
+        // Decided against the row as it was before this write, and applied in
+        // the same user update + seller-profile upsert as the change itself, so
+        // the new details can never sit under the old decision.
+        kycReset = writeBankKyc ? kycSubmission(user, spPlain) : null;
+        if (kycReset) userData.kycStatus = KYC_REVIEW_STATUS;
+
         // Decide the FARMER → SELLER promotion against AUTHORITATIVE state:
         // this request's dob if it was just set, otherwise the stored flag, so
         // a previously-recorded minor can't slip through by omitting dob here.
         // [DPDP §9] Minors are never promoted. The flip and its consent proof
         // are committed together — the role can't change without the record.
-        const effectiveMinor = userData.isMinor !== undefined ? userData.isMinor : user.isMinor;
-        const promoteToSeller = wantsSeller && user.role === 'FARMER' && effectiveMinor !== true;
+        const promoteToSeller = wantsSeller && SELLER_FLIP_FROM.has(user.role) && effectiveMinor !== true;
         if (promoteToSeller) userData.role = 'SELLER';
 
         if (Object.keys(userData).length) {
@@ -380,22 +509,15 @@ router.put(
           });
         }
 
-        if (hasBankOrKyc) {
-          const spData = {};
+        if (writeBankKyc) {
           // [C2] Encrypt all bank/KYC financial PII before writing to DB.
-          // Sanitize (stripHtml / uppercase) the plaintext FIRST, then encrypt,
-          // so the ciphertext decrypts back to the clean canonical value.
-          if (bankHolderName    !== undefined) spData.bankHolderName    = encrypt(stripHtml(bankHolderName));
-          if (bankName          !== undefined) spData.bankName          = encrypt(stripHtml(bankName));
-          if (bankAccountNumber !== undefined) spData.bankAccountNumber = encrypt(bankAccountNumber);
-          if (bankIfsc          !== undefined) spData.bankIfsc          = encrypt(bankIfsc?.toUpperCase());
-          if (aadharNumber      !== undefined) spData.aadharNumber      = encrypt(aadharNumber);
-          if (panNumber         !== undefined) spData.panNumber         = encrypt(panNumber?.toUpperCase());
+          const spData = encryptEach(spPlain);
+          const spWrite = kycReset ? { ...spData, ...KYC_RESET_PROFILE } : spData;
 
           const sp = await tx.sellerProfile.upsert({
             where:  { userId: req.user.id },
-            create: { userId: req.user.id, ...spData },
-            update: spData,
+            create: { userId: req.user.id, ...spWrite },
+            update: spWrite,
           });
           user = { ...user, sellerProfile: sp };
 
@@ -415,10 +537,12 @@ router.put(
         return [user];
       });
 
+      if (kycReset) auditKycSubmission(req, kycReset);
+
       // If we flipped FARMER → SELLER above, re-issue tokens so the new role
       // is reflected in the JWT immediately (no logout/login round-trip).
       // req.user.role is the pre-update role, so this is true only on a real flip.
-      const didPromote = req.user.role === 'FARMER' && updatedUser.role === 'SELLER';
+      const didPromote = req.user.role !== 'SELLER' && updatedUser.role === 'SELLER';
       let tokens = null;
       if (didPromote) {
         const accessToken  = signAccessToken({ sub: updatedUser.id, role: updatedUser.role, tokenVersion: updatedUser.tokenVersion });
@@ -453,6 +577,7 @@ router.put(
         ...(tokens && { tokens }),
       });
     } catch (err) {
+      if (err === MINOR_KYC_REFUSED) return sendError(res, MINOR_BLOCKED_MESSAGE, 403);
       // Unique-constraint hit on email → friendly 409 instead of a generic 500.
       if (err?.code === 'P2002' && (err?.meta?.target?.includes?.('email') || /email/i.test(String(err?.meta?.target)))) {
         return sendError(res, 'This email is already linked to another account', 409);
@@ -486,29 +611,35 @@ router.put(
   validate,
   async (req, res) => {
     try {
-      const { bankHolderName, bankName, bankAccountNumber, bankIfsc, aadharNumber, panNumber } = req.body;
+      const plain = bankKycPlaintext(req.body);
+      if (!Object.keys(plain).length) return sendError(res, 'No fields to update', 400);
+      // [C2] Encrypt all bank/KYC financial PII before write.
+      const data = encryptEach(plain);
 
-      const data = {};
-      // [C2] Encrypt all bank/KYC financial PII before write. Sanitize the
-      // plaintext ([L5] stripHtml / uppercase) FIRST, then encrypt.
-      if (bankHolderName    !== undefined) data.bankHolderName    = encrypt(stripHtml(bankHolderName));
-      if (bankName          !== undefined) data.bankName          = encrypt(stripHtml(bankName));
-      if (bankAccountNumber !== undefined) data.bankAccountNumber = encrypt(bankAccountNumber);
-      if (bankIfsc          !== undefined) data.bankIfsc          = encrypt(bankIfsc.toUpperCase());
-      if (aadharNumber      !== undefined) data.aadharNumber      = encrypt(aadharNumber);
-      if (panNumber         !== undefined) data.panNumber         = encrypt(panNumber.toUpperCase());
+      // Same KYC re-review / first submission as PUT /me — otherwise this route
+      // is the way around it.
+      let kycReset = null;
+      const sp = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: req.user.id }, include: { sellerProfile: true } });
+        kycReset = kycSubmission(user, plain);
+        const write = kycReset ? { ...data, ...KYC_RESET_PROFILE } : data;
 
-      if (!Object.keys(data).length) return sendError(res, 'No fields to update', 400);
-
-      const sp = await prisma.sellerProfile.upsert({
-        where:  { userId: req.user.id },
-        create: { userId: req.user.id, ...data },
-        update: data,
+        const row = await tx.sellerProfile.upsert({
+          where:  { userId: req.user.id },
+          create: { userId: req.user.id, ...write },
+          update: write,
+        });
+        await tx.user.update({
+          where: { id: req.user.id },
+          data:  {
+            profileCompletion: calcProfileCompletion(user, row),
+            ...(kycReset && { kycStatus: KYC_REVIEW_STATUS }),
+          },
+        });
+        return row;
       });
 
-      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-      const completion = calcProfileCompletion(user, sp);
-      await prisma.user.update({ where: { id: req.user.id }, data: { profileCompletion: completion } });
+      if (kycReset) auditKycSubmission(req, kycReset);
 
       // [C1] Return masked PII — NOT the raw `sp` row
       return sendSuccess(res, safeSellerProfile(sp));
@@ -543,17 +674,20 @@ router.post(
       // Store privately under a per-user folder; keep only the public_ids.
       const publicIds = await uploadPrivateFiles(req.files, `kyc/${req.user.id}`);
 
-      // Persist references and reset KYC to PENDING — new docs need re-review.
+      // Persist references and move KYC to SUBMITTED — new docs need re-review.
+      // SUBMITTED, not PENDING: PENDING is every account's default and is not in
+      // the admin queue, so documents sent here used to wait for nobody. The old
+      // decision no longer describes what is on file (KYC_RESET_PROFILE).
       const [sp] = await prisma.$transaction([
         prisma.sellerProfile.upsert({
           where:  { userId: req.user.id },
           create: { userId: req.user.id, kycDocumentUrls: publicIds },
-          update: { kycDocumentUrls: publicIds },
+          update: { kycDocumentUrls: publicIds, ...KYC_RESET_PROFILE },
           select: { kycDocumentUrls: true },
         }),
         prisma.user.update({
           where: { id: req.user.id },
-          data:  { kycStatus: 'PENDING' },
+          data:  { kycStatus: KYC_REVIEW_STATUS },
         }),
       ]);
 
@@ -759,8 +893,13 @@ router.put(
     body('village').optional().trim().isLength({ max: 100 }),
     body('district').optional().trim().isLength({ max: 100 }),
     body('state').optional().trim().isLength({ max: 100 }),
-    body('pincode').optional().matches(/^\d{6}$/),
-    body('landAcres').optional().isFloat({ min: 0, max: 100000 }),
+    // `values: 'falsy'` lets the client clear a stored value by sending '' (→
+    // NULL in the handler), the same escape hatch PUT /me gives `pincode` and
+    // `email`. Without it the format check ran on '' and answered 400, so a PIN
+    // or a land size entered once — or entered wrongly — could never be removed.
+    // The free-text fields below need no change: '' already passes isLength.
+    body('pincode').optional({ values: 'falsy' }).matches(/^\d{6}$/),
+    body('landAcres').optional({ values: 'falsy' }).isFloat({ min: 0, max: 100000 }),
     // [M3] Array capped at 20 items; each item max 50 chars
     body('cropTypes').optional()
       .isArray({ max: 20 }).withMessage('cropTypes must have at most 20 items')
@@ -782,25 +921,35 @@ router.put(
     try {
       const { village, district, state, pincode, landAcres, cropTypes, soilType, irrigationType } = req.body;
 
+      // '' (or null) CLEARS the field → NULL, exactly as PUT /me clears `pincode`
+      // and `email`. Every one of these columns is nullable, and the route used
+      // to have two different wrong answers for an emptied box: `pincode` and
+      // `landAcres` were rejected outright by their format validators (400 — the
+      // bug: a wrong PIN could not be removed), while `village`, `district`,
+      // `state`, `soilType` and `irrigationType` were stored as the empty string,
+      // so "cleared" and "never filled in" were two different rows.
+      const clear = (v) => (v === null || v === '' ? null : v);
+      // Not `landAcres ? parseFloat(...) : undefined`: 0 is inside the validator's
+      // own `min: 0` range, and that truthiness test silently dropped it.
+      const acres = landAcres === null || landAcres === '' ? null : parseFloat(landAcres);
+
+      // One payload for both halves of the upsert, so a create and an update of
+      // the same body can no longer normalise it differently.
+      const data = {
+        ...(village        !== undefined && { village:        clear(village) }),
+        ...(district       !== undefined && { district:       clear(district) }),
+        ...(state          !== undefined && { state:          clear(state) }),
+        ...(pincode        !== undefined && { pincode:        clear(pincode) }),
+        ...(landAcres      !== undefined && { landAcres:      acres }),
+        ...(cropTypes      !== undefined && { cropTypes }),
+        ...(soilType       !== undefined && { soilType:       clear(soilType) }),
+        ...(irrigationType !== undefined && { irrigationType: clear(irrigationType) }),
+      };
+
       const farm = await prisma.farmDetail.upsert({
         where:  { userId: req.user.id },
-        create: {
-          userId: req.user.id,
-          village, district, state, pincode,
-          landAcres: landAcres ? parseFloat(landAcres) : undefined,
-          cropTypes: cropTypes || [],
-          soilType, irrigationType,
-        },
-        update: {
-          ...(village        !== undefined && { village }),
-          ...(district       !== undefined && { district }),
-          ...(state          !== undefined && { state }),
-          ...(pincode        !== undefined && { pincode }),
-          ...(landAcres      !== undefined && { landAcres: parseFloat(landAcres) }),
-          ...(cropTypes      !== undefined && { cropTypes }),
-          ...(soilType       !== undefined && { soilType }),
-          ...(irrigationType !== undefined && { irrigationType }),
-        },
+        create: { userId: req.user.id, cropTypes: cropTypes || [], ...data },
+        update: data,
       });
 
       return sendSuccess(res, farm);

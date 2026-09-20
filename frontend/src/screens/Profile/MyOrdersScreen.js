@@ -10,6 +10,15 @@
  * and friends, none of which exist in translations.js, so the badge rendered the
  * literal key text "orders.statusConfirmed".
  *
+ * ── Where the money is ──────────────────────────────────────────────────────
+ * `order.paymentStatus` is the only record of what happened to a cancelled
+ * order's money, and this screen rendered none of it: a cancelled online-paid
+ * order looked exactly like a cancelled cash order. It now carries the refund
+ * line, an expandable detail (this app has no separate order-detail screen), and
+ * the cancel action — whose confirmation names the EXACT rupee figure the server
+ * will refund, worked out the same way `orderRefund.service.js` works it out,
+ * rather than assuming the order total comes back.
+ *
  * ── The snapshot rule ───────────────────────────────────────────────────────
  * Item name, image and price come from the ORDER ITEM's own snapshot columns
  * first, and only fall back to the live product join. An order is a record of a
@@ -20,7 +29,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator, RefreshControl,
+  Image, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +38,13 @@ import api from '@krushisarva/shared/services/api';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import DashboardStatIcon from '@krushisarva/shared/components/DashboardStatIcons';
 import { SkeletonList } from '../../components/ui/Skeleton';
+// The order screens are Shop screens; the refund-status mapping, the cancel
+// guard and the refund arithmetic live with the rest of the Shop logic so they
+// are unit-testable without a React Native runtime.
+import {
+  orderRefundLabel, humanOrderStatus, canCancelOrder, cancelRefundPreview,
+} from '../AgriStore/shopUtils';
+import { cancelOrder } from '../AgriStore/shopClient';
 
 /** ₹ with Indian digit grouping (1,20,000 — not 120,000). */
 function inr(value) {
@@ -52,9 +68,13 @@ const STATUS_META = {
 function StatusBadge({ status }) {
   const { t } = useLanguage();
   const meta = STATUS_META[status];
-  // An unknown status (a future enum value on an old build) shows the raw code
-  // rather than a wrong label — better an unfamiliar word than a false one.
-  const label = meta ? t(meta.key) : status;
+  // An unknown status — a value added to the OrderStatus enum after this APK
+  // shipped — used to render the raw code, so a farmer was shown the literal
+  // word "RETURN_REQUESTED". It degrades to a title-cased phrase instead: not a
+  // translation, but a readable one that cannot be WRONG the way a guess can.
+  // A status that is missing altogether shows nothing rather than an empty pill.
+  const label = meta ? t(meta.key) : humanOrderStatus(status);
+  if (!label) return null;
   return (
     <View style={[styles.badge, { backgroundColor: meta?.bg || COLORS.grayBg }]}>
       <Text style={[styles.badgeTxt, { color: meta?.color || COLORS.textMedium }]}>{label}</Text>
@@ -62,9 +82,39 @@ function StatusBadge({ status }) {
   );
 }
 
-const OrderCard = memo(function OrderCard({ order }) {
+/**
+ * "Refund on the way — 5–7 working days", and the rest of the refund states.
+ *
+ * `order.paymentStatus` is the only place the money's fate is recorded, and this
+ * screen rendered none of it: a cancelled online-paid order looked exactly like
+ * a cancelled cash order, with no statement anywhere that the money was coming
+ * back. A paymentStatus with nothing to say about a refund ('pending', 'paid')
+ * and one this build does not recognise both render nothing at all — silence
+ * beats a wrong promise about money.
+ */
+function RefundLine({ paymentStatus }) {
+  const { t } = useLanguage();
+  const label = orderRefundLabel(paymentStatus);
+  if (!label) return null;
+  return (
+    <View style={styles.refundRow}>
+      <Ionicons
+        name={label.done ? 'checkmark-circle' : 'time-outline'}
+        size={14}
+        color={label.done ? COLORS.emerald : COLORS.gold}
+      />
+      <Text style={[styles.refundTxt, label.done && { color: COLORS.emerald }]}>
+        {t(label.key, label.fallback)}
+      </Text>
+    </View>
+  );
+}
+
+const OrderCard = memo(function OrderCard({ order, onCancelled }) {
   const { t, language } = useLanguage();
   const [imgFailed, setImgFailed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const firstItem = order.items?.[0];
   // Snapshot first, live join second — see the header.
@@ -88,6 +138,73 @@ const OrderCard = memo(function OrderCard({ order }) {
   const date = order.createdAt
     ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : '—';
+
+  const subtotal = Number(order.subtotal ?? 0);
+  const discount = Number(order.discountAmount ?? 0);
+  const items = Array.isArray(order.items) ? order.items : [];
+  const isCod = order.paymentMethod === 'cod';
+
+  // Mirrors PUT /orders/:id/cancel's own guard, so the button is never offered
+  // for an order the server will refuse.
+  const cancellable = canCancelOrder(order);
+  // EXACTLY what cancelling returns — the order total MINUS anything a seller's
+  // earlier cancel has already refunded. Never the order total by assumption.
+  const preview = cancelRefundPreview(order);
+
+  function askCancel() {
+    // Covers both cash on delivery and an online order whose money was never
+    // captured: in neither case is there anything to promise back.
+    const body = !preview.refundable
+      ? t('orders.cancelNoRefundMsg', 'No money has been taken for this order, so there is nothing to refund.')
+      : preview.amount != null
+        ? t('orders.cancelRefundMsg', {
+          amount: inr(preview.amount),
+          defaultValue: '{{amount}} will be refunded to the account you paid from. It usually arrives in 5–7 working days.',
+        })
+        // The list payload had no lines to work the figure out from. Say a refund
+        // is coming without naming a number rather than naming a wrong one.
+        : t('orders.cancelRefundUnknownMsg',
+          'What you paid for this order will be refunded to the account you paid from. It usually arrives in 5–7 working days.');
+
+    Alert.alert(
+      t('orders.cancelTitle', 'Cancel this order?'),
+      body,
+      [
+        { text: t('orders.cancelKeep', 'Keep order'), style: 'cancel' },
+        { text: t('orders.cancelConfirm', 'Cancel order'), style: 'destructive', onPress: doCancel },
+      ],
+    );
+  }
+
+  async function doCancel() {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      const res = await cancelOrder(order.id);
+      onCancelled?.(order.id, res);
+      // The SERVER's figure, not the preview: this is what it actually raised.
+      // It is absent whenever nothing was owed.
+      const refunded = Number(res?.refundAmount);
+      Alert.alert(
+        t('orders.cancelledTitle', 'Order cancelled'),
+        Number.isFinite(refunded) && refunded > 0
+          ? t('orders.cancelledRefundMsg', {
+            amount: inr(refunded),
+            defaultValue: '{{amount}} is being refunded to the account you paid from — it usually arrives in 5–7 working days.',
+          })
+          : t('orders.cancelledNoRefundMsg', 'Your order has been cancelled.'),
+      );
+    } catch (err) {
+      Alert.alert(
+        t('orders.cancelFailedTitle', 'Could not cancel'),
+        // `userMessage` is the API client's sanitised text — e.g. the server's
+        // "Cannot cancel a confirmed order" when a seller got there first.
+        err?.userMessage || t('orders.cancelFailedMsg', 'Could not cancel this order. Please refresh and try again.'),
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   return (
     <View style={styles.card}>
@@ -135,6 +252,11 @@ const OrderCard = memo(function OrderCard({ order }) {
         </View>
       ) : null}
 
+      {/* Where the money actually is. Rendered on the collapsed card too: a
+          farmer checking whether their refund has come should not have to open
+          anything to find out. */}
+      <RefundLine paymentStatus={order.paymentStatus} />
+
       <View style={styles.cardFooter}>
         <View style={styles.footerLeft}>
           <Ionicons name="calendar-outline" size={13} color={COLORS.textMedium} />
@@ -144,6 +266,97 @@ const OrderCard = memo(function OrderCard({ order }) {
           <Text style={styles.totalLabel}>{t('orders.paid')}</Text>
           <Text style={styles.total}>{inr(payable)}</Text>
         </View>
+      </View>
+
+      {/* ── Order detail ──────────────────────────────────────────────────────
+          This app has no separate order-detail screen, so the card is it. Kept
+          collapsed by default: the list is the common case and a low-end phone
+          should not render every line of every order to show ten of them. */}
+      {open ? (
+        <View style={styles.detail}>
+          {items.map((it, i) => {
+            const nm = (language === 'mr' && it.productNameMr) || it.productName
+              || it.product?.name || t('orders.itemFallback');
+            return (
+              <View key={it.id || i} style={styles.detailItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.detailItemName} numberOfLines={2}>{nm}</Text>
+                  <Text style={styles.detailItemMeta}>
+                    {t('orders.qty')} {it.quantity} × {inr(it.unitPrice)}
+                    {/* A line the seller cancelled is called out: the rest of
+                        the order is still coming, and its money is not. */}
+                    {it.status === 'CANCELLED' ? ` · ${t('orders.statusCancelled')}` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.detailItemVal}>{inr(it.totalPrice)}</Text>
+              </View>
+            );
+          })}
+
+          <View style={styles.detailRows}>
+            {subtotal > 0 ? (
+              <View style={styles.breakRow}>
+                <Text style={styles.breakLabel}>{t('orders.subtotal', 'Items')}</Text>
+                <Text style={styles.breakVal}>{inr(subtotal)}</Text>
+              </View>
+            ) : null}
+            {delivery > 0 ? (
+              <View style={styles.breakRow}>
+                <Text style={styles.breakLabel}>{t('orders.deliveryFee')}</Text>
+                <Text style={styles.breakVal}>{inr(delivery)}</Text>
+              </View>
+            ) : null}
+            {tax > 0 ? (
+              <View style={styles.breakRow}>
+                <Text style={styles.breakLabel}>{t('orders.tax')}</Text>
+                <Text style={styles.breakVal}>{inr(tax)}</Text>
+              </View>
+            ) : null}
+            {discount > 0 ? (
+              <View style={styles.breakRow}>
+                <Text style={styles.breakLabel}>{t('orders.discount', 'Discount')}</Text>
+                <Text style={styles.breakVal}>−{inr(discount)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.breakRow}>
+              <Text style={styles.breakLabel}>{t('orders.payment')}</Text>
+              <Text style={styles.breakVal}>
+                {isCod ? t('checkout.cod', 'Cash on Delivery') : t('orders.paidOnline', 'Paid online')}
+              </Text>
+            </View>
+          </View>
+
+          <RefundLine paymentStatus={order.paymentStatus} />
+        </View>
+      ) : null}
+
+      <View style={styles.actions}>
+        <TouchableOpacity
+          onPress={() => setOpen((v) => !v)}
+          style={styles.linkBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+        >
+          <Text style={styles.linkTxt}>
+            {open ? t('orders.hideDetails', 'Hide details') : t('orders.viewDetails', 'View details')}
+          </Text>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.primary} />
+        </TouchableOpacity>
+
+        {cancellable ? (
+          <TouchableOpacity
+            onPress={askCancel}
+            disabled={cancelling}
+            style={[styles.cancelBtn, cancelling && { opacity: 0.6 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('orders.cancelOrder')}
+          >
+            {cancelling
+              ? <ActivityIndicator size="small" color={COLORS.error} />
+              : <Text style={styles.cancelTxt}>{t('orders.cancelOrder')}</Text>}
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -220,6 +433,27 @@ export default function MyOrdersScreen({ navigation }) {
     fetchOrders(null, { refresh: true });
   }, [fetchOrders]);
 
+  /**
+   * Fold a completed cancel back into the row, from the SERVER's answer.
+   *
+   * Refetching the page instead would scroll-jump a farmer who has paged down,
+   * and on a village connection it is one more request that can fail after the
+   * cancel has already succeeded. Stable identity so `memo(OrderCard)` still
+   * holds for every other row.
+   */
+  const handleCancelled = useCallback((orderId, res) => {
+    setOrders((prev) => prev.map((o) => (o.id !== orderId ? o : {
+      ...o,
+      status: res?.status || 'CANCELLED',
+      // Present only when money is actually owed; leaving the old value alone
+      // otherwise keeps a cash order from claiming a refund it never had.
+      ...(res?.paymentStatus ? { paymentStatus: res.paymentStatus } : {}),
+      items: Array.isArray(o.items)
+        ? o.items.map((i) => (i.status === 'PENDING' ? { ...i, status: 'CANCELLED' } : i))
+        : o.items,
+    })));
+  }, []);
+
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
       {/* The status-bar inset is measured, not assumed. The old `Platform.OS ===
@@ -261,7 +495,7 @@ export default function MyOrdersScreen({ navigation }) {
         <FlatList
           data={orders}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <OrderCard order={item} />}
+          renderItem={({ item }) => <OrderCard order={item} onCancelled={handleCancelled} />}
           contentContainerStyle={
             orders.length ? { padding: 16, paddingBottom: 32 } : { flexGrow: 1 }
           }
@@ -327,6 +561,26 @@ const styles = StyleSheet.create({
   breakRow:   { flexDirection: 'row', justifyContent: 'space-between' },
   breakLabel: { fontSize: 12, color: COLORS.textMedium },
   breakVal:   { fontSize: 12, color: COLORS.textMedium, fontWeight: '600' },
+
+  refundRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  refundTxt: { flex: 1, fontSize: 12, fontWeight: '600', color: COLORS.gold },
+
+  detail:         { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 10, paddingTop: 10, gap: 8 },
+  detailItem:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  detailItemName: { fontSize: 13, fontWeight: '600', color: COLORS.textDark },
+  detailItemMeta: { fontSize: 11, color: COLORS.textMedium, marginTop: 2 },
+  detailItemVal:  { fontSize: 13, fontWeight: '700', color: COLORS.textDark },
+  detailRows:     { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 8, gap: 3 },
+
+  actions:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  linkBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  linkTxt:   { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  cancelBtn: {
+    minHeight: 34, minWidth: 96, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 10, borderWidth: 1, borderColor: COLORS.error,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  cancelTxt: { fontSize: 13, fontWeight: '700', color: COLORS.error },
 
   cardFooter: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',

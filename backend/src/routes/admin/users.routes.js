@@ -3,7 +3,8 @@
  *
  * GET    /users                 list (search phone/name/district; filter role/kyc/isActive/isMinor)
  * GET    /users/:id             full profile + counts + recent activity (PII masked; ?reveal=true&reason= audited)
- * PATCH  /users/:id             change role / isActive (audited; role change bumps tokenVersion)
+ * PATCH  /users/:id             change role / isActive (audited; role change bumps tokenVersion;
+ *                               deactivation / seller demotion pulls the seller's live offers)
  * POST   /users/:id/force-logout  bump tokenVersion + revoke refresh tokens (audited)
  * POST   /users/:id/impersonate   issue a READ-ONLY view-as context (scope SUPPORT, reason required, audited)
  * GET    /users/:id/impersonation-context  verify a previously-issued view-as token (scope SUPPORT)
@@ -26,10 +27,20 @@ import { ADMIN_ACTIONS } from '../../services/audit.service.js';
 import { getEffectiveConsents, getConsentHistory } from '../../services/consent.service.js';
 import { requireScope, ADMIN_SCOPES } from '../../middleware/admin.js';
 import { signViewAsContext, verifyViewAsContext } from '../../utils/viewAsContext.js';
+import { bumpListingVersion } from '../../utils/listingCache.js';
+import { invalidateBuyBox } from '../../services/buyBox.service.js';
 
 const router = Router();
 
 const ROLES = ['FARMER', 'VERIFIED_FARMER', 'LABOUR_PROVIDER', 'MACHINERY_OWNER', 'ADMIN', 'SELLER'];
+// The roles that may manage AgriStore offers — must match SELLER_ROLES in
+// agristore.routes.js (the requireRole gate on every seller listing route).
+const SELLER_ROLES = ['SELLER', 'VERIFIED_FARMER', 'ADMIN'];
+// Listing states that are on sale, or go back on sale by themselves:
+// OUT_OF_STOCK flips to ACTIVE as soon as stock returns (syncListingStockStatus,
+// e.g. when an abandoned payment's hold is released). BLOCKED is left alone — it
+// is a trust-and-safety decision with its own lifecycle, not ours to overwrite.
+const LIVE_LISTING_STATES = ['ACTIVE', 'OUT_OF_STOCK'];
 const KYC_STATUSES = ['PENDING', 'SUBMITTED', 'VERIFIED', 'REJECTED'];
 
 // Fields safe to project for the list (no encrypted blobs — list never reveals).
@@ -182,19 +193,55 @@ router.patch(
       }
       if (req.body.isActive !== undefined) data.isActive = req.body.isActive === true || req.body.isActive === 'true';
 
-      const updated = await prisma.user.update({
-        where: { id },
-        data,
-        select: { id: true, role: true, isActive: true, tokenVersion: true },
-      });
+      // ── A seller who can no longer act must stop taking orders ───────────────
+      // Deactivation and SELLER→non-seller demotion used to touch only the user
+      // row. Their offers stayed ACTIVE and kept winning the buy box, so buyers
+      // paid for orders the seller could never confirm, dispatch or cancel —
+      // they cannot log in, or now fail requireRole on every seller route.
+      // Pulled in the SAME transaction as the user update, so there is no
+      // window in which the account is off but its offers are still for sale.
+      //
+      // Re-applying isActive=false to an already-inactive account still runs
+      // this: it is idempotent, and it is how an admin clears offers left live
+      // by a deactivation that happened before this fix.
+      //
+      // Deliberately NOT reversed on reactivation or re-promotion. Stock and
+      // prices may be months stale by then; the seller re-enables each offer
+      // themselves (PATCH /agristore/listings/:id status=ACTIVE) once they have
+      // checked it.
+      const demotedFromSeller = roleChanged
+        && SELLER_ROLES.includes(current.role) && !SELLER_ROLES.includes(data.role);
+      const pullOffers = data.isActive === false || demotedFromSeller;
+
+      const [updated, pulled] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id },
+          data,
+          select: { id: true, role: true, isActive: true, tokenVersion: true },
+        }),
+        ...(pullOffers
+          ? [prisma.sellerListing.updateMany({
+              where: { sellerId: id, status: { in: LIVE_LISTING_STATES } },
+              data: { status: 'INACTIVE' },
+            })]
+          : []),
+      ]);
+      const listingsDeactivated = pulled?.count ?? 0;
+
+      // Same invalidation as every other listing write: without it the product
+      // grid and the cached buy box keep offering the pulled listings for up to
+      // their 60 s TTL.
+      if (listingsDeactivated) {
+        await Promise.all([bumpListingVersion('agristore:products'), invalidateBuyBox()]);
+      }
 
       await adminAudit(req, ADMIN_ACTIONS.USER_UPDATE, 'User', id, {
         before: { role: current.role, isActive: current.isActive },
         after: { role: updated.role, isActive: updated.isActive },
-        metadata: { reason: req.body.reason ?? null, roleChanged },
+        metadata: { reason: req.body.reason ?? null, roleChanged, listingsDeactivated },
       });
 
-      return sendSuccess(res, { id: updated.id, role: updated.role, isActive: updated.isActive });
+      return sendSuccess(res, { id: updated.id, role: updated.role, isActive: updated.isActive, listingsDeactivated });
     } catch (err) {
       return sendServerError(res, err, 'Failed to update user');
     }

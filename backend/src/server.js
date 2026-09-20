@@ -464,7 +464,9 @@ async function start() {
       //
       // It deliberately does NOT auto-create orders for orphaned captures: the cart
       // is long gone and stock may have sold, so an invented order would ship
-      // something nobody chose. Those are logged at ERROR for a human to refund.
+      // something nobody chose. Past the 30-minute payment window they are
+      // refunded automatically; ones not yet refundable, or whose refund failed,
+      // are logged at ERROR for a human.
       // Leader-locked — N instances hitting the gateway with the same intents
       // would be both wasteful and rate-limited.
       cron.schedule('*/10 * * * *', () => withLeaderLock('shop-payment-reconcile', async () => {

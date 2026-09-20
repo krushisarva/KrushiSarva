@@ -23,6 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 
@@ -147,7 +148,9 @@ export default function CatalogSearchScreen({ navigation }) {
     return () => { alive = false; };
   }, []);
 
-  const runSearch = useCallback(async (term, barcode, cat) => {
+  // `quiet` keeps the results that are already on screen while they are re-read,
+  // so the refetch on returning to the screen does not flash skeletons.
+  const runSearch = useCallback(async (term, barcode, cat, { quiet = false } = {}) => {
     const trimmed = (term || '').trim();
     const code = (barcode || '').trim();
     if (trimmed.length < MIN_QUERY && !code) {
@@ -155,12 +158,13 @@ export default function CatalogSearchScreen({ navigation }) {
       return;
     }
     if (isOffline) {
+      if (quiet) return;
       setState({ status: 'error', results: [], matchType: 'none', error: t('common.offline', 'You are offline.') });
       return;
     }
 
     const id = ++reqId.current;
-    setState((prev) => ({ ...prev, status: 'loading', error: null }));
+    setState((prev) => ({ ...prev, status: quiet ? prev.status : 'loading', error: null }));
     try {
       const params = new URLSearchParams();
       if (trimmed) params.set('q', trimmed);
@@ -189,6 +193,21 @@ export default function CatalogSearchScreen({ navigation }) {
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [q, gtin, categoryId, runSearch]);
 
+  // AddProduct comes back with goBack(), so nothing tells this screen that the
+  // seller just created an offer — the pack row kept offering "Sell this" for an
+  // offer that now exists. `myListing` is computed per request, so re-reading
+  // the search on the way back is what turns the row into "Yours · ₹x".
+  // The terms live in a ref: a useFocusEffect callback that changed identity on
+  // every keystroke would re-run — one search per character typed.
+  const terms = useRef({ q, gtin, categoryId });
+  terms.current = { q, gtin, categoryId };
+  const firstFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (firstFocus.current) { firstFocus.current = false; return; }
+    const { q: term, gtin: code, categoryId: cat } = terms.current;
+    if (term.trim().length >= MIN_QUERY || code.trim()) runSearch(term, code, cat, { quiet: true });
+  }, [runSearch]));
+
   const goAttach = useCallback((product, variant) => {
     navigation.navigate('AddProduct', {
       intent: 'attach',
@@ -207,6 +226,9 @@ export default function CatalogSearchScreen({ navigation }) {
     });
   }, [navigation]);
 
+  // `listing` is the search result's myListing, which carries the WHOLE offer.
+  // The edit form reads every offer field from it; when it held only price and
+  // stock, the form opened on defaults (MOQ 1, profile district, 2-day dispatch).
   const goEditMine = useCallback((product, variant, listing) => {
     navigation.navigate('AddProduct', {
       intent: 'attach',
@@ -291,7 +313,9 @@ export default function CatalogSearchScreen({ navigation }) {
             items={categoryOptions}
             value={categoryId}
             onChange={setCategoryId}
-            clearLabel={t('catalogSearch.allCategories', 'All categories')}
+            // No `clearLabel`: `categoryOptions` already opens with an
+            // "All categories" row (value ''), and the sheet's own clear row is
+            // the same choice — the sheet listed it twice, both ticked.
             accessibilityLabel={t('catalogSearch.categoryLabel', 'Category')}
           />
         </Field>

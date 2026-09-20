@@ -123,6 +123,12 @@ export function classifyError(err) {
     // the cart screen can point at the exact line that is blocked.
     issues: err?.response?.data?.error?.details?.issues || null,
     reason: err?.response?.data?.error?.details?.reason || null,
+    // /orders/confirm refusals where THE MONEY MOVED but no order was made. The
+    // sanitised `message` for a 409 is the generic "A conflict occurred. Please
+    // refresh and try again." — the last thing to say to someone who has just
+    // paid. These two flags let the screen say what happened to the money.
+    paymentCaptured: err?.response?.data?.error?.details?.paymentCaptured === true,
+    refundStarted: err?.response?.data?.error?.details?.refundStarted === true,
     // For a support ticket. The API attaches it to every error envelope.
     requestId: err?.response?.data?.error?.requestId || null,
     status: status || null,
@@ -327,4 +333,394 @@ export function discountPct(mrp, price) {
   const m = Number(mrp); const p = Number(price);
   if (!Number.isFinite(m) || !Number.isFinite(p) || m <= 0 || p <= 0 || m <= p) return 0;
   return Math.round(((m - p) / m) * 100);
+}
+
+// ── What happened to the money ────────────────────────────────────────────────
+/**
+ * Every state `GET /agristore/orders/payment-status/:providerOrderId` answers
+ * with, and the sentence to show for each one.
+ *
+ * The server's `intentPublicStatus()` (backend/src/services/shopPayment.service.js)
+ * returns exactly nine `state` values:
+ *
+ *   ORDER_CREATED  the payment became an order — `orderId` is set
+ *   CONFIRMING     captured, the order is being created. DO NOT PAY AGAIN
+ *   PENDING        no payment seen yet, or one still being confirmed
+ *   REFUNDING      a refund has been started. `refundPending: false` means the
+ *                  GATEWAY CALL ITSELF FAILED, so no 5–7 day promise may be made
+ *   REFUNDED       the gateway accepted the refund
+ *   FAILED         the gateway reported a failure — nothing was captured
+ *   CANCELLED      the intent was cancelled — nothing was captured
+ *   EXPIRED        no payment attempt inside the window — nothing was captured
+ *   UNKNOWN        there is no intent at all
+ *
+ * REFUNDING and REFUNDED are newer than this app's first build, and both used
+ * to fall through to PENDING — which this screen renders as "No money was taken.
+ * You can try again", said to a farmer whose money HAS been taken and is on its
+ * way back. That is the failure this table exists to prevent.
+ *
+ * `moneyTaken` is the load-bearing field: nothing that offers "try again" may
+ * ever be shown for a state where it is true.
+ *
+ * Kept out of the screens (and free of `t`) so the whole table is unit-testable
+ * under the project's plain-node Jest config.
+ */
+const PAYMENT_NOTICES = {
+  ORDER_CREATED: {
+    ordered: true, moneyTaken: true, mayRetry: false,
+    titleKey: 'checkout.paymentDoneTitle', titleFallback: 'Payment successful',
+    bodyKey: 'checkout.paymentDoneMsg',
+    bodyFallback: 'Your order has been placed. You can see it under My Orders.',
+  },
+  CONFIRMING: {
+    moneyTaken: true, mayRetry: false,
+    titleKey: 'checkout.paymentConfirmingTitle', titleFallback: 'Payment is being confirmed',
+    bodyKey: 'checkout.paymentConfirmingMsg',
+    bodyFallback: 'Your payment has gone through and we are creating your order. Do not pay again — check My Orders in a few minutes.',
+  },
+  // NOT "no money was taken": the server says PENDING both for an untouched
+  // payment sheet and for one whose outcome it has not established yet, and it
+  // cannot tell the two apart. Telling the farmer to pay again on the second is
+  // how they are charged twice.
+  PENDING: {
+    moneyTaken: false, mayRetry: false,
+    titleKey: 'checkout.paymentPendingTitle', titleFallback: 'We are still checking your payment',
+    bodyKey: 'checkout.paymentPendingMsg',
+    bodyFallback: 'Do not pay again. Open My Orders in a few minutes — if no money was taken, you can order again from your cart.',
+  },
+  REFUNDED: {
+    moneyTaken: true, mayRetry: true, refund: 'done',
+    titleKey: 'checkout.refundDoneTitle', titleFallback: 'Your payment was refunded',
+    bodyKey: 'checkout.refundDoneMsg',
+    bodyFallback: 'Your payment has been refunded — it reaches the account you paid from in 5–7 working days.',
+    amountBodyKey: 'checkout.refundDoneAmountMsg',
+    amountBodyFallback: '{{amount}} has been refunded — it reaches the account you paid from in 5–7 working days.',
+  },
+  FAILED: {
+    moneyTaken: false, mayRetry: true,
+    titleKey: 'checkout.paymentFailed', titleFallback: 'Payment failed',
+    bodyKey: 'checkout.paymentFailedMsg',
+    bodyFallback: 'No money was taken. Please try again or choose Cash on Delivery.',
+  },
+  CANCELLED: {
+    moneyTaken: false, mayRetry: true,
+    titleKey: 'checkout.paymentCancelled', titleFallback: 'Payment cancelled',
+    bodyKey: 'checkout.paymentCancelledMsg',
+    bodyFallback: 'No money was taken. You can try again or choose Cash on Delivery.',
+  },
+  EXPIRED: {
+    moneyTaken: false, mayRetry: true,
+    titleKey: 'checkout.paymentExpiredTitle', titleFallback: 'Payment session expired',
+    bodyKey: 'checkout.paymentExpiredMsg',
+    bodyFallback: 'No money was taken. Please review your cart and try again.',
+  },
+};
+
+/** The two REFUNDING answers — they differ by whether a date may be promised. */
+const REFUND_ON_WAY = {
+  moneyTaken: true, mayRetry: false, refund: 'onWay',
+  titleKey: 'checkout.refundOnWayTitle', titleFallback: 'Your payment is being refunded',
+  bodyKey: 'checkout.refundOnWayMsg',
+  bodyFallback: 'Your payment is being refunded — it reaches the account you paid from in 5–7 working days.',
+  amountBodyKey: 'checkout.refundOnWayAmountMsg',
+  amountBodyFallback: '{{amount}} is being refunded — it reaches the account you paid from in 5–7 working days.',
+};
+const REFUND_ARRANGING = {
+  moneyTaken: true, mayRetry: false, refund: 'arranging',
+  titleKey: 'checkout.refundArrangingTitle', titleFallback: 'Refund being arranged',
+  bodyKey: 'checkout.refundArrangingMsg',
+  bodyFallback: 'Our team is arranging your refund — please do not pay again.',
+  amountBodyKey: 'checkout.refundArrangingAmountMsg',
+  amountBodyFallback: 'Our team is arranging your {{amount}} refund — please do not pay again.',
+};
+
+/**
+ * The safe answer for a state this build has never heard of.
+ *
+ * A future server state must not reach the farmer as a blank alert or as the raw
+ * word "REFUND_INITIATED". It degrades to "we could not confirm" — which is the
+ * only thing that is certainly true — and prefers the server's own sentence when
+ * it sent one, because a newer server knows more about its own state than this
+ * table does.
+ */
+/**
+ * Raw `PaymentIntentStatus` values the public mapping renames. Accepted so an
+ * older server, an admin tool or a replayed payload cannot land on "unknown".
+ */
+const RAW_STATUS_ALIAS = { PAID: 'CONFIRMING', CREATED: 'PENDING' };
+
+const PAYMENT_UNKNOWN = {
+  moneyTaken: false, mayRetry: false, preferServerMessage: true,
+  titleKey: 'checkout.paymentUnknownTitle', titleFallback: 'We could not confirm your payment',
+  bodyKey: 'checkout.paymentUnknownMsg',
+  bodyFallback: 'Please check My Orders before trying again, so you are not charged twice.',
+};
+
+/**
+ * Map a payment-status payload to the notice to show. Never returns null.
+ *
+ * @param {object|null} status the `data` of GET /orders/payment-status
+ * @returns {{state: string, titleKey: string, titleFallback: string,
+ *            bodyKey: string, bodyFallback: string, amount: number|null,
+ *            moneyTaken: boolean, mayRetry: boolean, ordered: boolean,
+ *            refund: string|null, serverMessage: string|null,
+ *            preferServerMessage: boolean, known: boolean}}
+ */
+export function paymentStatusNotice(status) {
+  const raw = status?.state;
+  const state = typeof raw === 'string' ? raw : 'UNKNOWN';
+
+  let base;
+  // REFUND_INITIATED is accepted alongside REFUNDING: it is the raw intent
+  // status, and an older server (or an admin tool) can still send it. Reading it
+  // as "no money was taken" is exactly the bug this guards.
+  if (state === 'REFUNDING' || state === 'REFUND_INITIATED') {
+    base = status?.refundPending === false ? REFUND_ARRANGING : REFUND_ON_WAY;
+  } else {
+    // 'PAID' and 'CREATED' are the raw intent statuses behind CONFIRMING and
+    // PENDING, accepted for the same reason as REFUND_INITIATED above.
+    base = PAYMENT_NOTICES[RAW_STATUS_ALIAS[state] || state];
+  }
+  const known = Boolean(base);
+  if (!known) base = PAYMENT_UNKNOWN;
+
+  // The intent's amount, which for a refunding/refunded intent IS the amount
+  // going back. The server sends it as a decimal string alongside the state.
+  const amountNum = Number(status?.amount);
+  const amount = Number.isFinite(amountNum) && amountNum > 0 ? amountNum : null;
+  const serverMessage =
+    typeof status?.message === 'string' && status.message.trim() ? status.message.trim() : null;
+
+  return {
+    state,
+    known,
+    ordered: base.ordered === true,
+    moneyTaken: base.moneyTaken === true,
+    mayRetry: base.mayRetry === true,
+    refund: base.refund || null,
+    preferServerMessage: base.preferServerMessage === true,
+    serverMessage,
+    titleKey: base.titleKey,
+    titleFallback: base.titleFallback,
+    // The amount-bearing wording is only used when there IS an amount to name;
+    // a refund sentence with a blank ₹ in it is worse than one without a figure.
+    bodyKey: amount && base.amountBodyKey ? base.amountBodyKey : base.bodyKey,
+    bodyFallback: amount && base.amountBodyKey ? base.amountBodyFallback : base.bodyFallback,
+    amount,
+  };
+}
+
+/**
+ * What to tell a farmer whose `POST /orders/confirm` failed AFTER they paid.
+ *
+ * Confirm only ever runs on a signature-verified payment, so a refusal here
+ * always means THE MONEY MOVED AND NO ORDER EXISTS. The server has four ways to
+ * refuse with 409, and `shared/services/api.js` flattens all of them to the same
+ * sanitised sentence — "A conflict occurred. Please refresh and try again." —
+ * which is the last thing to say to someone who has just been charged:
+ *
+ *   1. the re-quote no longer passes    details: { issues, paymentCaptured,
+ *                                                  refundStarted }
+ *   2. the cart changed while paying    details: { code: 'CART_CHANGED',
+ *                                                  paymentCaptured, refundStarted }
+ *   3. the payment was already refunded (bindIntentToOrderTx, PAYMENT_REFUNDED)
+ *   4. too many serialization retries   (withSerializableRetry, SERIALIZATION_CONFLICT)
+ *
+ * (3) and (4) reach the client through `sendServerError`, which forwards neither
+ * `details` nor `err.code` — so they are INDISTINGUISHABLE from each other in
+ * the error envelope alone. That is why the caller re-asks
+ * `GET /orders/payment-status` and passes the answer in as `status`: the intent
+ * state is authoritative for all four, and carries the ₹ amount as well.
+ *
+ * @param {object|null} info   the classifyError() result
+ * @param {object|null} status the payment-status payload, when it could be read
+ */
+export function confirmFailureNotice(info, status) {
+  const title = { titleKey: 'checkout.paymentTakenTitle', titleFallback: 'Payment received' };
+  // The server's own words for the blocked lines ("Only 3 left of Urea 50kg").
+  // English, but specific — appended, never substituted for the refund sentence.
+  const detail = info?.issues?.length ? info.issues.map((i) => i.message).filter(Boolean).join('\n') : null;
+
+  // 1. The authoritative answer, when we could get it.
+  if (status) {
+    const notice = paymentStatusNotice(status);
+    if (notice.state === 'ORDER_CREATED' || status.orderId) {
+      return { ...title, ordered: true, order: status.order || null, detail: null, notice };
+    }
+    if (notice.refund) {
+      return {
+        ...title,
+        leadKey: 'checkout.paymentNotOrderedMsg',
+        leadFallback: 'Your payment went through, but your order could not be completed.',
+        bodyKey: notice.bodyKey, bodyFallback: notice.bodyFallback, amount: notice.amount,
+        detail, notice,
+      };
+    }
+    // Captured but not yet refunding (CONFIRMING/PENDING) — the reconciler owns
+    // it from here. Do not promise a date no refund has been raised for.
+    if (notice.moneyTaken || !notice.known) {
+      return {
+        ...title,
+        leadKey: 'checkout.paymentNotOrderedMsg',
+        leadFallback: 'Your payment went through, but your order could not be completed.',
+        bodyKey: 'checkout.refundArrangingMsg',
+        bodyFallback: 'Our team is arranging your refund — please do not pay again.',
+        amount: notice.amount, detail, notice,
+      };
+    }
+    // FAILED / CANCELLED / EXPIRED: the gateway says nothing was captured, so
+    // this is a plain failure and retrying is safe.
+    return {
+      titleKey: notice.titleKey, titleFallback: notice.titleFallback,
+      bodyKey: notice.bodyKey, bodyFallback: notice.bodyFallback,
+      mayRetry: true, detail, notice,
+    };
+  }
+
+  // 2. No authoritative answer. Fall back to what the 409 itself carried.
+  const conflict = info?.status === 409;
+  if (info?.paymentCaptured || conflict) {
+    return {
+      ...title,
+      leadKey: 'checkout.paymentNotOrderedMsg',
+      leadFallback: 'Your payment went through, but your order could not be completed.',
+      // `refundStarted` is only ever sent on the two refusals that raise the
+      // refund themselves. Absent it — reasons (3) and (4) — "being arranged" is
+      // the honest half-answer: the money is owed and no date can be promised.
+      ...(info?.refundStarted
+        ? {
+          bodyKey: 'checkout.refundOnWayMsg',
+          bodyFallback: 'Your payment is being refunded — it reaches the account you paid from in 5–7 working days.',
+        }
+        : {
+          bodyKey: 'checkout.refundArrangingMsg',
+          bodyFallback: 'Our team is arranging your refund — please do not pay again.',
+        }),
+      amount: null, detail, notice: null,
+    };
+  }
+
+  // 3. Not a conflict at all — a timeout, an offline phone, a 5xx. The money may
+  // or may not have moved, so the one thing not to say is "try again".
+  return {
+    ...title,
+    bodyKey: 'checkout.paymentTakenMsg',
+    bodyFallback: 'Your payment went through but we could not finish the order. Our team will contact you — please do not pay again.',
+    amount: null, detail, notice: null,
+  };
+}
+
+/**
+ * The refund line for an order's `paymentStatus`.
+ *
+ * orders.paymentStatus carries the refund state a cancel produced
+ * ('refund_pending' → 'refunded' / 'partially_refunded'). My Orders rendered
+ * none of it, so a cancelled online-paid order looked identical to a cancelled
+ * cash order — no statement anywhere that the money was coming back.
+ *
+ * Returns null for 'pending' and 'paid', and for anything unknown: nothing to
+ * say about a refund is better than a wrong label, and an unrecognised value
+ * must never reach the screen as raw text. Cash-on-delivery orders never reach a
+ * refund status, so they cannot claim a refund through this.
+ */
+export function orderRefundLabel(paymentStatus) {
+  switch (paymentStatus) {
+    case 'refund_pending':
+      return { key: 'orders.refundPending', fallback: 'Refund on the way — 5–7 working days', done: false };
+    case 'partially_refunded':
+      return { key: 'orders.partiallyRefunded', fallback: 'Part of your payment was refunded', done: false };
+    case 'refunded':
+      return { key: 'orders.refunded', fallback: 'Refunded to the account you paid from', done: true };
+    default:
+      return null;
+  }
+}
+
+/**
+ * A readable label for an order status this build does not know.
+ *
+ * The badge used to render `status` verbatim, so a value added to the OrderStatus
+ * enum after this APK shipped would show a farmer the literal word
+ * "RETURN_REQUESTED". Title-casing is not a translation, but it is a phrase
+ * rather than a constant, and it cannot be WRONG the way a guessed label can.
+ */
+export function humanOrderStatus(code) {
+  if (typeof code !== 'string' || !code.trim()) return null;
+  const words = code.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// ── Cancelling an order ───────────────────────────────────────────────────────
+/** paymentStatus values under which the buyer's money is still held. */
+const MONEY_HELD = new Set(['paid', 'partially_refunded', 'refund_pending']);
+
+/** Rupees → integer paise, so the preview sums the way the server's Decimal does. */
+const paise = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+};
+
+/**
+ * Can the buyer still cancel this order?
+ *
+ * Mirrors `PUT /agristore/orders/:id/cancel` exactly: PENDING order, and no line
+ * the seller has already moved on. Offering a button the server answers 400 to
+ * is worse than not offering it.
+ */
+export function canCancelOrder(order) {
+  if (order?.status !== 'PENDING') return false;
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) return true; // the server is the authority; the list payload may be trimmed
+  if (items.some((i) => i?.status !== 'PENDING' && i?.status !== 'CANCELLED')) return false;
+  return items.some((i) => i?.status === 'PENDING');
+}
+
+/**
+ * EXACTLY what cancelling this order returns to the buyer.
+ *
+ * The confirmation dialog used to name no figure at all, and naming the order
+ * total instead would be wrong whenever a seller has already cancelled (and been
+ * refunded for) part of the order — the buyer would be promised money that has
+ * already been sent.
+ *
+ * This is `refundAmountFor()` from backend/src/services/orderRefund.service.js,
+ * for the buyer-cancel case (every still-open line goes at once, so the cancel is
+ * always "fully cancelled" and the refund is the whole remaining total — which is
+ * what returns the delivery fee):
+ *
+ *   refund = orderTotal − Σ(lines a previous cancel already refunded)
+ *
+ * where a line refunds its `totalPrice`, plus its `taxAmount` when tax was ADDED
+ * on top of the prices rather than included in them. Summed in integer paise so
+ * it agrees with the server's Decimal arithmetic to the last rupee.
+ *
+ * Returns `amount: null` — never a guess — when the payload has no items to work
+ * from, so the dialog can say a refund is coming without naming a figure.
+ */
+export function cancelRefundPreview(order) {
+  const cod = order?.paymentMethod === 'cod';
+  const refundable = Boolean(order)
+    && !cod
+    && Boolean(order.paymentRef)
+    && MONEY_HELD.has(order.paymentStatus);
+
+  if (!refundable) return { refundable: false, cod, amount: null };
+
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) return { refundable: true, cod, amount: null };
+
+  // Tax ADDED on top (a shop setting the order does not record) is read back off
+  // the order's own arithmetic, exactly as the server does:
+  //   total = subtotal + delivery + addedTax − discount
+  const addedTax = paise(order.totalAmount) - paise(order.subtotal)
+    - paise(order.deliveryFee) + paise(order.discountAmount);
+  const addsTax = paise(order.taxAmount) > 0 && addedTax > 0;
+  const linePaise = (i) => paise(i?.totalPrice) + (addsTax ? paise(i?.taxAmount) : 0);
+
+  const alreadyRefunded = items
+    .filter((i) => i?.status === 'CANCELLED')
+    .reduce((sum, i) => sum + linePaise(i), 0);
+
+  const remaining = Math.max(0, paise(order.totalAmount) - alreadyRefunded);
+  return { refundable: remaining > 0, cod, amount: remaining / 100 };
 }

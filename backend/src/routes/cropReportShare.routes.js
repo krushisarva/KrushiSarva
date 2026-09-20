@@ -40,6 +40,7 @@ import {
 import { sendPushToUser } from '../services/push.service.js';
 import { decryptNumber } from '../utils/encrypt.js';
 import { KRUSHI_KENDRA_TYPES } from '../constants/kendra.js';
+import { districtIn, districtSpellings } from '../utils/districtAliases.js';
 import logger from '../utils/logger.js';
 import prisma from '../config/db.js';
 
@@ -141,7 +142,7 @@ router.get('/sellers/nearby', authenticate, async (req, res) => {
     // while Kendra counts are small.
     const local = queryDistrict
       ? await prisma.user.findMany({
-          where: { ...baseWhere, district: queryDistrict },
+          where: { ...baseWhere, district: districtIn(queryDistrict) },
           select: SELLER_SELECT,
           orderBy: { id: 'asc' },
           take: CANDIDATE_SCAN_CAP,
@@ -152,7 +153,7 @@ router.get('/sellers/nearby', authenticate, async (req, res) => {
     const rest = remaining > 0
       ? await prisma.user.findMany({
           where: queryDistrict
-            ? { ...baseWhere, district: { not: queryDistrict } }
+            ? { ...baseWhere, district: { notIn: districtSpellings(queryDistrict), mode: 'insensitive' } }
             : baseWhere,
           select: SELLER_SELECT,
           // Deterministic, so a truncated result is at least stable between
@@ -200,7 +201,9 @@ router.get('/sellers/nearby', authenticate, async (req, res) => {
         id:           { notIn: [...excludeIds] },
         businessType: { in: businessTypes },
         kycStatus:    'VERIFIED', // only admin-approved Kendras are discoverable
-        district:     queryDistrict,
+        // Any spelling of a renamed district: the farmer app stores Dharashiv,
+        // the seller app has saved the same Kendra as Osmanabad.
+        district:     districtIn(queryDistrict),
       },
       select: SELLER_SELECT,
       take: 30 - sellers.length,
@@ -294,18 +297,111 @@ router.post(
   }
 );
 
-// Resolve recommendedProductIds → Product objects, for use on the farmer side
-// (cards on the diagnosis screen) and the seller side (echo back what they
-// recommended). Returns [] when the share has no products attached.
-async function resolveRecommendedProducts(productIds) {
-  if (!Array.isArray(productIds) || productIds.length === 0) return [];
-  return prisma.product.findMany({
-    where: { id: { in: productIds }, isActive: true },
+const toMoney = (v) => (v == null ? null : Number(v));
+
+// The offer a Kendra's recommendation sells: THAT seller's own ACTIVE listing on
+// the product. A product can carry several of their listings (one per pack
+// size), so the default pack wins, then the cheapest; id breaks ties so the
+// card does not flip between packs from one request to the next.
+function beats(a, b) {
+  if (a.variant.isDefault !== b.variant.isDefault) return a.variant.isDefault;
+  const byPrice = Number(a.listing.sellingPrice) - Number(b.listing.sellingPrice);
+  if (byPrice !== 0) return byPrice < 0;
+  return a.listing.id < b.listing.id;
+}
+
+function pickSellerOffer(product, sellerId) {
+  let best = null;
+  for (const variant of product.variants) {
+    for (const listing of variant.listings) {
+      if (listing.sellerId !== sellerId) continue;
+      const cand = { listing, variant };
+      if (!best || beats(cand, best)) best = cand;
+    }
+  }
+  return best;
+}
+
+// One purchasable card for the farmer, or null when this seller cannot sell it.
+// Field names are the pre-split product shape the diagnosis screen already
+// reads (price / mrp / stock / unit); listingId + variantId are added so "Add to
+// cart" can buy THIS Kendra's offer instead of whichever seller wins the buy box.
+function shapeRecommended(product, sellerId) {
+  const base = {
+    id: product.id, name: product.name, nameHi: product.nameHi, nameMr: product.nameMr,
+    images: product.images, brand: product.brand, sellerId,
+  };
+
+  // DUAL-READ: a pre-backfill fused row has no variants, so its offer still
+  // lives on the product. Same gate as the legacy cart add, so a card never
+  // offers an Add to cart that the cart would refuse.
+  if (product.variants.length === 0) {
+    if (product.sellerId !== sellerId || product.isActive === false || product.status !== 'APPROVED') return null;
+    return {
+      ...base,
+      price: toMoney(product.price), mrp: toMoney(product.mrp),
+      unit: product.unit, stock: product.stock, minOrderQty: product.minOrderQty,
+      listingId: null, variantId: null,
+    };
+  }
+
+  // CATALOG SPLIT: Product.price/stock/sellerId are deprecated and unset on a
+  // catalog row — reading them showed the farmer no price and "Out of stock".
+  if (product.status !== 'APPROVED') return null;
+  const offer = pickSellerOffer(product, sellerId);
+  if (!offer) return null;
+  return {
+    ...base,
+    price: toMoney(offer.listing.sellingPrice), mrp: toMoney(offer.listing.mrp),
+    unit: offer.variant.unit, stock: offer.listing.stockQty, minOrderQty: offer.listing.minOrderQty,
+    listingId: offer.listing.id, variantId: offer.variant.id,
+  };
+}
+
+// Resolve each share's recommendedProductIds → purchasable product cards, for
+// the farmer side (cards on the diagnosis screen) and the seller side (echo back
+// what they recommended). Returns one array per share, in the seller's order;
+// [] for a share with nothing attached. ONE findMany for every share: Prisma
+// batches the nested variants/listings with IN (...), so the round trips stay
+// constant however many shares or products there are.
+async function resolveRecommendedProducts(shares) {
+  const productIds = new Set();
+  const sellerIds = new Set();
+  for (const s of shares) {
+    if (!Array.isArray(s.recommendedProductIds) || s.recommendedProductIds.length === 0) continue;
+    s.recommendedProductIds.forEach((id) => productIds.add(id));
+    sellerIds.add(s.sellerId);
+  }
+  if (productIds.size === 0) return shares.map(() => []);
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: [...productIds] } },
     select: {
-      id: true, name: true, nameHi: true, nameMr: true,
-      price: true, mrp: true, unit: true, stock: true,
-      images: true, sellerId: true, brand: true, minOrderQty: true,
+      id: true, name: true, nameHi: true, nameMr: true, images: true, brand: true, status: true,
+      // DUAL-READ only — the offer columns of a pre-backfill fused row.
+      price: true, mrp: true, unit: true, stock: true, minOrderQty: true, sellerId: true, isActive: true,
+      variants: {
+        select: {
+          id: true, unit: true, isDefault: true,
+          listings: {
+            where: { sellerId: { in: [...sellerIds] }, status: 'ACTIVE' },
+            select: { id: true, sellerId: true, sellingPrice: true, mrp: true, stockQty: true, minOrderQty: true },
+          },
+        },
+      },
     },
+  });
+  const byId = new Map(products.map((p) => [p.id, p]));
+
+  return shares.map((s) => {
+    if (!Array.isArray(s.recommendedProductIds)) return [];
+    const cards = [];
+    for (const id of new Set(s.recommendedProductIds)) {
+      const product = byId.get(id);
+      const card = product ? shapeRecommended(product, s.sellerId) : null;
+      if (card) cards.push(card);
+    }
+    return cards;
   });
 }
 
@@ -354,13 +450,9 @@ router.get('/:reportId/shares', authenticate, async (req, res) => {
     },
   });
 
-  // Resolve product objects for each share that has recommendations attached
-  const enriched = await Promise.all(
-    shares.map(async (s) => ({
-      ...s,
-      recommendedProducts: await resolveRecommendedProducts(s.recommendedProductIds),
-    }))
-  );
+  // Resolve product objects for every share in one batch (was one query per share).
+  const recommended = await resolveRecommendedProducts(shares);
+  const enriched = shares.map((s, i) => ({ ...s, recommendedProducts: recommended[i] }));
 
   return sendSuccess(res, enriched);
 });
@@ -419,7 +511,7 @@ router.get('/seller/inbox/:shareId', authenticate, async (req, res) => {
     }).catch(() => {});
   }
 
-  const recommendedProducts = await resolveRecommendedProducts(share.recommendedProductIds);
+  const [recommendedProducts] = await resolveRecommendedProducts([share]);
   return sendSuccess(res, { ...share, recommendedProducts });
 });
 
@@ -461,11 +553,13 @@ router.post(
       // OFFER now. recommendedProductIds is a String[] with no FK, so a stale
       // check here fails silently (empty array, no error), which is why it is
       // rewritten to ask "does this seller have a live offer on this product".
+      // In stock too: the seller app's picker greys out exactly these (approved,
+      // ACTIVE, stock > 0), so the two sides agree on what can be recommended.
       const owned = await prisma.product.findMany({
         where: {
           id: { in: recommendedProductIds },
           status: 'APPROVED',
-          variants: { some: { listings: { some: { sellerId: req.user.id, status: 'ACTIVE' } } } },
+          variants: { some: { listings: { some: { sellerId: req.user.id, status: 'ACTIVE', stockQty: { gt: 0 } } } } },
         },
         select: { id: true },
       });

@@ -23,7 +23,7 @@ import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocatio
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import {
   fetchCartQuote, fetchPaymentConfig, fetchPaymentStatus, initiatePayment, confirmPayment,
-  classifyError, inr, thumbUrl,
+  classifyError, paymentStatusNotice, confirmFailureNotice, inr, thumbUrl,
 } from './shopClient';
 import RazorpayCheckout from './RazorpayCheckout';
 
@@ -682,11 +682,46 @@ export default function CheckoutScreen({ route, navigation }) {
       // The money has moved. Whatever went wrong now, the farmer must NOT be
       // told to pay again — the server keeps the payment intent and the
       // reconciler surfaces it for refund or fulfilment.
+      //
+      // /orders/confirm has FOUR ways to refuse with 409 and the API client
+      // flattens every one of them to "A conflict occurred. Please refresh and
+      // try again." — told to a farmer who has just been charged. Two of the four
+      // (an already-refunded payment, an exhausted serialization retry) carry no
+      // `details` at all, so the envelope cannot tell them apart either. Ask the
+      // server what actually happened to the money instead of guessing from it.
+      let status = null;
+      try {
+        status = await fetchPaymentStatus(result.razorpayOrderId);
+      } catch { /* offline or 404 — fall back to what the error itself carried */ }
+
+      const notice = confirmFailureNotice(info, status);
+
+      // The race the reconciler and the webhook can both win: the order exists
+      // after all. Show it rather than an apology for it.
+      if (notice.ordered && notice.order) {
+        navigation.replace('OrderConfirmed', {
+          order: notice.order, paymentMethod: payMethod,
+          grandTotal: Number(notice.order?.totalAmount ?? grandTotal),
+        });
+        return;
+      }
+
+      const body = [
+        notice.leadKey ? t(notice.leadKey, notice.leadFallback) : null,
+        notice.detail,
+        t(notice.bodyKey, notice.amount
+          ? { amount: inr(notice.amount), defaultValue: notice.bodyFallback }
+          : notice.bodyFallback),
+      ].filter(Boolean).join('\n\n');
+
       Alert.alert(
-        t('checkout.paymentTakenTitle', 'Payment received'),
-        info?.message || t('checkout.paymentTakenMsg',
-          'Your payment went through but we could not finish the order. Our team will contact you — please do not pay again.'),
-        [{ text: t('ok', 'OK'), onPress: () => navigation.replace('Main') }],
+        t(notice.titleKey, notice.titleFallback),
+        body,
+        // A genuinely failed payment leaves them on checkout to try again; one
+        // where money moved sends them out, so the same cart cannot be re-paid.
+        [notice.mayRetry
+          ? { text: t('ok', 'OK') }
+          : { text: t('ok', 'OK'), onPress: () => navigation.replace('Main') }],
       );
     } finally {
       setVerifying(false);
@@ -717,19 +752,22 @@ export default function CheckoutScreen({ route, navigation }) {
         });
         return;
       }
-      if (status?.state === 'CONFIRMING' || status?.state === 'PAID') {
-        Alert.alert(
-          t('checkout.paymentConfirmingTitle', 'Payment is being confirmed'),
-          status.message || t('checkout.paymentConfirmingMsg',
-            'Your payment has gone through and we are creating your order. Do not pay again — check My Orders in a few minutes.'),
-          [{ text: t('ok', 'OK') }],
-        );
-        return;
-      }
-      // Genuinely not paid — safe to let them try again.
+
+      // Every other state the server can answer with, mapped in one place. This
+      // used to be two `if`s and an else that said "No money was taken. You can
+      // try again" — which was the WRONG sentence for REFUNDING, REFUNDED and
+      // PENDING alike, and the only sentence a farmer must never be given
+      // wrongly. An unrecognised state now lands on "we could not confirm",
+      // carrying the server's own words where it sent any.
+      const notice = paymentStatusNotice(status);
       Alert.alert(
-        t('checkout.paymentCancelled', 'Payment cancelled'),
-        t('checkout.paymentCancelledMsg', 'No money was taken. You can try again or choose Cash on Delivery.'),
+        t(notice.titleKey, notice.titleFallback),
+        notice.preferServerMessage && notice.serverMessage
+          ? notice.serverMessage
+          : t(notice.bodyKey, notice.amount
+            ? { amount: inr(notice.amount), defaultValue: notice.bodyFallback }
+            : notice.bodyFallback),
+        [{ text: t('ok', 'OK') }],
       );
     } catch {
       // Could not reach the server to find out. Say exactly that rather than

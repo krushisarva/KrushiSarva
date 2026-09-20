@@ -12,13 +12,25 @@
  *   - duplicate ids are dropped (a row inserted server-side between page reads
  *     used to appear twice and crash FlatList's key check)
  *   - reaching the end is detected correctly for both modes
+ *   - a refresh no longer throws away everything past page 1: it re-reads the
+ *     first REFRESH_MAX_PAGES loaded pages and keeps the rest, so a pull (or a
+ *     focus refetch) does not drop the seller back to the top of the list
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { safeErrorMessage } from '@krushisarva/shared/services/api';
 import { useNetwork, isConnectivityError } from './useNetwork';
+import { mergeRefreshedPages } from '../utils/pagedList';
 
 const DEFAULT_LIMIT = 20;
+
+/**
+ * How many already-loaded pages a refresh (pull-to-refresh or a focus refetch)
+ * re-reads. Capped on purpose: a seller sitting on page 10 must not fire ten
+ * requests on one pull. The pages below the cap are kept on screen rather than
+ * discarded, so refreshing no longer collapses the list back to page 1.
+ */
+const REFRESH_MAX_PAGES = 2;
 
 export default function usePagedList({
   /** ({ cursor, page, limit, signal }) => axios response */
@@ -41,6 +53,7 @@ export default function usePagedList({
 
   const cursorRef = useRef(null);
   const pageRef = useRef(1);
+  const pagesLoaded = useRef(1);     // pages currently on screen, in both modes
   const mounted = useRef(true);
   const runId = useRef(0);
   const abortRef = useRef(null);
@@ -61,6 +74,7 @@ export default function usePagedList({
 
   const load = useCallback(async ({ mode: how = 'load' } = {}) => {
     const isMore = how === 'more';
+    const isRefresh = how === 'refresh';
 
     // One request at a time. Without this, an onEndReached firing during a
     // pull-to-refresh appended page 2 of the OLD list onto the new page 1.
@@ -74,42 +88,88 @@ export default function usePagedList({
     if (!isMore) abortRef.current = controller;
 
     if (isMore) { setLoadingMore(true); setMoreError(null); }
-    else if (how === 'refresh') setRefreshing(true);
+    else if (isRefresh) setRefreshing(true);
     else { setLoading(true); if (how === 'retry') setError(null); }
 
+    // A refresh re-reads the pages the seller has already scrolled through, up
+    // to the cap; everything below the cap is kept by mergeRefreshedPages.
+    const wanted = isRefresh ? Math.min(pagesLoaded.current, REFRESH_MAX_PAGES) : 1;
+
     try {
-      const res = await fetchRef.current({
-        cursor: isMore ? cursorRef.current : null,
-        page: isMore ? pageRef.current + 1 : 1,
-        limit,
-        signal: controller?.signal,
-      });
+      const fetched = [];
+      const seen = new Set();
+      let cursor = isMore ? cursorRef.current : null;
+      let read = 0;
+      let end = false;
 
-      if (!mounted.current || id !== runId.current) return;
+      // One request for a load / retry / load-more, and up to `wanted` for a
+      // refresh — sequentially, under one spinner.
+      while (read < wanted) {
+        const res = await fetchRef.current({
+          cursor,
+          page: isMore ? pageRef.current + 1 : read + 1,
+          limit,
+          signal: controller?.signal,
+        });
 
-      const list = res?.data?.data ?? res?.data ?? [];
-      const rows = Array.isArray(list) ? list : [];
-      const meta = res?.data?.meta ?? {};
+        if (!mounted.current || id !== runId.current) return;
+
+        const list = res?.data?.data ?? res?.data ?? [];
+        const rows = Array.isArray(list) ? list : [];
+        const meta = res?.data?.meta ?? {};
+
+        for (const it of rows) {
+          // Drop anything this run already holds — the server can shift rows
+          // between page reads, and duplicate keys break FlatList.
+          const key = keyRef.current(it);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          fetched.push(it);
+        }
+
+        cursor = meta.nextCursor || null;
+        read += 1;
+
+        // A short page means the end. `meta.hasMore`/`meta.total` win when present.
+        const pages = isMore ? pageRef.current + 1 : read;
+        if (mode === 'cursor') end = !cursor;
+        else if (typeof meta.hasMore === 'boolean') end = !meta.hasMore;
+        else if (typeof meta.total === 'number') end = pages * limit >= meta.total;
+        else end = rows.length < limit;
+        if (end) break;
+      }
 
       setItems((prev) => {
-        if (!isMore) return rows;
-        // Drop anything we already hold — the server can shift rows between
-        // page reads, and duplicate keys break FlatList.
-        const seen = new Set(prev.map((it) => keyRef.current(it)));
-        return [...prev, ...rows.filter((it) => !seen.has(keyRef.current(it)))];
+        if (isMore) {
+          const held = new Set(prev.map((it) => keyRef.current(it)));
+          return [...prev, ...fetched.filter((it) => !held.has(keyRef.current(it)))];
+        }
+        if (!isRefresh) return fetched;
+        return mergeRefreshedPages({
+          prev, fetched, pagesRead: read, limit, reachedEnd: end, keyOf: keyRef.current,
+        });
       });
 
-      if (mode === 'cursor') {
-        cursorRef.current = meta.nextCursor || null;
-        setHasMore(Boolean(meta.nextCursor));
+      if (isMore) {
+        pageRef.current += 1;
+        pagesLoaded.current += 1;
+        cursorRef.current = cursor;
+        setHasMore(!end);
+      } else if (isRefresh && !end && read < pagesLoaded.current) {
+        // Pages past the cap are still on screen, so the cursor and the page
+        // counter must keep pointing after THOSE, not after what we re-read.
+        //
+        // `hasMore` is the one thing worth updating: the refresh saw rows beyond
+        // the pages it read, so a list that had reached its end before the pull
+        // must not stay stuck at "nothing more" now that the server has grown.
+        // Only when there is something to page from — in cursor mode the cursor
+        // we keep is the old one, and a null cursor cannot be followed.
+        if (mode !== 'cursor' || cursorRef.current) setHasMore(true);
       } else {
-        if (isMore) pageRef.current += 1;
-        else pageRef.current = 1;
-        // A short page means the end. `meta.hasMore`/`meta.total` win when present.
-        if (typeof meta.hasMore === 'boolean') setHasMore(meta.hasMore);
-        else if (typeof meta.total === 'number') {
-          setHasMore(pageRef.current * limit < meta.total);
-        } else setHasMore(rows.length >= limit);
+        pageRef.current = read;
+        pagesLoaded.current = read;
+        cursorRef.current = cursor;
+        setHasMore(!end);
       }
 
       hasLoaded.current = true;
@@ -140,6 +200,7 @@ export default function usePagedList({
     hasLoaded.current = false;
     cursorRef.current = null;
     pageRef.current = 1;
+    pagesLoaded.current = 1;
     setHasMore(true);
     setMoreError(null);
     setItems([]);

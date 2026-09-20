@@ -82,6 +82,10 @@ fastapi/data/golden_set/batch*/
 frontend/android/
 frontend/ios/
 
+# Play Store service-account key `eas submit` uploads with (never commit)
+play-store-credentials.json
+*/play-store-credentials.json
+
 # Firebase service-account key (server credential — never commit)
 backend/firebase-service-account.json
 *firebase-adminsdk*.json

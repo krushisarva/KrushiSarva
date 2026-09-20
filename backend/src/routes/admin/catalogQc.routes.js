@@ -149,8 +149,14 @@ productsQcRouter.post(
         // The seller's draft offers were held INACTIVE while the catalog entry was
         // in QC. Approval is what releases them — offers with stock go ACTIVE,
         // offers without go OUT_OF_STOCK so the seller sees why they are not live.
+        // Only a KYC-verified seller's drafts (or an admin's) are released — the
+        // same gate as POST /agristore/listings (middleware/sellerKyc.js). Others
+        // stay INACTIVE for the seller to resume once verified.
         const drafts = await tx.sellerListing.findMany({
-          where: { variant: { productId: before.id }, status: 'INACTIVE' },
+          where: {
+            variant: { productId: before.id }, status: 'INACTIVE',
+            seller: { OR: [{ kycStatus: 'VERIFIED' }, { role: 'ADMIN' }] },
+          },
           select: { id: true, stockQty: true },
         });
         const live = drafts.filter((l) => l.stockQty > 0).map((l) => l.id);

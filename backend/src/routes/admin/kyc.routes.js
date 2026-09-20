@@ -6,7 +6,8 @@
  *                              signed document URLs (this access is itself audited;
  *                              ?reveal=true&reason= decrypts bank/Aadhaar/PAN)
  * POST /kyc/:userId/verify     approve → kycStatus VERIFIED, role → SELLER
- * POST /kyc/:userId/reject     reject  → kycStatus REJECTED + reason
+ * POST /kyc/:userId/reject     reject  → kycStatus REJECTED + reason, live
+ *                              AgriStore offers → INACTIVE (listingsDeactivated)
  *
  * ADMIN gate + authenticate applied by the parent admin router.
  */
@@ -20,6 +21,9 @@ import { maskSensitiveFields } from '../../utils/mask.js';
 import { decrypt } from '../../utils/encrypt.js';
 import { maskPhone, auditReveal } from '../../utils/adminPii.js';
 import { signedPrivateUrl } from '../../config/cloudinary.js';
+import { bumpListingVersion } from '../../utils/listingCache.js';
+import { invalidateBuyBox } from '../../services/buyBox.service.js';
+import { LIVE_LISTING_STATES } from '../../middleware/sellerKyc.js';
 import { adminAudit, listParams, revealValidators } from './_helpers.js';
 import { ADMIN_ACTIONS } from '../../services/audit.service.js';
 import { KRUSHI_KENDRA_TYPES as KENDRA_TYPES } from '../../constants/kendra.js';
@@ -191,18 +195,32 @@ router.post('/:userId/reject', [param('userId').isUUID(), body('reason').isStrin
     const sp = await prisma.sellerProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!sp) return sendNotFound(res, 'Seller profile');
 
-    await prisma.$transaction([
+    // A rejected seller may not sell: their live offers come down in the SAME
+    // transaction as the decision, as on admin deactivation (admin/users.routes.js).
+    // The role stays SELLER so they can still fix and resubmit their details and
+    // serve orders already placed. Not reversed on a later verify — prices and
+    // stock may be stale by then; the seller resumes each offer themselves.
+    const [, , pulled] = await prisma.$transaction([
       prisma.user.update({ where: { id: userId }, data: { kycStatus: 'REJECTED' } }),
       prisma.sellerProfile.update({ where: { userId }, data: { kycRejectedReason: req.body.reason, kycVerifiedAt: null, licenceVerifiedAt: null } }),
+      prisma.sellerListing.updateMany({
+        where: { sellerId: userId, status: { in: LIVE_LISTING_STATES } },
+        data: { status: 'INACTIVE' },
+      }),
     ]);
+    const listingsDeactivated = pulled.count;
+    // Without this the product grid and cached buy box keep offering them for up to 60 s.
+    if (listingsDeactivated) {
+      await Promise.all([bumpListingVersion('agristore:products'), invalidateBuyBox()]);
+    }
 
     await adminAudit(req, ADMIN_ACTIONS.KYC_REJECT, 'User', userId, {
       before: { kycStatus: user.kycStatus },
       after: { kycStatus: 'REJECTED' },
-      metadata: { reason: req.body.reason },
+      metadata: { reason: req.body.reason, listingsDeactivated },
     });
 
-    return sendSuccess(res, { userId, kycStatus: 'REJECTED' });
+    return sendSuccess(res, { userId, kycStatus: 'REJECTED', listingsDeactivated });
   } catch (err) {
     return sendServerError(res, err, 'Failed to reject KYC');
   }

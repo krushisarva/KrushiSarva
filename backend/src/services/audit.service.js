@@ -97,6 +97,10 @@ export const AUDIT_ACTIONS = {
   // half of the record that shows what a reviewer was shown.
   SELLER_LICENCE_SUBMIT:     "SELLER_LICENCE_SUBMIT",
   PRODUCT_COMPLIANCE_SUBMIT: "PRODUCT_COMPLIANCE_SUBMIT",
+  // Seller-side counterparts of ADMIN_KYC_VERIFY / ADMIN_KYC_REJECT
+  // (routes/user.routes.js). Field NAMES in metadata, never values.
+  KYC_SUBMIT:   "KYC_SUBMIT",   // PENDING account's first Aadhaar/PAN → SUBMITTED
+  KYC_RESUBMIT: "KYC_RESUBMIT", // VERIFIED/REJECTED account changed ID or payout details → SUBMITTED
   FEATURE_FLAG_CHANGE: "FEATURE_FLAG_CHANGE", // admin toggles a feature flag (config change)
   KYC_ACCESS: "KYC_ACCESS", // admin views another user's KYC documents (PII access)
   GROUP_MEMBER_REMOVE: "GROUP_MEMBER_REMOVE", // group admin removes a member
@@ -290,6 +294,7 @@ export const AUTH_ACTIONS = {
   LOGIN: "AUTH_LOGIN",
   LOGIN_RISKY: "AUTH_LOGIN_RISKY", // successful login flagged by risk signals (new device / IP)
   LOGIN_GEO_ANOMALY: "AUTH_LOGIN_GEO_ANOMALY", // login flagged by geo anomaly (impossible travel / new country) — FRAUD-4
+  LOGIN_BLOCKED: "AUTH_LOGIN_BLOCKED", // phone proven, but the account is deactivated — no session issued
   LOGOUT: "AUTH_LOGOUT",
   OTP_FAILURE: "AUTH_OTP_FAILURE",
   OTP_LOCKOUT: "AUTH_OTP_LOCKOUT",

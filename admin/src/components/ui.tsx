@@ -92,13 +92,22 @@ const STATUS_TONE: Record<string, keyof typeof TONE> = {
   PENDING: 'amber', SUBMITTED: 'amber', SHIPPED: 'blue', INVESTIGATING: 'amber', CONTAINED: 'blue', OPEN: 'amber', pending: 'amber', queued: 'amber', running: 'blue',
   // bad
   REJECTED: 'red', CANCELLED: 'red', REFUNDED: 'violet', INACTIVE: 'slate', failed: 'red',
+  // money: order paymentStatus (lowercase, incl. the automatic refund on cancel)
+  // and PaymentIntent status — a refund under way must not read like a finished one
+  refund_pending: 'amber', partially_refunded: 'violet', refunded: 'violet',
+  PAID: 'green', ORDER_CREATED: 'green', REFUND_INITIATED: 'amber', CREATED: 'slate', EXPIRED: 'slate', FAILED: 'red',
   // severity
   LOW: 'slate', MEDIUM: 'amber', HIGH: 'red', CRITICAL: 'red',
 };
 
-export function StatusBadge({ value }: { value?: string | null }) {
+/**
+ * `value` picks the tone (and is the default text). Pass `label` to show a
+ * humanised string while still keying the tone off the raw enum — a screen that
+ * must not print a raw enum at the user (e.g. payment-intent gateway status).
+ */
+export function StatusBadge({ value, label }: { value?: string | null; label?: string }) {
   if (!value) return <span className="text-slate-400">—</span>;
-  return <Badge tone={STATUS_TONE[value] ?? 'slate'}>{value}</Badge>;
+  return <Badge tone={STATUS_TONE[value] ?? 'slate'}>{label ?? value}</Badge>;
 }
 
 export function BoolBadge({ value, trueLabel = 'Yes', falseLabel = 'No' }: { value?: boolean | null; trueLabel?: string; falseLabel?: string }) {

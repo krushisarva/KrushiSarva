@@ -45,7 +45,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Image, Linking, Platform,
+  ActivityIndicator, Image, Keyboard, Linking, Platform,
   Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -59,6 +59,10 @@ import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocatio
 import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
 import { matchDistrict, sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 import { canonicalDistrict, canonicalTaluka } from '../utils/businessProfile';
+import {
+  attachParams, carriedOffer, firstErrorKey, INT_MAX, mergeFieldErrors, pickAttachTarget,
+  serverFieldErrors, TEXT_MAX, validateProductForm,
+} from '../utils/productForm';
 import { SUBCATEGORIES_MAP } from '@krushisarva/shared/constants/categories';
 
 import { C, E, R, SP, T, alpha, useResponsive } from '../theme';
@@ -72,16 +76,29 @@ import {
 } from '../components/ui';
 
 /** The PIN code's village picker, in this app's SelectSheet. */
-function VillageSheet({ title, items, selected, onSelect, placeholder }) {
+function VillageSheet({ title, items, selected, onSelect, placeholder, disabled }) {
   return (
-    <SelectSheet title={title} items={items} value={selected} onChange={onSelect} placeholder={placeholder} />
+    <SelectSheet
+      title={title} items={items} value={selected} onChange={onSelect}
+      placeholder={placeholder} disabled={disabled}
+    />
   );
 }
+
+/**
+ * The same picker, locked while a save runs. PincodeLocationStatus renders the
+ * picker it is given and passes it no `disabled`, so the lock is bound here
+ * instead — picking a village writes district/taluka/village into the form, and
+ * the save is working from the values it read when Save was tapped.
+ */
+const LockedVillageSheet = (props) => <VillageSheet {...props} disabled />;
 
 const UNITS = ['kg', 'quintal', 'gram', 'litre', 'ml', 'piece', 'bag', 'packet', 'bundle', 'acre', 'dozen'];
 const MAX_IMAGES = 5;
 const MAX_NAME = 120;
 const MAX_DESC = 2000;
+/** Digits in the largest stock / minimum order the API stores. */
+const INT_DIGITS = String(INT_MAX).length;
 /** Sections in the form, in scroll order. Drives the "01 / 05" counters. */
 const TOTAL_SECTIONS = 5;
 
@@ -91,13 +108,13 @@ const TOTAL_SECTIONS = 5;
  * `harvestDate` would sit at 40% on a perfectly publishable listing and read
  * as "you are not done".
  *
- * IT BRANCHES ON MODE. In `attach` the category and the name come from the
- * catalog row the seller picked, so counting them in a 5-of-5 meter would leave
- * a complete offer permanently showing 3/5 — the meter would be reporting on
+ * IT BRANCHES ON MODE. In `attach` and `edit` the category and the name come
+ * from the catalog row, so counting them in a 5-of-5 meter would leave a
+ * complete offer permanently showing 3/5 — the meter would be reporting on
  * fields the seller cannot even see, let alone fill.
  */
 function requiredProgress(form, mode) {
-  const checks = mode === 'attach'
+  const checks = mode !== 'create'
     ? [
         Number(form.price) > 0,
         form.stock.trim() !== '' && Number(form.stock) >= 0,
@@ -116,67 +133,44 @@ function requiredProgress(form, mode) {
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
+// The rules live in ../utils/productForm (validateProductForm), next to the
+// API's limits they mirror, where they are unit-tested.
+
+// ── Edit diff ────────────────────────────────────────────────────────────────
+
 /**
- * Pure: form values in, `{ field: message }` out. Kept separate from the
- * component so the rules are readable in one place and every rule fires on the
- * same pass — the old sequential Alerts stopped at the first failure, so a
- * seller with three problems had to submit three times to find them all.
+ * The offer fields an edit can change, as the API stores them. Empty text is
+ * `null`, so "the seller cleared it" and "it was never set" compare equal and a
+ * cleared field goes to the server as null (JSON drops `undefined`, and the
+ * server keeps any key it does not receive). Stock is not here: it is sent with
+ * its own expectedStockQty guard.
  */
-function validate(form, t, mode = 'create') {
-  const errors = {};
+function offerFields(f) {
+  const str = (v) => String(v ?? '').trim();
+  const text = (v) => str(v) || null;
+  const num = (v, fallback) => (str(v) ? Number(v) : fallback);
+  return {
+    sellingPrice: num(f.price, null),
+    mrp: num(f.mrp, null),
+    minOrderQty: num(f.moq, 1),
+    dispatchSlaDays: num(f.dispatchSla, 2),
+    sellerSku: text(f.sellerSku),
+    sellScope: f.sellScope,
+    district: text(f.district),
+    taluka: text(f.taluka),
+    village: text(f.village),
+    state: text(f.state),
+    harvestDate: text(f.harvestDate),
+  };
+}
 
-  // In `attach` the catalog row supplies the category and the name. Hard-requiring
-  // them here would make an otherwise-valid offer unsubmittable, since neither
-  // field is rendered in that mode.
-  if (mode !== 'attach') {
-    if (!form.categoryId) {
-      errors.categoryId = t('products.selectCategoryMsg');
-    }
-
-    const name = form.name.trim();
-    if (!name) errors.name = t('products.productNameRequired');
-    else if (name.length < 3) {
-      errors.name = t('products.nameTooShort', 'Use at least 3 characters so buyers can find it.');
-    }
-  }
-
-  const price = Number(form.price);
-  if (!form.price.trim()) errors.price = t('products.validPrice');
-  else if (!Number.isFinite(price) || price <= 0) errors.price = t('products.validPrice');
-  else if (price > 10_000_000) {
-    errors.price = t('products.priceTooHigh', 'That price looks wrong. Please check it.');
-  }
-
-  if (form.mrp.trim()) {
-    const mrp = Number(form.mrp);
-    if (!Number.isFinite(mrp) || mrp < 0) {
-      errors.mrp = t('products.validMrp', 'Enter a valid MRP, or leave it blank.');
-    } else if (Number.isFinite(price) && mrp > 0 && mrp < price) {
-      // Selling above MRP is not legal retail practice, and buyers see the
-      // strikethrough as an increase — worth catching before it goes live.
-      errors.mrp = t('products.mrpBelowPrice', 'MRP cannot be less than your selling price.');
-    }
-  }
-
-  const stock = Number(form.stock);
-  if (!form.stock.trim()) errors.stock = t('products.validStock');
-  else if (!Number.isFinite(stock) || stock < 0) errors.stock = t('products.validStock');
-  else if (!Number.isInteger(stock)) {
-    errors.stock = t('products.stockWhole', 'Stock must be a whole number.');
-  }
-
-  if (form.moq.trim()) {
-    const moq = Number(form.moq);
-    if (!Number.isFinite(moq) || moq < 1 || !Number.isInteger(moq)) {
-      errors.moq = t('products.validMoq', 'Minimum order must be a whole number of 1 or more.');
-    } else if (Number.isFinite(stock) && stock > 0 && moq > stock) {
-      errors.moq = t('products.moqOverStock', 'Minimum order cannot be more than your stock.');
-    }
-  }
-
-  if (!form.district) errors.district = t('products.selectDistrictMsg');
-
-  return errors;
+/** Only the offer fields that differ from what the screen loaded. */
+function offerDiff(form, loaded) {
+  const now = offerFields(form);
+  const was = offerFields(loaded);
+  const patch = {};
+  Object.keys(now).forEach((k) => { if (now[k] !== was[k]) patch[k] = now[k]; });
+  return patch;
 }
 
 // ── Image tile ───────────────────────────────────────────────────────────────
@@ -188,7 +182,9 @@ function validate(form, t, mode = 'create') {
  * "Cover", because that is the one that appears in buyer search results and
  * nothing else in the UI ever said so.
  */
-function ImageTile({ uri, onRemove, status, label, isCover, coverLabel, uploadingLabel, failedLabel }) {
+function ImageTile({
+  uri, onRemove, removeDisabled, status, label, isCover, coverLabel, uploadingLabel, failedLabel,
+}) {
   const uploading = status === 'uploading';
   const failed = status === 'failed';
 
@@ -230,6 +226,7 @@ function ImageTile({ uri, onRemove, status, label, isCover, coverLabel, uploadin
         color={C.onBrand}
         background={C.text}
         onPress={onRemove}
+        disabled={removeDisabled}
         accessibilityLabel={label}
         style={s.imgRemove}
         buttonStyle={s.imgRemoveBtn}
@@ -271,14 +268,23 @@ export default function AddProductScreen({ route, navigation }) {
     : (editProduct ? 'edit' : 'create');
   const isEdit = mode === 'edit';
   const isAttach = mode === 'attach';
+  // Only `create` edits the shared catalog row. `attach` and `edit` send the
+  // offer alone, so the catalog fields are not shown there: an edit used to show
+  // them editable, drop them from the request, and still say "Listing updated".
+  const isCreate = mode === 'create';
   // In edit mode the offer values come from the listing when we have one, and
   // from the flattened legacy product shape otherwise (MyProducts still sends
-  // that for older rows).
-  const offerSource = existingListing || editProduct;
+  // that for older rows). A create that the duplicate gate turned into an
+  // attach brings the offer the seller had already typed (`offer`).
+  const carriedOfferParam = route.params?.offer || null;
+  const offerSource = existingListing || editProduct || carriedOfferParam;
   const listingId = existingListing?.id || editProduct?.listingId || null;
   const variantId = catalogVariant?.id || editProduct?.variantId || null;
 
   // ── Form state ─────────────────────────────────────────────────────────────
+  // Profile location pre-fills a NEW offer only. On an edit it showed the
+  // seller's home taluka/village for an offer that has none.
+  const profile = isEdit ? null : user;
   const [form, setForm] = useState(() => ({
     categoryId: catalogProduct?.categoryId || editProduct?.categoryId || prefill?.categoryId || '',
     subcategory: editProduct?.subcategory || '',
@@ -294,9 +300,9 @@ export default function AddProductScreen({ route, navigation }) {
     brand: catalogProduct?.brand || editProduct?.brand || '',
     manufacturer: catalogProduct?.manufacturer || editProduct?.manufacturer || '',
     countryOfOrigin: editProduct?.countryOfOrigin || 'India',
-    district: offerSource?.district || user?.district || '',
-    taluka: offerSource?.taluka || user?.taluka || '',
-    village: offerSource?.village || user?.village || '',
+    district: offerSource?.district || profile?.district || '',
+    taluka: offerSource?.taluka || profile?.taluka || '',
+    village: offerSource?.village || profile?.village || '',
     // Geography is an OFFER property. It used to be hard-coded onto the PRODUCT
     // payload as `state: 'Maharashtra'`, which is wrong twice over: it is not a
     // catalog field, and it is not always Maharashtra.
@@ -306,6 +312,10 @@ export default function AddProductScreen({ route, navigation }) {
     sellerSku: offerSource?.sellerSku || '',
     gtin: prefill?.gtin || '',
   }));
+
+  // The offer as this screen loaded it (useRef keeps the first render's form).
+  // An edit sends only what differs from it — see offerDiff.
+  const loadedForm = useRef(form);
 
   const [highlights, setHighlights] = useState(() => (
     editProduct?.highlights?.length ? [...editProduct.highlights] : ['']
@@ -319,12 +329,24 @@ export default function AddProductScreen({ route, navigation }) {
     return [{ key: '', value: '' }];
   });
 
-  const [images, setImages] = useState(() => editProduct?.images || []); // remote urls
+  // The stock this screen loaded. stockQty is the AVAILABLE count and orders
+  // take units off it while the screen is open, so an edit sends stock only when
+  // the seller changed it, and says what it changed it from.
+  const loadedStock = useRef((offerSource?.stockQty ?? offerSource?.stock)?.toString() || '');
+
+  const [images, setImages] = useState(() => editProduct?.images || carriedOfferParam?.images || []); // remote urls
   const [localImgs, setLocalImgs] = useState([]);                        // [{ uri }]
 
-  const [errors, setErrors] = useState({});
+  const [clientErrors, setErrors] = useState({});
+  // Fields a 400 from the API named. Shown until the seller edits that field.
+  const [serverErrors, setServerErrors] = useState({});
+  const errors = useMemo(() => mergeFieldErrors(clientErrors, serverErrors), [clientErrors, serverErrors]);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  // `saving` state cannot gate re-entry on its own: two taps inside one frame
+  // both read the pre-render value, and the second would upload the photos and
+  // POST the product again. The ref flips synchronously, so it does.
+  const savingRef = useRef(false);
   const [uploadState, setUploadState] = useState({});   // uri -> 'uploading'|'failed'
   const [uploadProgress, setUploadProgress] = useState(null); // { done, total }
 
@@ -359,7 +381,8 @@ export default function AddProductScreen({ route, navigation }) {
   }, [fetchCategories, isEdit, navigation, t]);
 
   // ── Field updates ──────────────────────────────────────────────────────────
-  const dirtyRef = useRef(false);
+  // A carried-over offer is unsaved work from the first render.
+  const dirtyRef = useRef(!!carriedOfferParam);
 
   const setField = useCallback((key) => (value) => {
     dirtyRef.current = true;
@@ -373,6 +396,7 @@ export default function AddProductScreen({ route, navigation }) {
     // Clear a field's error the moment the user edits it — leaving red text
     // under a field they just fixed reads as "still wrong".
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+    setServerErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
   }, []);
 
   // PIN code → district / taluka / village. Only a helper: an offer stores no
@@ -381,6 +405,9 @@ export default function AddProductScreen({ route, navigation }) {
   // Maharashtra leaves the location fields alone.
   const [pincode, setPincode] = useState('');
   const applyPin = useCallback((patch) => {
+    // The district NAME alone can't tell states apart — Bihar has an
+    // Aurangabad too, and canonicalDistrict would map it onto Maharashtra's.
+    if (patch.state && patch.state !== 'Maharashtra') return;
     dirtyRef.current = true;
     setForm((prev) => {
       let next = prev;
@@ -398,6 +425,9 @@ export default function AddProductScreen({ route, navigation }) {
     if (patch.district) setErrors((prev) => (prev.district ? { ...prev, district: undefined } : prev));
   }, []);
   const pinValues = useMemo(() => ({
+    // Fixed: the district list is Maharashtra-only. Mapped so a PIN from
+    // another state arrives in the patch as its state, and applyPin drops it.
+    state: 'Maharashtra',
     // Compared in the lookup's own names, so "Osmanabad" isn't read as a
     // different district from "Dharashiv".
     district: matchDistrict('Maharashtra', form.district) || form.district,
@@ -407,7 +437,7 @@ export default function AddProductScreen({ route, navigation }) {
   const pin = usePincodeAutofill({
     pincode,
     values: pinValues,
-    fields: { district: 'district', taluka: 'taluka', village: 'village' },
+    fields: { state: 'state', district: 'district', taluka: 'taluka', village: 'village' },
     strict: ['district', 'taluka'],
     onChange: applyPin,
   });
@@ -418,7 +448,7 @@ export default function AddProductScreen({ route, navigation }) {
   // while someone types their first character is hostile.
   useEffect(() => {
     if (!submitted) return;
-    setErrors(validate(form, t, mode));
+    setErrors(validateProductForm(form, t, mode));
   }, [form, submitted, t, mode]);
 
   const isDirty = dirtyRef.current || localImgs.length > 0
@@ -436,19 +466,48 @@ export default function AddProductScreen({ route, navigation }) {
   const { allowNext } = useUnsavedChanges(isDirty && !saving, confirmDiscard);
 
   // ── Scroll-to-error ────────────────────────────────────────────────────────
+  // Each field is measured against the ScrollView's content. A field's own
+  // layout y is relative to its parent — the section card, or the price/stock
+  // row — so scrolling to it landed near the top of the form, not on the field.
   const scrollRef = useRef(null);
-  const fieldY = useRef({});
-  const registerY = useCallback((key) => (y) => { fieldY.current[key] = y; }, []);
+  const fieldRefs = useRef({});
+  const refFor = useMemo(() => {
+    const cache = {};
+    return (key) => {
+      if (!cache[key]) cache[key] = (node) => { fieldRefs.current[key] = node; };
+      return cache[key];
+    };
+  }, []);
+  const [scrollTarget, setScrollTarget] = useState(null);
 
   const scrollToFirstError = useCallback((errs) => {
-    const order = ['categoryId', 'name', 'price', 'mrp', 'stock', 'moq', 'district'];
-    const first = order.find((k) => errs[k]);
-    if (!first) return;
-    const y = fieldY.current[first];
-    if (typeof y === 'number') {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
-    }
+    const first = firstErrorKey(errs);
+    if (first) setScrollTarget({ key: first, at: Date.now() });
   }, []);
+
+  // Runs after the errors (and the notice above the form) have rendered, so the
+  // measurement includes the space they take.
+  useEffect(() => {
+    if (!scrollTarget) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const node = fieldRefs.current[scrollTarget.key];
+      if (!node) return;
+      if (Platform.OS === 'web') {
+        // The document scrolls on web (see App.js), not the ScrollView.
+        node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const scroller = scrollRef.current;
+      const inner = scroller?.getInnerViewRef?.();
+      if (!inner || typeof node.measureLayout !== 'function') return;
+      node.measureLayout(
+        inner,
+        (_x, y) => scroller.scrollTo({ y: Math.max(0, y - 24), animated: true }),
+        () => {},
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollTarget]);
 
   // ── Images ─────────────────────────────────────────────────────────────────
   const allImages = useMemo(() => [
@@ -587,9 +646,11 @@ export default function AddProductScreen({ route, navigation }) {
   }, []);
 
   const handleSave = useCallback(async () => {
+    if (savingRef.current) return;
     setSubmitted(true);
-    const errs = validate(form, t, mode);
+    const errs = validateProductForm(form, t, mode);
     setErrors(errs);
+    setServerErrors({});
 
     if (Object.keys(errs).some((k) => errs[k])) {
       toast.error(t('products.fixErrors', 'Please fix the highlighted fields.'));
@@ -602,7 +663,18 @@ export default function AddProductScreen({ route, navigation }) {
       return;
     }
 
+    // FROM HERE THE FORM IS FROZEN. Everything below works from the photos and
+    // the values read now, and five uploads on a village connection can take
+    // minutes — so an edit made meanwhile would be silently dropped, and a photo
+    // removed mid-upload would still be uploaded and published. The form body is
+    // made inert while `saving` (see the wrapper in the render); the keyboard is
+    // dismissed here because pointer events cannot blur an input that already
+    // has focus.
+    Keyboard.dismiss();
+    savingRef.current = true;
     setSaving(true);
+    // Set once POST /catalog/products has succeeded: { product, variant }.
+    let createdCatalog = null;
     try {
       // Upload sequentially — the compressor is memory-hungry and five parallel
       // base64 payloads is how low-end devices get killed by the OS.
@@ -650,11 +722,15 @@ export default function AddProductScreen({ route, navigation }) {
         countryOfOrigin: form.countryOfOrigin.trim() || undefined,
         highlights: highlightList.length ? highlightList : undefined,
         specifications: Object.keys(specsObj).length ? specsObj : undefined,
+        // NO `sku` here. The seller's stock code is private ("Buyers never see
+        // it") and ProductVariant.sku is a SHARED catalog field — it goes back
+        // out on /catalog/search, /products/:id/offers and the buy box, so every
+        // other Kendra and every buyer would read this Kendra's internal code.
+        // It belongs on the offer alone, as `sellerSku` below.
         variants: [{
           unit: form.unit,
           attributes: form.unit ? { packSize: form.unit } : {},
           gtin: form.gtin.trim() || undefined,
-          sku: form.sellerSku.trim() || undefined,
         }],
       };
 
@@ -684,21 +760,36 @@ export default function AddProductScreen({ route, navigation }) {
         // via PUT and the backend wrote any key present — so on a shared catalog
         // row, one Kendra changing their price would have overwritten the name,
         // description, specs and images FOR EVERY OTHER SELLER.
+        //
+        // And only the fields the seller CHANGED. Sending the whole offer wrote
+        // the screen's copy over the real one: `images: []` wiped the offer's
+        // photos, and a value the screen never received (dispatch days, MOQ,
+        // reach from Catalog Search) went back as its default. Photos are never
+        // sent — this screen has no editor for the offer's own photos.
+        const patch = offerDiff(form, loadedForm.current);
+        const stockChanged = form.stock.trim() !== loadedStock.current;
+        const stockQty = Number(form.stock);
         if (listingId) {
-          await api.patch(`/agristore/listings/${listingId}`, offerPayload);
+          if (stockChanged) {
+            patch.stockQty = stockQty;
+            if (loadedStock.current !== '') patch.expectedStockQty = Number(loadedStock.current);
+          }
+          // Nothing changed → nothing to write (and no catalog cache flush).
+          if (Object.keys(patch).length) await api.patch(`/agristore/listings/${listingId}`, patch);
         } else {
           // Legacy row with no listing id yet — the shim resolves it by product.
+          // Unchanged keys are undefined and drop out; cleared ones are null.
           await api.put(`/agristore/seller/products/${editProduct.id}`, {
-            price: offerPayload.sellingPrice,
-            mrp: offerPayload.mrp,
-            stock: offerPayload.stockQty,
-            minOrderQty: offerPayload.minOrderQty,
-            sellScope: offerPayload.sellScope,
-            district: offerPayload.district,
-            taluka: offerPayload.taluka,
-            village: offerPayload.village,
-            state: offerPayload.state,
-            harvestDate: offerPayload.harvestDate,
+            price: patch.sellingPrice,
+            mrp: patch.mrp,
+            stock: stockChanged ? stockQty : undefined,
+            minOrderQty: patch.minOrderQty,
+            sellScope: patch.sellScope,
+            district: patch.district,
+            taluka: patch.taluka,
+            village: patch.village,
+            state: patch.state,
+            harvestDate: patch.harvestDate,
           });
         }
       } else if (isAttach) {
@@ -709,9 +800,10 @@ export default function AddProductScreen({ route, navigation }) {
         // and can 409), then the offer against the variant it just created.
         const { data } = await api.post('/agristore/catalog/products', catalogPayload);
         const created = data?.data;
-        const newVariantId = created?.variants?.[0]?.id;
-        if (!newVariantId) throw new Error(t('products.variantMissing', 'The product was created but its pack size was not. Open it from My Products and set your price.'));
-        await api.post('/agristore/listings', { ...offerPayload, variantId: newVariantId, images: allImages });
+        const newVariant = created?.variants?.[0];
+        if (!newVariant?.id) throw new Error(t('products.variantMissing', 'The product was created but its pack size was not. Open it from My Products and set your price.'));
+        createdCatalog = { product: created, variant: newVariant };
+        await api.post('/agristore/listings', { ...offerPayload, variantId: newVariant.id, images: allImages });
       }
 
       dirtyRef.current = false;
@@ -719,7 +811,8 @@ export default function AddProductScreen({ route, navigation }) {
       toast.success(
         isEdit
           ? t('products.updated', 'Listing updated')
-          : isAttach
+          // An offer on a product still in review goes live when it is approved.
+          : isAttach && catalogProduct?.status !== 'PENDING_QC'
             ? t('products.offerAdded', 'Your offer is live')
             : t('products.createdPendingQc', 'Sent for review — buyers will see it once KrushiSarva approves it'),
       );
@@ -727,33 +820,92 @@ export default function AddProductScreen({ route, navigation }) {
     } catch (e) {
       setUploadProgress(null);
 
+      // Stock moved while the screen was open (orders came in). Show the live
+      // number in the field; the seller checks it and saves again.
+      const liveStock = e?.response?.data?.error?.details?.currentStockQty;
+      if (e?.response?.status === 409 && typeof liveStock === 'number') {
+        loadedStock.current = String(liveStock);
+        setForm((prev) => ({ ...prev, stock: String(liveStock) }));
+        toast.error(safeErrorMessage(e, t('products.saveError')));
+        return;
+      }
+
       // 409 from the duplicate gate is not a failure — it is the flow working.
       // The server hands back the catalog product the seller should attach to,
       // so offer that instead of just showing an error.
       if (e?.response?.status === 409 && e?.response?.data?.error?.details?.productId) {
         const details = e.response.data.error.details;
-        const candidate = details.candidates?.[0];
+        // The product the server named, in the pack this seller chose — not
+        // candidates[0] and its first pack, which put a bag price on the 1 kg pack.
+        const { product, variant } = pickAttachTarget(details, form.unit);
+        const name = product?.name || t('products.dupFallbackName', 'this product');
+        if (!variant) {
+          const find = await confirm({
+            title: t('products.dupPickPackTitle', 'Choose your pack size'),
+            message: t('products.dupPickPackMsg', {
+              name,
+              defaultValue: '“{{name}}” is already in the catalogue. Find it there and choose the pack size you sell.',
+            }),
+            confirmLabel: t('products.dupFindInCatalogue', 'Find in catalogue'),
+            cancelLabel: t('cancel', 'Cancel'),
+            icon: 'git-merge-outline',
+          });
+          if (find) {
+            allowNext();
+            navigation.navigate('CatalogSearch');
+          }
+          return;
+        }
         const ok = await confirm({
           title: t('products.dupTitle', 'This product is already listed'),
           message: t('products.dupMsg', {
-            name: candidate?.name || t('products.dupFallbackName', 'this product'),
-            defaultValue: `“${candidate?.name}” is already in the catalogue. Add your price and stock to it instead of creating a duplicate.`,
+            name,
+            defaultValue: `“${name}” is already in the catalogue. Add your price and stock to it instead of creating a duplicate.`,
           }),
           confirmLabel: t('products.dupUseExisting', 'Use the existing product'),
           cancelLabel: t('cancel', 'Cancel'),
           icon: 'git-merge-outline',
         });
-        if (ok && candidate) {
+        if (ok) {
+          // The offer goes with the seller: price, stock, MOQ, location and the
+          // photos already uploaded. The attach form used to open empty.
+          const uploadedUrls = localImgs.map((img) => uploadedCache.current.get(img.uri)).filter(Boolean);
+          allowNext();
           navigation.replace('AddProduct', {
-            intent: 'attach',
-            catalogProduct: candidate,
-            variant: candidate.variants?.[0] || null,
+            ...attachParams(product, variant),
+            offer: carriedOffer(form, [...images, ...uploadedUrls]),
           });
         }
         return;
       }
 
-      const message = safeErrorMessage(e, t('products.saveError'));
+      // The catalog row was created but the offer was not — a 400, or a timeout
+      // on a weak network. Carry on as an attach to that row, so the next Save
+      // sends only the offer. It used to send the catalog again, hit the
+      // duplicate gate on the seller's OWN new product, and replace the form,
+      // losing the price, stock, location and photos.
+      if (createdCatalog) {
+        navigation.setParams(attachParams(createdCatalog.product, createdCatalog.variant));
+      }
+
+      // A 400 names the fields the API rejected: show them on the form.
+      const fieldErrs = serverFieldErrors(e, t);
+      if (Object.keys(fieldErrs).length) {
+        setServerErrors(fieldErrs);
+        toast.error(t('products.fixErrors', 'Please fix the highlighted fields.'));
+        scrollToFirstError(fieldErrs);
+        return;
+      }
+
+      // The barcode belongs to another seller's product that is still in review.
+      if (e?.response?.status === 409 && e?.response?.data?.error?.details?.inReview) {
+        toast.error(t('products.dupInReview', 'A product with this barcode is waiting for KrushiSarva review. You can add your offer to it once it is approved.'));
+        return;
+      }
+
+      const message = createdCatalog
+        ? t('products.offerNotSaved', 'Your product was added, but your price and stock were not saved yet. Tap Save to try again.')
+        : safeErrorMessage(e, t('products.saveError'));
       toast.error(message);
       // A validation rejection from the server is about the fields, not the
       // network — point the seller back at the form.
@@ -761,12 +913,13 @@ export default function AddProductScreen({ route, navigation }) {
         scrollRef.current?.scrollTo({ y: 0, animated: true });
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [
     form, t, toast, confirm, isOffline, scrollToFirstError, localImgs, uploadOne, specPairs,
     highlights, images, isEdit, isAttach, mode, editProduct, listingId, variantId,
-    allowNext, navigation,
+    allowNext, navigation, catalogProduct,
   ]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -789,11 +942,18 @@ export default function AddProductScreen({ route, navigation }) {
 
   // Section numbering branches with the mode: in `attach` the two catalog
   // sections are not rendered at all, so leaving them in the count would number
-  // the form 01, 03, 05 and claim five steps where there are three.
-  const sectionSteps = isAttach
-    ? { photos: 1, details: null, pricing: 2, specs: null, geo: 3 }
-    : { photos: 1, details: 2, pricing: 3, specs: 4, geo: 5 };
-  const totalSections = isAttach ? 3 : TOTAL_SECTIONS;
+  // the form 01, 03, 05 and claim five steps where there are three. `edit` also
+  // drops the photos, which it never sends.
+  const sectionSteps = isCreate
+    ? { photos: 1, details: 2, pricing: 3, specs: 4, geo: 5 }
+    : isAttach
+      ? { photos: 1, details: null, pricing: 2, specs: null, geo: 3 }
+      : { photos: null, details: null, pricing: 1, specs: null, geo: 2 };
+  const totalSections = isCreate ? TOTAL_SECTIONS : isAttach ? 3 : 2;
+
+  // The product being sold, for the banner. The legacy edit path has only the
+  // flattened product row.
+  const bannerProduct = catalogProduct || editProduct;
 
   return (
     <Screen edges={['left', 'right']} background={C.bg}>
@@ -806,6 +966,13 @@ export default function AddProductScreen({ route, navigation }) {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* The whole form goes inert while a save runs — the save is working from
+            the values and photos it read when Save was tapped, so an edit made
+            now could not be honoured, and a removed photo would be published
+            anyway. Touches pass through to the ScrollView, so the seller can
+            still scroll and watch the per-photo progress; the action bar below is
+            outside this wrapper and stays live. */}
+        <View pointerEvents={saving ? 'none' : 'auto'} style={saving ? s.formSaving : null}>
           {/* ── Progress ── */}
           <Card style={s.progressCard}>
             <View style={s.progressTop}>
@@ -844,13 +1011,14 @@ export default function AddProductScreen({ route, navigation }) {
               else may already sell. Naming it here — with the pack size and what
               the competition costs — is the difference between "fill in a form"
               and "you are about to compete with two other Kendras on this exact
-              pack". */}
-          {isAttach && catalogProduct ? (
+              pack". Shown on an edit too: it names what is being edited now that
+              the catalog fields are not on the form. */}
+          {!isCreate && bannerProduct ? (
             <Card style={s.attachCard}>
               <View style={s.attachRow}>
-                {catalogProduct.images?.[0] ? (
+                {bannerProduct.images?.[0] ? (
                   <Image
-                    source={{ uri: catalogProduct.images[0] }}
+                    source={{ uri: bannerProduct.images[0] }}
                     style={s.attachImg}
                     resizeMode="cover"
                     accessibilityIgnoresInvertColors
@@ -861,14 +1029,16 @@ export default function AddProductScreen({ route, navigation }) {
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={s.attachName} numberOfLines={2}>{catalogProduct.name}</Text>
+                  <Text style={s.attachName} numberOfLines={2}>{bannerProduct.name}</Text>
                   {catalogVariant?.packSize || catalogVariant?.unit ? (
                     <Text style={s.attachPack} numberOfLines={1}>
                       {catalogVariant.packSize || catalogVariant.unit}
-                      {catalogProduct.brand ? ` · ${catalogProduct.brand}` : ''}
+                      {bannerProduct.brand ? ` · ${bannerProduct.brand}` : ''}
                     </Text>
                   ) : null}
-                  {catalogVariant?.offerCount > 0 ? (
+                  {/* Attach only: on an edit offerCount includes this seller's
+                      own offer, so "N other sellers" would count them. */}
+                  {isAttach && catalogVariant?.offerCount > 0 ? (
                     <Text style={s.attachCompete} numberOfLines={1}>
                       {t('products.competingWith', {
                         count: catalogVariant.offerCount,
@@ -903,7 +1073,10 @@ export default function AddProductScreen({ route, navigation }) {
             </InlineNotice>
           ) : null}
 
-          {/* ── Photos ── */}
+          {/* ── Photos ── Not on an edit: the save never sends photos (sending
+              the tiles here wiped the offer's own photos), so tiles that could
+              be added or removed would be discarded on save. */}
+          {isEdit ? null : (
           <FormSection
             icon="images-outline"
             title={isAttach ? t('products.yourPhotos', 'Your photos') : t('products.photos', 'Photos')}
@@ -930,6 +1103,10 @@ export default function AddProductScreen({ route, navigation }) {
                     uploadingLabel={t('products.uploading', 'Uploading')}
                     failedLabel={t('products.uploadFailedOne', 'Upload failed')}
                     onRemove={() => removeImage(img.uri, img.local)}
+                    // A save already reads `localImgs`: removing a photo while
+                    // photo 2 of 5 uploads would have uploaded and published the
+                    // removed one anyway.
+                    removeDisabled={saving}
                     label={t('products.removePhoto', 'Remove photo')}
                   />
                 ))}
@@ -938,8 +1115,11 @@ export default function AddProductScreen({ route, navigation }) {
                   <>
                     <Pressable
                       onPress={pickFromLibrary}
+                      // A photo added mid-save would not be in the payload.
+                      disabled={saving}
                       accessibilityRole="button"
                       accessibilityLabel={t('products.addPhoto')}
+                      accessibilityState={{ disabled: saving }}
                       accessibilityHint={t('products.addPhotoHint', {
                         n: remainingSlots,
                         defaultValue: '{{n}} more can be added',
@@ -953,8 +1133,10 @@ export default function AddProductScreen({ route, navigation }) {
                     {Platform.OS !== 'web' ? (
                       <Pressable
                         onPress={takePhoto}
+                        disabled={saving}
                         accessibilityRole="button"
                         accessibilityLabel={t('products.takePhoto', 'Take photo')}
+                        accessibilityState={{ disabled: saving }}
                         style={({ pressed }) => [s.imgAdd, pressed && { opacity: 0.7 }]}
                       >
                         <Ionicons name="camera-outline" size={24} color={C.brandInk} />
@@ -987,12 +1169,13 @@ export default function AddProductScreen({ route, navigation }) {
               ) : null}
             </Field>
           </FormSection>
+          )}
 
           {/* ── Product details ── */}
-          {/* CATALOG SECTION — hidden in attach mode. These fields belong to the
-              shared `products` row; letting one seller edit them would rewrite
-              what every other seller's buyers see. */}
-          {isAttach ? null : (
+          {/* CATALOG SECTION — create only. These fields belong to the shared
+              `products` row; letting one seller edit them would rewrite what
+              every other seller's buyers see. */}
+          {isCreate ? (
           <FormSection
             icon="leaf-outline"
             title={t('products.productDetails')}
@@ -1004,9 +1187,10 @@ export default function AddProductScreen({ route, navigation }) {
               label={t('products.category')}
               required
               error={errors.categoryId}
-              onLayoutY={registerY('categoryId')}
+              ref={refFor('categoryId')}
             >
               <SelectSheet
+                disabled={saving}
                 title={t('products.selectCategoryTitle')}
                 placeholder={t('products.selectCategory')}
                 items={categoryOptions}
@@ -1022,6 +1206,7 @@ export default function AddProductScreen({ route, navigation }) {
             {subcategoryOptions.length > 0 ? (
               <Field label={t('products.subcategory')} hint={t('products.subcategoryHint')}>
                 <SelectSheet
+                  disabled={saving}
                   title={t('products.selectSubcategoryTitle')}
                   placeholder={t('products.noneGeneral')}
                   items={subcategoryOptions}
@@ -1038,9 +1223,10 @@ export default function AddProductScreen({ route, navigation }) {
               required
               hint={t('products.productNameHint')}
               error={errors.name}
-              onLayoutY={registerY('name')}
+              ref={refFor('name')}
             >
               <TextField
+                editable={!saving}
                 value={form.name}
                 onChangeText={setField('name')}
                 placeholder={t('products.productNamePlaceholder')}
@@ -1053,6 +1239,7 @@ export default function AddProductScreen({ route, navigation }) {
 
             <Field label={t('products.description')} hint={t('products.descHint')}>
               <TextField
+                editable={!saving}
                 value={form.desc}
                 onChangeText={setField('desc')}
                 placeholder={t('products.descPlaceholder')}
@@ -1065,6 +1252,7 @@ export default function AddProductScreen({ route, navigation }) {
 
             <Field label={t('products.searchTags')} hint={t('products.searchTagsHint')}>
               <TextField
+                editable={!saving}
                 value={form.tags}
                 onChangeText={setField('tags')}
                 placeholder={t('products.searchTagsPlaceholder')}
@@ -1073,7 +1261,7 @@ export default function AddProductScreen({ route, navigation }) {
               />
             </Field>
           </FormSection>
-          )}
+          ) : null}
 
           {/* ── Pricing & stock ── OFFER fields. Always shown. */}
           <FormSection
@@ -1088,10 +1276,11 @@ export default function AddProductScreen({ route, navigation }) {
                 label={t('products.sellingPrice')}
                 required
                 error={errors.price}
-                onLayoutY={registerY('price')}
+                ref={refFor('price')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.price}
                   onChangeText={setField('price')}
                   placeholder="0"
@@ -1106,10 +1295,11 @@ export default function AddProductScreen({ route, navigation }) {
                 label={t('products.mrp')}
                 hint={errors.mrp ? undefined : t('products.mrpHint')}
                 error={errors.mrp}
-                onLayoutY={registerY('mrp')}
+                ref={refFor('mrp')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.mrp}
                   onChangeText={setField('mrp')}
                   placeholder="0"
@@ -1123,8 +1313,8 @@ export default function AddProductScreen({ route, navigation }) {
 
             {/* The unit is a property of the VARIANT (the pack), not of the
                 offer — three Kendras selling the same 450 g pack must all be
-                selling the same 450 g. In attach mode it is shown, not chosen. */}
-            {isAttach ? (
+                selling the same 450 g. In attach and edit it is shown, not chosen. */}
+            {!isCreate ? (
               <Field label={t('products.pack', 'Pack size')} hint={t('products.packFixed', 'Set by the product — every seller of this pack sells the same size.')}>
                 <View style={s.readOnlyRow}>
                   <Ionicons name="cube-outline" size={16} color={C.textMuted} />
@@ -1136,6 +1326,7 @@ export default function AddProductScreen({ route, navigation }) {
                 <ChipGroup accessibilityLabel={t('products.unit')}>
                   {UNITS.map((u) => (
                     <Chip
+                      disabled={saving}
                       key={u}
                       label={u}
                       selected={form.unit === u}
@@ -1151,14 +1342,16 @@ export default function AddProductScreen({ route, navigation }) {
                 label={t('products.stock')}
                 required
                 error={errors.stock}
-                onLayoutY={registerY('stock')}
+                ref={refFor('stock')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.stock}
                   onChangeText={setField('stock')}
                   placeholder={t('products.availableQtyPlaceholder')}
                   keyboardType="number-pad"
+                  maxLength={INT_DIGITS}
                   error={errors.stock}
                   suffix={<Text style={s.affixTxt}>{form.unit}</Text>}
                   label={t('products.stock')}
@@ -1169,14 +1362,16 @@ export default function AddProductScreen({ route, navigation }) {
                 label={t('products.minOrder')}
                 hint={errors.moq ? undefined : t('products.minOrderHint')}
                 error={errors.moq}
-                onLayoutY={registerY('moq')}
+                ref={refFor('moq')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.moq}
                   onChangeText={setField('moq')}
                   placeholder="1"
                   keyboardType="number-pad"
+                  maxLength={INT_DIGITS}
                   error={errors.moq}
                   label={t('products.minOrder')}
                 />
@@ -1190,13 +1385,18 @@ export default function AddProductScreen({ route, navigation }) {
               <Field
                 label={t('products.dispatchSla', 'Dispatch within')}
                 hint={t('products.dispatchSlaHint', 'Days to hand the order over. Faster offers rank higher.')}
+                error={errors.dispatchSla}
+                ref={refFor('dispatchSla')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.dispatchSla}
                   onChangeText={setField('dispatchSla')}
                   placeholder="2"
                   keyboardType="number-pad"
+                  maxLength={2}
+                  error={errors.dispatchSla}
                   suffix={<Text style={s.affixTxt}>{t('products.days', 'days')}</Text>}
                   label={t('products.dispatchSla', 'Dispatch within')}
                 />
@@ -1205,30 +1405,43 @@ export default function AddProductScreen({ route, navigation }) {
               <Field
                 label={t('products.sellerSku', 'Your stock code')}
                 hint={t('products.sellerSkuHint', 'Optional — your own reference. Buyers never see it.')}
+                error={errors.sellerSku}
+                ref={refFor('sellerSku')}
                 style={s.pairCell}
               >
                 <TextField
+                  editable={!saving}
                   value={form.sellerSku}
                   onChangeText={setField('sellerSku')}
                   placeholder="KSK-1042"
                   autoCapitalize="characters"
+                  maxLength={TEXT_MAX.sellerSku}
+                  error={errors.sellerSku}
                   label={t('products.sellerSku', 'Your stock code')}
                 />
               </Field>
             </View>
 
-            <Field label={t('products.harvestDate')} hint={t('products.harvestHint')}>
+            <Field
+              label={t('products.harvestDate')}
+              hint={t('products.harvestHint')}
+              error={errors.harvestDate}
+              ref={refFor('harvestDate')}
+            >
               <TextField
+                editable={!saving}
                 value={form.harvestDate}
                 onChangeText={setField('harvestDate')}
                 placeholder={t('products.harvestPlaceholder')}
+                maxLength={TEXT_MAX.harvestDate}
+                error={errors.harvestDate}
                 label={t('products.harvestDate')}
               />
             </Field>
           </FormSection>
 
-          {/* ── Highlights & specifications ── CATALOG SECTION, hidden in attach. */}
-          {isAttach ? null : (
+          {/* ── Highlights & specifications ── CATALOG SECTION, create only. */}
+          {isCreate ? (
           <FormSection
             icon="list-outline"
             title={t('products.highlightsSpecsTitle')}
@@ -1236,29 +1449,52 @@ export default function AddProductScreen({ route, navigation }) {
             step={sectionSteps.specs}
             total={totalSections}
           >
-            <Field label={t('rent.brandLabel')} hint={t('products.brandHint')}>
+            <Field
+              label={t('rent.brandLabel')}
+              hint={t('products.brandHint')}
+              error={errors.brand}
+              ref={refFor('brand')}
+            >
               <TextField
+                editable={!saving}
                 value={form.brand}
                 onChangeText={setField('brand')}
                 placeholder={t('products.brandPlaceholder')}
+                maxLength={TEXT_MAX.brand}
+                error={errors.brand}
                 label={t('rent.brandLabel')}
               />
             </Field>
 
-            <Field label={t('products.manufacturerLabel')} hint={t('products.manufacturerHint')}>
+            <Field
+              label={t('products.manufacturerLabel')}
+              hint={t('products.manufacturerHint')}
+              error={errors.manufacturer}
+              ref={refFor('manufacturer')}
+            >
               <TextField
+                editable={!saving}
                 value={form.manufacturer}
                 onChangeText={setField('manufacturer')}
                 placeholder={t('products.manufacturerPlaceholder')}
+                maxLength={TEXT_MAX.manufacturer}
+                error={errors.manufacturer}
                 label={t('products.manufacturerLabel')}
               />
             </Field>
 
-            <Field label={t('products.countryOfOrigin')}>
+            <Field
+              label={t('products.countryOfOrigin')}
+              error={errors.countryOfOrigin}
+              ref={refFor('countryOfOrigin')}
+            >
               <TextField
+                editable={!saving}
                 value={form.countryOfOrigin}
                 onChangeText={setField('countryOfOrigin')}
                 placeholder={t('products.countryPlaceholder')}
+                maxLength={TEXT_MAX.countryOfOrigin}
+                error={errors.countryOfOrigin}
                 label={t('products.countryOfOrigin')}
               />
             </Field>
@@ -1267,6 +1503,7 @@ export default function AddProductScreen({ route, navigation }) {
               {highlights.map((h, i) => (
                 <View key={`hl-${i}`} style={s.repeatRow}>
                   <TextField
+                    editable={!saving}
                     style={{ flex: 1 }}
                     value={h}
                     onChangeText={(v) => updateHighlight(i, v)}
@@ -1275,6 +1512,7 @@ export default function AddProductScreen({ route, navigation }) {
                   />
                   {highlights.length > 1 ? (
                     <IconButton
+                      disabled={saving}
                       icon="remove-circle-outline"
                       size={22}
                       color={C.danger}
@@ -1291,6 +1529,7 @@ export default function AddProductScreen({ route, navigation }) {
                 </View>
               ))}
               <Button
+                disabled={saving}
                 label={t('products.addHighlight')}
                 icon="add-circle-outline"
                 variant="ghost"
@@ -1304,6 +1543,7 @@ export default function AddProductScreen({ route, navigation }) {
               {specPairs.map((pair, i) => (
                 <View key={`spec-${i}`} style={s.repeatRow}>
                   <TextField
+                    editable={!saving}
                     style={{ flex: 1 }}
                     value={pair.key}
                     onChangeText={(v) => updateSpec(i, 'key', v)}
@@ -1311,6 +1551,7 @@ export default function AddProductScreen({ route, navigation }) {
                     label={t('products.specLabelPlaceholder')}
                   />
                   <TextField
+                    editable={!saving}
                     style={{ flex: 1.3 }}
                     value={pair.value}
                     onChangeText={(v) => updateSpec(i, 'value', v)}
@@ -1319,6 +1560,7 @@ export default function AddProductScreen({ route, navigation }) {
                   />
                   {specPairs.length > 1 ? (
                     <IconButton
+                      disabled={saving}
                       icon="remove-circle-outline"
                       size={22}
                       color={C.danger}
@@ -1335,6 +1577,7 @@ export default function AddProductScreen({ route, navigation }) {
                 </View>
               ))}
               <Button
+                disabled={saving}
                 label={t('products.addSpecification')}
                 icon="add-circle-outline"
                 variant="ghost"
@@ -1347,7 +1590,7 @@ export default function AddProductScreen({ route, navigation }) {
               />
             </Field>
           </FormSection>
-          )}
+          ) : null}
 
           {/* ── Location & reach ── OFFER fields: sellScope + district/taluka are
               what gate buy-box eligibility, so they live on the listing. */}
@@ -1367,6 +1610,7 @@ export default function AddProductScreen({ route, navigation }) {
               hint={pin.status === 'idle' ? t('pincode.autofillHint', 'Enter your PIN code to fill in the rest automatically.') : undefined}
             >
               <TextField
+                editable={!saving}
                 value={pincode}
                 onChangeText={(v) => setPincode(sanitizePincode(v))}
                 placeholder={t('pincode.placeholder', '6-digit PIN code')}
@@ -1375,7 +1619,10 @@ export default function AddProductScreen({ route, navigation }) {
                 label={t('pincode.label', 'PIN code')}
               />
               {pin.status !== 'idle' && !pinOutsideState ? (
-                <PincodeLocationStatus lookup={pin} PickerComponent={VillageSheet} />
+                <PincodeLocationStatus
+                  lookup={pin}
+                  PickerComponent={saving ? LockedVillageSheet : VillageSheet}
+                />
               ) : null}
             </Field>
 
@@ -1384,9 +1631,10 @@ export default function AddProductScreen({ route, navigation }) {
               required
               hint={errors.district ? undefined : t('products.districtHint')}
               error={errors.district}
-              onLayoutY={registerY('district')}
+              ref={refFor('district')}
             >
               <SelectSheet
+                disabled={saving}
                 title={t('products.selectDistrictTitle')}
                 placeholder={t('products.selectDistrict')}
                 items={DISTRICT_LIST}
@@ -1405,17 +1653,25 @@ export default function AddProductScreen({ route, navigation }) {
                 items={talukaOptions}
                 value={form.taluka}
                 onChange={setField('taluka')}
-                disabled={!form.district}
+                disabled={saving || !form.district}
                 clearLabel={t('products.noneGeneral')}
                 accessibilityLabel={t('products.taluka')}
               />
             </Field>
 
-            <Field label={t('products.villageTown')} hint={t('products.villageTownHint')}>
+            <Field
+              label={t('products.villageTown')}
+              hint={t('products.villageTownHint')}
+              error={errors.village}
+              ref={refFor('village')}
+            >
               <TextField
+                editable={!saving}
                 value={form.village}
                 onChangeText={setField('village')}
                 placeholder={t('products.villagePlaceholder')}
+                maxLength={TEXT_MAX.village}
+                error={errors.village}
                 label={t('products.villageTown')}
               />
             </Field>
@@ -1424,6 +1680,7 @@ export default function AddProductScreen({ route, navigation }) {
               <View style={{ gap: SP.sm }}>
                 {SELLING_SCOPES.map((sc) => (
                   <OptionRow
+                    disabled={saving}
                     key={sc.key}
                     selected={form.sellScope === sc.key}
                     onPress={() => setField('sellScope')(sc.key)}
@@ -1435,6 +1692,7 @@ export default function AddProductScreen({ route, navigation }) {
               </View>
             </Field>
           </FormSection>
+        </View>
       </KeyboardAwareScroll>
 
       <ActionBar>
@@ -1472,6 +1730,10 @@ export default function AddProductScreen({ route, navigation }) {
 }
 
 const s = StyleSheet.create({
+  // The form while a save runs: dimmed so it reads as locked, but not so far
+  // that the per-photo upload state on the tiles stops being legible.
+  formSaving: { opacity: 0.65 },
+
   // ── Progress card ──
   progressCard: { marginBottom: SP.lg, ...E.raised },
 

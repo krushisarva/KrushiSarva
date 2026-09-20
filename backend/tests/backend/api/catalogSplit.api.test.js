@@ -64,6 +64,9 @@ describe('Duplicate gate — one catalog row per real-world product', () => {
 
     const first = await request(app).post(`${API}/catalog/products`).set(kendraA.headers).send(body);
     expect(first.status).toBe(201);
+    // Approved: a product still in review blocks only the seller who proposed it
+    // (catalogPendingDedup.api.test.js).
+    await prisma.product.update({ where: { id: first.body.data.id }, data: { status: 'APPROVED' } });
 
     // Kendra B submits the SAME product. Pre-split this created a second row and
     // a second product page. The check is CROSS-SELLER (the old heuristic was
@@ -82,6 +85,7 @@ describe('Duplicate gate — one catalog row per real-world product', () => {
       name: base, categoryId: category.id, brand: 'Dhanuka',
     });
     expect(first.status).toBe(201);
+    await prisma.product.update({ where: { id: first.body.data.id }, data: { status: 'APPROVED' } });
 
     // Same product, sloppier typing — different string, same thing. Trigram
     // similarity is well above the block threshold.
@@ -630,6 +634,79 @@ describe('Cart and multi-seller orders', () => {
     // has nothing to return. Without that filter a seller could mint stock by
     // pressing cancel repeatedly.
     expect((await prisma.sellerListing.findUnique({ where: { id: listing.id } })).stockQty).toBe(10);
+  });
+
+  // ── Status moves are forward-only; buyer cancel sees what sellers did ────
+  async function twoSellerOrder(qtyA = 2, qtyB = 3) {
+    const product = await freshProduct();
+    const variantId = product.variants[0].id;
+    const a = await createTestListing(kendraA.user.id, variantId, { sellingPrice: 100, stockQty: 20, district: 'Pune' });
+    const b = await createTestListing(kendraB.user.id, variantId, { sellingPrice: 120, stockQty: 20, district: 'Pune' });
+    await prisma.cartItem.deleteMany({ where: { userId: buyer.user.id } });
+    await request(app).post(`${API}/cart`).set(buyer.headers).send({ listingId: a.id, quantity: qtyA });
+    await request(app).post(`${API}/cart`).set(buyer.headers).send({ listingId: b.id, quantity: qtyB });
+    const order = await request(app).post(`${API}/orders`).set(buyer.headers).send({
+      paymentMethod: 'cod',
+      deliveryAddress: { name: 'Buyer', phone: '9999999999', flat: '1', street: 'Main', city: 'Pune', state: 'Maharashtra', pincode: '411001' },
+    });
+    expect(order.status).toBe(201);
+    return { orderId: order.body.data.id, a, b };
+  }
+  const stockOf = async (id) => (await prisma.sellerListing.findUnique({ where: { id } })).stockQty;
+  const setStatus = (kendra, orderId, status) => request(app)
+    .put(`${API}/seller/orders/${orderId}/status`).set(kendra.headers).send({ status });
+
+  test('a delivered item cannot be cancelled, and its units do not return to stock', async () => {
+    const { orderId, a } = await twoSellerOrder();
+    expect((await setStatus(kendraA, orderId, 'DELIVERED')).status).toBe(200);
+
+    const res = await setStatus(kendraA, orderId, 'CANCELLED');
+    expect(res.status).toBe(409);
+    expect(await stockOf(a.id)).toBe(18);
+    expect((await prisma.orderItem.findFirst({ where: { orderId, sellerId: kendraA.user.id } })).status).toBe('DELIVERED');
+  });
+
+  test('a cancelled item cannot be shipped', async () => {
+    const { orderId, a } = await twoSellerOrder();
+    await setStatus(kendraA, orderId, 'CANCELLED');
+    expect(await stockOf(a.id)).toBe(20);
+
+    const res = await setStatus(kendraA, orderId, 'SHIPPED');
+    expect(res.status).toBe(409);
+    expect((await prisma.orderItem.findFirst({ where: { orderId, sellerId: kendraA.user.id } })).status).toBe('CANCELLED');
+  });
+
+  test('delivered + pending rolls up to CONFIRMED, so the buyer cannot cancel delivered goods', async () => {
+    const { orderId, a, b } = await twoSellerOrder();
+    const delivered = await setStatus(kendraA, orderId, 'DELIVERED');
+    expect(delivered.body.data.orderStatus).toBe('CONFIRMED');
+
+    const cancel = await request(app).put(`${API}/orders/${orderId}/cancel`).set(buyer.headers);
+    expect(cancel.status).toBe(400);
+    expect(await stockOf(a.id)).toBe(18);
+    expect(await stockOf(b.id)).toBe(17);
+    expect((await prisma.orderItem.findFirst({ where: { orderId, sellerId: kendraA.user.id } })).status).toBe('DELIVERED');
+  });
+
+  test('buyer cancel after one seller cancelled restocks that seller exactly once', async () => {
+    const { orderId, a, b } = await twoSellerOrder();
+    await setStatus(kendraA, orderId, 'CANCELLED');
+    expect(await stockOf(a.id)).toBe(20);
+
+    const cancel = await request(app).put(`${API}/orders/${orderId}/cancel`).set(buyer.headers);
+    expect(cancel.status).toBe(200);
+    expect(await stockOf(a.id)).toBe(20);
+    expect(await stockOf(b.id)).toBe(20);
+    expect((await prisma.order.findUnique({ where: { id: orderId } })).status).toBe('CANCELLED');
+  });
+
+  test('buyer and seller cancelling at the same moment restock once', async () => {
+    const { orderId, a } = await twoSellerOrder(4, 1);
+    await Promise.all([
+      setStatus(kendraA, orderId, 'CANCELLED'),
+      request(app).put(`${API}/orders/${orderId}/cancel`).set(buyer.headers),
+    ]);
+    expect(await stockOf(a.id)).toBe(20);
   });
 
   test('400 — a non-UUID orderId is a bad request, not a 500', async () => {

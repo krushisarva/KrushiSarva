@@ -150,6 +150,9 @@ export function requireRole(...roles) {
  * (these actions are unsuitable for children even with guardian consent);
  * general data processing remains gated by guardian consent elsewhere.
  */
+export const MINOR_BLOCKED_MESSAGE =
+  'This action is restricted for users under 18 (DPDP Act §9). Please contact support if you believe this is an error.';
+
 export async function blockMinors(req, res, next) {
   try {
     if (!req.user) return sendUnauthorized(res);
@@ -157,12 +160,7 @@ export async function blockMinors(req, res, next) {
       where:  { id: req.user.id },
       select: { isMinor: true },
     });
-    if (u?.isMinor) {
-      return sendForbidden(
-        res,
-        'This action is restricted for users under 18 (DPDP Act §9). Please contact support if you believe this is an error.',
-      );
-    }
+    if (u?.isMinor) return sendForbidden(res, MINOR_BLOCKED_MESSAGE);
     next();
   } catch (err) {
     next(err);

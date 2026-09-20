@@ -27,13 +27,48 @@ import {
   Pressable, StyleSheet, Text, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
+import { useKeyboardRoom } from '@krushisarva/shared/hooks/useKeyboardRoom';
+import { bottomSheetLift } from '@krushisarva/shared/utils/keyboardInset';
 import { C, E, F, HIT, R, SP, T } from '../../theme';
 import { TextField } from './Form';
 import Button from './Button';
 import { EmptyState, ErrorState } from './States';
 
 const SEARCH_THRESHOLD = 8;
+
+/**
+ * The Modal's full-screen layer: holds the sheet clear of the keyboard and of
+ * the system navigation bar.
+ *
+ * Expo SDK 54 is edge-to-edge and RN 0.81's Modal draws under the Android nav
+ * bar, so the old fixed 16dp bottom padding left Cancel under the nav buttons.
+ * The window is not resized for the keyboard either, so typing in the search
+ * box hid the results behind it. The layer is padded by the lift instead, and
+ * the sheet and its list shrink to the room left, so the list stays scrollable.
+ *
+ * Rendered inside the Modal, so it mounts only while the sheet is open: a form
+ * with several pickers does not re-render all of them on every keyboard change.
+ */
+function SheetLayer({ children }) {
+  const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardRoom(insets.bottom);
+  const lift = bottomSheetLift({
+    platform: Platform.OS,
+    keyboardHeight: keyboard.height,
+    androidInset: keyboard.inset,
+    bottomInset: insets.bottom,
+  });
+  return (
+    <View
+      style={[ss.root, { paddingTop: insets.top + SP.lg, paddingBottom: lift }]}
+      onLayout={keyboard.onRootLayout}
+    >
+      {children}
+    </View>
+  );
+}
 
 export default function SelectSheet({
   /** string[] or { value, label, description }[] */
@@ -152,7 +187,7 @@ export default function SelectSheet({
         statusBarTranslucent
         onRequestClose={close}
       >
-        <View style={ss.root}>
+        <SheetLayer>
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={close}
@@ -249,7 +284,7 @@ export default function SelectSheet({
               <Button label={t('cancel', 'Cancel')} variant="neutral" fullWidth onPress={close} />
             </View>
           </View>
-        </View>
+        </SheetLayer>
       </Modal>
     </>
   );
@@ -282,7 +317,9 @@ const ss = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: C.border,
     maxHeight: '85%',
-    paddingBottom: Platform.OS === 'ios' ? SP.xxxl : SP.lg,
+    // Shrinks into the room above the keyboard; SheetLayer adds the bottom inset.
+    flexShrink: 1,
+    paddingBottom: SP.lg,
     ...E.float,
   },
   handle: {
@@ -297,7 +334,9 @@ const ss = StyleSheet.create({
   titleRule: { height: 1, backgroundColor: C.border },
   searchWrap: { paddingHorizontal: SP.xl, paddingBottom: SP.md },
 
-  list: { maxHeight: 400 },
+  // flexShrink: the list gives up height first, so it stays scrollable above
+  // the keyboard instead of pushing the search box off the top.
+  list: { maxHeight: 400, flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

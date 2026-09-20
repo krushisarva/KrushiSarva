@@ -3,13 +3,17 @@
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Platform, AppState } from 'react-native';
-import api, { saveTokens, clearTokens, getAccessToken, getUserId } from '../services/api';
+import api, {
+  saveTokens, clearTokens, getAccessToken, getUserId, onSessionExpired, revokeSessionOnServer,
+} from '../services/api';
 import { setLastActiveAt, getLastActiveAt, isSessionIdleExpired } from '../utils/storage';
 import { SESSION_IDLE_TIMEOUT_MS, FIREBASE_AUTH_ENABLED } from '../constants/config';
 import { solveProofOfWork } from '../utils/proofOfWork';
 import { resetSocket } from '../services/socket';
 import { isDefinitiveAuthFailure } from '../services/authFailure';
-import { registerForPushNotifications, forgetPushRegistration } from '../services/pushRegistration';
+import {
+  registerForPushNotifications, forgetPushRegistration, getDevicePushToken,
+} from '../services/pushRegistration';
 
 const AuthContext = createContext(null);
 
@@ -17,6 +21,41 @@ const AuthContext = createContext(null);
 // activity stamp (throttled so frequent navigation doesn't hammer SecureStore).
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
 const ACTIVITY_PERSIST_THROTTLE_MS = 60 * 1000;
+
+// Background retries of a session restore that could not reach the server:
+// jittered exponential backoff from ~5 s up to a 60 s ceiling.
+const RESTORE_RETRY_BASE_MS = 5_000;
+const RESTORE_RETRY_MAX_MS  = 60_000;
+
+// How long to wait after a Firebase send for an on-device verification to land
+// (see firebasePhoneAuth.instantVerificationToken). Android only — iOS has no
+// instant verification. Resolves early the moment the sign-in arrives.
+const INSTANT_VERIFY_WAIT_MS = Platform.OS === 'android' ? 1_000 : 0;
+
+// How long "Resend" stays disabled, per provider. Firebase will not send a
+// second SMS for the same number inside a minute — and the modular
+// signInWithPhoneNumber() of @react-native-firebase v26 takes no force-resend
+// argument (only the removed namespaced API did), so a resend before then
+// resolves as if it worked while no SMS is sent. MSG91 has no such window, so
+// that path keeps the shorter wait.
+export const FIREBASE_RESEND_SECONDS = 60;
+export const OTP_RESEND_SECONDS = 30;
+
+/**
+ * The countdown the login screen runs after a code was sent.
+ *
+ * Normally just `otpResendSeconds` from this context. The fallback — for a
+ * value that never arrived, or arrived as 0/NaN — is the FIREBASE number on
+ * purpose, because the two failure modes are not symmetric: waiting 60 s on
+ * MSG91 costs a farmer half a minute, while offering "Resend" after 30 s on
+ * Firebase burns their one chance (it resolves as if it sent, and no SMS
+ * comes). Lives here so the screen reuses these constants instead of keeping
+ * its own copy that could drift.
+ */
+export function resendSeconds(otpResendSeconds) {
+  const n = Number(otpResendSeconds);
+  return Number.isFinite(n) && n > 0 ? n : FIREBASE_RESEND_SECONDS;
+}
 
 /**
  * `phoneAuth` — optional Firebase Phone Auth adapter, INJECTED by the app rather
@@ -42,6 +81,14 @@ export function AuthProvider({ children, phoneAuth = null }) {
   const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
+  // A saved session exists but could not be checked (no signal, timeout, 5xx).
+  // The apps show "Can't reach the server — Retry" instead of Login for it.
+  const [restoreFailed, setRestoreFailed] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  // Read by callbacks that must not act on a stale render's value.
+  const isLoggedInRef = useRef(false);
+  isLoggedInRef.current = isLoggedIn;
 
   // In-memory last-activity time (authoritative for interval checks) + a
   // throttle marker so we only persist roughly once a minute.
@@ -64,14 +111,9 @@ export function AuthProvider({ children, phoneAuth = null }) {
     }
   }, []);
 
-  // Defined here (before the idle-enforcement callbacks that call it) so those
-  // callbacks can list it in their deps without a temporal-dead-zone error.
-  const logout = useCallback(async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch {
-      // ignore
-    }
+  // Everything signing out means on THIS device. Shared by logout and by a
+  // session the server ended mid-use (onSessionExpired below).
+  const endLocalSession = useCallback(async () => {
     resetSocket();
     // Forget the memo so the NEXT person to log in on this device re-POSTs the
     // token and claims it. The token belongs to the device, but the row maps it
@@ -89,7 +131,28 @@ export function AuthProvider({ children, phoneAuth = null }) {
     await clearTokens();
     setUser(null);
     setIsLoggedIn(false);
+    setRestoreFailed(false);
   }, [useFirebase, phoneAuth]);
+
+  // Defined here (before the idle-enforcement callbacks that call it) so those
+  // callbacks can list it in their deps without a temporal-dead-zone error.
+  const logout = useCallback(async () => {
+    // Server first, while this device can still authenticate: revoke the
+    // refresh token (the old body-less call left it valid) and drop this
+    // device's push token so the account stops receiving pushes here. Bounded,
+    // never throws — a dead connection must not keep anyone signed in.
+    await revokeSessionOnServer({ pushToken: getDevicePushToken() });
+    await endLocalSession();
+  }, [endLocalSession]);
+
+  // The server ended the session mid-use: a refresh was refused (or may have
+  // spent the token — see performRefresh). The tokens are already cleared; the
+  // UI has to follow, or the app keeps looking signed in while every screen
+  // fails. Nobody signed in → nothing to do: a failed refresh during login or
+  // the startup restore is handled where it happens.
+  useEffect(() => onSessionExpired(() => {
+    if (isLoggedInRef.current) endLocalSession().catch(() => {});
+  }), [endLocalSession]);
 
   // Log out if idle past the timeout. Uses the most recent of the in-memory and
   // persisted stamps (persisted survives an app restart). Returns true if it
@@ -114,15 +177,22 @@ export function AuthProvider({ children, phoneAuth = null }) {
   // /users/me: the request 401s with no token and the api interceptor silently
   // refreshes from the cookie, restoring the session securely across reloads.
   // On native we require a stored access token before hitting the API.
-  useEffect(() => {
-    (async () => {
+  //
+  // Also the Retry for a restore that could not reach the server. Concurrent
+  // callers (the Retry button, the backoff timer, a return to the foreground)
+  // share one attempt.
+  const restoreInFlightRef = useRef(null);
+  const restoreSession = useCallback(() => {
+    if (restoreInFlightRef.current) return restoreInFlightRef.current;
+    setRestoring(true);
+    const attempt = (async () => {
       try {
         // Idle gate BEFORE restoring: if the last recorded activity is older than
         // the idle window, force a clean logout instead of resurrecting a stale
         // session that would otherwise linger until the first 401.
         if (await isSessionIdleExpired()) {
           await clearTokens(); // also drops the idle stamp
-          setLoading(false);
+          setRestoreFailed(false);
           return;
         }
 
@@ -131,6 +201,7 @@ export function AuthProvider({ children, phoneAuth = null }) {
           const { data } = await api.get('/users/me');
           setUser(data.data);
           setIsLoggedIn(true);
+          setRestoreFailed(false);
           markActivity(true); // start a fresh idle clock on restore
           // Register on RESTORE as well as on login. A returning farmer opens the
           // app with a stored session and never touches verifyOtp, so without
@@ -146,18 +217,54 @@ export function AuthProvider({ children, phoneAuth = null }) {
         // farmer out permanently — the one failure a farmer cannot recover from
         // without re-verifying a phone number.
         //
-        // On a transport failure we keep the tokens and simply do not restore
-        // the session for this launch. The user sees Login, but the next launch
-        // with signal — or the next successful request — picks the session back
-        // up instead of demanding a new OTP.
+        // On a transport failure (no response, timeout, 5xx, 429) we keep the
+        // tokens and say so. This used to fall through to Login with the tokens
+        // still stored and nothing retrying — so a farmer who opened the app
+        // with no signal was asked for an OTP they could not receive, for a
+        // session that was fine. restoreFailed shows "Can't reach the server —
+        // Retry" instead, and the effect below keeps retrying.
         if (err?.sessionExpired || isDefinitiveAuthFailure(err)) {
-          await clearTokens();
+          await clearTokens().catch(() => {});
+          setRestoreFailed(false);
+        } else {
+          setRestoreFailed(true);
         }
       } finally {
         setLoading(false);
+        setRestoring(false);
+        restoreInFlightRef.current = null;
       }
     })();
+    restoreInFlightRef.current = attempt;
+    return attempt;
   }, [markActivity]);
+
+  useEffect(() => { restoreSession(); }, [restoreSession]);
+
+  // Restore failed for want of a server: keep trying without the farmer having
+  // to — on a jittered backoff (so a fleet coming back after an outage does not
+  // arrive in lockstep) and at once on return to the foreground, the usual
+  // moment signal is back. Stops as soon as the session is restored or ended.
+  useEffect(() => {
+    if (!restoreFailed) return undefined;
+    let attempt = 0;
+    let timer = null;
+    let stopped = false;
+    const schedule = () => {
+      if (stopped) return;
+      const ceiling = Math.min(RESTORE_RETRY_MAX_MS, RESTORE_RETRY_BASE_MS * 2 ** attempt);
+      attempt += 1;
+      timer = setTimeout(
+        () => { restoreSession().then(schedule); },
+        Math.round(ceiling * (0.5 + Math.random() * 0.5)),
+      );
+    };
+    schedule();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') restoreSession();
+    });
+    return () => { stopped = true; clearTimeout(timer); sub.remove(); };
+  }, [restoreFailed, restoreSession]);
 
   // While logged in: re-check idle on a timer and whenever the app returns to the
   // foreground (catches "backgrounded / phone locked for days then reopened").
@@ -185,20 +292,59 @@ export function AuthProvider({ children, phoneAuth = null }) {
   // these in effect deps (e.g. ProfileScreen's useFocusEffect → refreshUser)
   // would re-run on every render, and refreshUser → setUser → render forms an
   // infinite request loop. useCallback + useMemo break that cycle.
+
+  // Store a freshly issued session and sign the user in. Every way a login can
+  // complete ends here: a typed code (either provider) or Firebase verifying
+  // the number on the device.
+  const startSession = useCallback(async (data) => {
+    if (data.data?.accessToken) {
+      await saveTokens({
+        accessToken: data.data.accessToken,
+        refreshToken: data.data.refreshToken,
+        userId: data.data.user?.id,
+      });
+      setUser(data.data.user);
+      setRestoreFailed(false);
+      setIsLoggedIn(true);
+      markActivity(true); // start the idle clock at login
+      // Fire-and-forget on purpose: registration needs a permission prompt and a
+      // network round trip, and neither should stand between a farmer and their
+      // home screen. It never throws — see pushRegistration.js.
+      registerForPushNotifications();
+    }
+    return data;
+  }, [markActivity]);
+
   const sendOtp = useCallback(async (phone) => {
     // ── Firebase path (while DLT registration is pending) ────────────────────
     // Google sends the SMS because it is the DLT-registered sender; MSG91 cannot
     // deliver to Indian numbers until our own registration is approved. Returns
     // no devOtp — there is nothing to auto-fill, a real SMS arrives.
     if (useFirebase) {
+      let idToken = null;
       try {
         fbConfirmationRef.current = await phoneAuth.sendFirebaseOtp(phone);
-        return {};
+        // Login only. A signed-in user sending a code is re-verifying before an
+        // irreversible action (confirmReauthCode) and must not get a new session.
+        if (!isLoggedInRef.current && phoneAuth.instantVerificationToken) {
+          idToken = await phoneAuth.instantVerificationToken(phone, INSTANT_VERIFY_WAIT_MS);
+        }
       } catch (err) {
         // LoginScreen reads err.userMessage first — give it a farmer-readable one.
         err.userMessage = phoneAuth.firebaseErrorMessage(err);
         throw err;
       }
+      if (!idToken) return {};
+
+      // Android verified the number on the device: no SMS is coming and there
+      // is no code to type, so finish the login here. `signedIn` tells the
+      // login screen not to move to the code step. If this request fails the
+      // farmer stays on the number step with the error, and sending again
+      // re-verifies from scratch.
+      const { data } = await api.post('/auth/firebase-login', { idToken });
+      fbConfirmationRef.current = null;
+      await startSession(data);
+      return { signedIn: Boolean(data.data?.accessToken) };
     }
 
     try {
@@ -216,7 +362,7 @@ export function AuthProvider({ children, phoneAuth = null }) {
       });
       return data;
     }
-  }, []);
+  }, [useFirebase, phoneAuth, startSession]);
 
   const verifyOtp = useCallback(async (phone, otp) => {
     let data;
@@ -227,7 +373,8 @@ export function AuthProvider({ children, phoneAuth = null }) {
       // never reaches our server on this path.
       let idToken;
       try {
-        idToken = await phoneAuth.confirmFirebaseOtp(fbConfirmationRef.current, otp);
+        // `phone` lets a code Android already auto-retrieved still complete.
+        idToken = await phoneAuth.confirmFirebaseOtp(fbConfirmationRef.current, otp, phone);
       } catch (err) {
         err.userMessage = phoneAuth.firebaseErrorMessage(err);
         throw err;
@@ -244,22 +391,8 @@ export function AuthProvider({ children, phoneAuth = null }) {
       ({ data } = await api.post('/auth/verify-otp', { phone, otp }));
     }
 
-    if (data.data?.accessToken) {
-      await saveTokens({
-        accessToken: data.data.accessToken,
-        refreshToken: data.data.refreshToken,
-        userId: data.data.user?.id,
-      });
-      setUser(data.data.user);
-      setIsLoggedIn(true);
-      markActivity(true); // start the idle clock at login
-      // Fire-and-forget on purpose: registration needs a permission prompt and a
-      // network round trip, and neither should stand between a farmer and their
-      // home screen. It never throws — see pushRegistration.js.
-      registerForPushNotifications();
-    }
-    return data;
-  }, [markActivity, useFirebase, phoneAuth]);
+    return startSession(data);
+  }, [startSession, useFirebase, phoneAuth]);
 
   const updateUser = useCallback((updates) => {
     setUser((prev) => (prev ? { ...prev, ...updates } : prev));
@@ -298,8 +431,15 @@ export function AuthProvider({ children, phoneAuth = null }) {
   }, [useFirebase, phoneAuth]);
 
   const value = useMemo(
-    () => ({ user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity }),
-    [user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity]
+    () => ({
+      user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity,
+      restoreFailed, restoring, retryRestore: restoreSession,
+      // The login screen's Resend countdown. Provider-dependent, so it is
+      // decided here rather than hard-coded next to the button.
+      otpResendSeconds: useFirebase ? FIREBASE_RESEND_SECONDS : OTP_RESEND_SECONDS,
+    }),
+    [user, isLoggedIn, loading, sendOtp, verifyOtp, confirmReauthCode, logout, updateUser, refreshUser, markActivity,
+     restoreFailed, restoring, restoreSession, useFirebase]
   );
 
   return (

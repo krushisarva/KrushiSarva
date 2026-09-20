@@ -9,7 +9,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { Toolbar, FilterSelect, DescList } from '../components/filters';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
-import { formatDate } from '../lib/format';
+import { formatDate, offersPulledNote } from '../lib/format';
 
 const KYC = ['PENDING', 'SUBMITTED', 'VERIFIED', 'REJECTED'];
 
@@ -93,9 +93,12 @@ export function KycDetailPage() {
     onSuccess: () => { toast.success('KYC verified — role set to SELLER'); refresh(); },
     onError: (e) => toast.error(errorMessage(e)),
   });
+  // Rejecting also pulls the seller's live AgriStore offers (same transaction)
+  // and reports how many — say so, or the admin never learns their reject just
+  // took products off sale.
   const reject = useMutation({
-    mutationFn: (reason: string) => apiPost(`/admin/kyc/${userId}/reject`, { reason }),
-    onSuccess: () => { toast.success('KYC rejected'); refresh(); },
+    mutationFn: (reason: string) => apiPost<{ listingsDeactivated?: number }>(`/admin/kyc/${userId}/reject`, { reason }),
+    onSuccess: (res) => { toast.success(`KYC rejected${offersPulledNote(res?.listingsDeactivated)}`); refresh(); },
     onError: (e) => toast.error(errorMessage(e)),
   });
 

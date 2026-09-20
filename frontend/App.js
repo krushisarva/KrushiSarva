@@ -37,12 +37,13 @@ import { LocationProvider } from './src/context/LocationContext';
 import LocationSync from './src/context/LocationSync';
 import { CartProvider } from './src/context/CartContext';
 import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
+import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 import InAppChatBanner from './src/components/InAppChatBanner';
 import { COLORS } from '@krushisarva/shared/constants/colors';
 
 function RootNavigator() {
-  const { isLoggedIn, loading, user } = useAuth();
+  const { isLoggedIn, loading, user, restoreFailed } = useAuth();
 
   if (loading) {
     return (
@@ -52,6 +53,8 @@ function RootNavigator() {
     );
   }
 
+  // Saved session, server unreachable at startup: offer Retry, not an OTP.
+  if (!isLoggedIn && restoreFailed) return <ServerUnreachableScreen />;
   if (!isLoggedIn) return <LoginScreen />;
 
   // Show onboarding profile setup for NEW users who haven't completed profile

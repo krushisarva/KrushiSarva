@@ -1,0 +1,23 @@
+-- How many units of an order line the LOT LEDGER actually gave up, recorded at
+-- order time so a cancel can give back what was taken.
+--
+-- WHY: consumeOrderBatches clamps every draw at what the lot physically held
+-- (`Math.min(remaining, row.quantity)`), but restoreOrderBatches credited
+-- `order_items.quantity` back. A seller whose lot quantities under-cover the
+-- stockQty they are offering therefore got MORE back than was ever taken — a lot
+-- of 3 covering 3 units of a 5-unit line came back as 5 — so the ledger
+-- over-reported the physical shelf to a recall and FEFO kept allocating units
+-- that did not exist. seller_listings.stockQty is unaffected: it is the oversell
+-- guarantee and was always restored in full.
+--
+-- PURELY ADDITIVE AND NULLABLE. No drop, no rename, no type change, no NOT NULL,
+-- no backfill: every existing row keeps NULL and restoreOrderBatches falls back
+-- to `quantity` for those, which is exactly what they did before this column, so
+-- no in-flight order changes behaviour when this is applied.
+--
+-- See prisma/manual/order_item_batch_quantity_additive.sql for the prod-apply
+-- variant (the deploy runs `prisma db push`, which cannot be used here — it
+-- would try to drop the FastAPI-owned tables it does not know about).
+
+-- AlterTable
+ALTER TABLE "order_items" ADD COLUMN "batchQuantity" INTEGER;

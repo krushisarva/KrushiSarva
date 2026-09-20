@@ -26,8 +26,8 @@
  * have changed, stock may have sold to someone else, and there is no delivery
  * address in the payload. Fabricating an order from a payment would produce a
  * shipment nobody chose. It records the payment against its intent; the client's
- * confirm creates the order, and reconciliation escalates anything left paid
- * with no order for a human to refund.
+ * confirm creates the order, and reconciliation refunds anything left paid with
+ * no order (refundUnorderedPayment).
  */
 import { Router } from 'express';
 import crypto from 'crypto';

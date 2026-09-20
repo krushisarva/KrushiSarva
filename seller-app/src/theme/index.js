@@ -242,16 +242,29 @@ export function orderStatusLabel(status, t) {
  * so each carries an icon the row can render next to the text.
  */
 export const RISK = {
-  HIGH:     { color: P.rust600,  tint: P.rust50,  icon: 'alert-circle' },
-  MEDIUM:   { color: P.amber600, tint: P.amber50, icon: 'warning-outline' },
-  MODERATE: { color: P.amber600, tint: P.amber50, icon: 'warning-outline' },
-  LOW:      { color: P.moss600,  tint: P.moss50,  icon: 'shield-checkmark-outline' },
+  // Stored levels are LOW / MODERATE / HIGH / CRITICAL. CRITICAL was missing, so
+  // the most urgent reports fell through to the grey "unknown" style. It is the
+  // deepest red on a heavier tint, with a filled hazard icon so it never reads
+  // as HIGH by colour alone.
+  CRITICAL: { color: P.rust600,  tint: alpha(P.rust500, 0.18), icon: 'warning', tKey: 'share.riskCritical', fallback: 'Critical' },
+  HIGH:     { color: P.rust600,  tint: P.rust50,  icon: 'alert-circle',             tKey: 'share.riskHigh',     fallback: 'High' },
+  MEDIUM:   { color: P.amber600, tint: P.amber50, icon: 'warning-outline',          tKey: 'share.riskModerate', fallback: 'Moderate' },
+  MODERATE: { color: P.amber600, tint: P.amber50, icon: 'warning-outline',          tKey: 'share.riskModerate', fallback: 'Moderate' },
+  LOW:      { color: P.moss600,  tint: P.moss50,  icon: 'shield-checkmark-outline', tKey: 'share.riskLow',      fallback: 'Low' },
 };
 
-const RISK_FALLBACK = { color: P.stone600, tint: P.stone50, icon: 'help-circle-outline' };
+const RISK_FALLBACK = { color: P.stone600, tint: P.stone50, icon: 'help-circle-outline', tKey: 'common.unknown', fallback: 'Unknown' };
 
 export function riskMeta(level) {
   return RISK[String(level || '').toUpperCase()] || RISK_FALLBACK;
+}
+
+/** Translated risk label ("Critical", "गंभीर"…) — the raw enum was shown before. */
+export function riskLabel(level, t) {
+  const meta = riskMeta(level);
+  // An unmapped value is still shown as-is rather than hidden behind "Unknown".
+  if (meta === RISK_FALLBACK && level) return String(level);
+  return t(meta.tKey, meta.fallback);
 }
 
 /**
@@ -472,8 +485,16 @@ export const IS_WEB = Platform.OS === 'web';
 export function formatCurrency(value, { withSymbol = true } = {}) {
   const n = typeof value === 'number' ? value : parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
   if (!Number.isFinite(n)) return withSymbol ? '₹—' : '—';
-  const formatted = n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-  return withSymbol ? `₹${formatted}` : formatted;
+  // Round to paise FIRST, then decide the shape: `maximumFractionDigits` alone
+  // printed a price of 1234.50 as "₹1,234.5" (reads as broken) and -0.004 as
+  // "₹-0". Whole rupees carry no paise; anything fractional always carries two.
+  const rounded = Math.round(n * 100) / 100;
+  const abs = Math.abs(rounded);
+  const digits = Number.isInteger(abs) ? 0 : 2;
+  const body = abs.toLocaleString('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  // -0 is not negative, and a real negative wears its sign outside the symbol.
+  const sign = rounded < 0 ? '-' : '';
+  return withSymbol ? `${sign}₹${body}` : `${sign}${body}`;
 }
 
 /** Initials for an avatar, resilient to empty/whitespace/emoji names. */

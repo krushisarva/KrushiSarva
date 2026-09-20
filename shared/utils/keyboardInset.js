@@ -67,3 +67,29 @@ export function revealScrollOffset({ blockTop, blockHeight, viewportHeight, scro
   if (bottom > y + viewportHeight) return Math.max(0, bottom - viewportHeight);
   return Math.max(0, top);
 }
+
+/**
+ * How far (dp) a bottom sheet in a full-screen <Modal> must sit above the
+ * screen's bottom edge.
+ *
+ * Keyboard closed: the bottom safe-area inset. RN 0.81's Modal draws under the
+ * Android navigation bar when edge-to-edge, so a fixed padding put the sheet's
+ * last button under the nav buttons.
+ * Keyboard open:
+ *   - iOS: the keyboard height, which already covers the home indicator.
+ *   - Android: `androidInset` — androidKeyboardInset() for the modal's own root
+ *     view (keyboard + nav bar, net of any window resize).
+ *
+ * @param platform       Platform.OS
+ * @param keyboardHeight keyboard*Show endCoordinates.height (0 when hidden)
+ * @param androidInset   androidKeyboardInset() result (Android only)
+ * @param bottomInset    bottom safe-area inset
+ */
+export function bottomSheetLift({ platform, keyboardHeight, androidInset, bottomInset }) {
+  const inset = Math.max(0, num(bottomInset));
+  const kb = Math.max(0, num(keyboardHeight));
+  if (kb === 0) return inset;
+  if (platform === 'ios') return Math.round(kb);
+  if (platform === 'android') return Math.max(0, Math.round(num(androidInset)));
+  return inset;
+}

@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, AppState, Easing } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
+import { countUpFrame, entranceDelay } from '../utils/motion';
 
 /** Live "Reduce Motion" preference — re-renders when the user toggles it. */
 export function useReducedMotion() {
@@ -93,13 +94,15 @@ export function usePulse({
 
 /**
  * One-shot entrance animation, honouring Reduce Motion (which collapses it to a
- * plain fade with no travel) and capping the stagger so item #40 in a list
- * isn't still waiting to appear two seconds after item #1.
+ * plain fade with no travel) and staggering only the first screenful: clamping
+ * every later row's delay at `maxDelay` (what this did before) left row #6 and
+ * everything after it invisible for 260ms, which is a screen of blank rows on a
+ * fast scroll or a "load more". See utils/motion.js.
  */
 export function useEntrance({ index = 0, distance = 24, stagger = 45, maxDelay = 260 } = {}) {
   const reduced = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
-  const delay = Math.min(index * stagger, maxDelay);
+  const delay = entranceDelay({ index, stagger, maxDelay });
 
   useEffect(() => {
     const anim = reduced
@@ -132,10 +135,16 @@ export function useCountUp(target, { duration = 1100 } = {}) {
   const [display, setDisplay] = useState(reduced ? numeric : 0);
   const frame = useRef(null);
   const startRef = useRef(0);
+  // Where the next run counts FROM: 0 on first mount, then whatever is on screen.
+  // Every run used to start at 0, so a dashboard refresh dropped the day's
+  // revenue to ₹0 and counted back up to the same number.
+  const fromRef = useRef(display);
+  fromRef.current = display;
 
   useEffect(() => {
     if (reduced || duration <= 0) { setDisplay(numeric); return undefined; }
-    if (numeric === 0) { setDisplay(0); return undefined; }
+    const from = fromRef.current;
+    if (from === numeric) { setDisplay(numeric); return undefined; }
 
     let cancelled = false;
     startRef.current = 0;
@@ -146,9 +155,8 @@ export function useCountUp(target, { duration = 1100 } = {}) {
       if (!startRef.current) startRef.current = ts;
       const elapsed = ts - startRef.current;
       const p = Math.min(1, elapsed / duration);
-      const eased = 1 - Math.pow(1 - p, 3);         // easeOutCubic
       if (p >= 1) { setDisplay(numeric); return; }
-      if (ts - lastEmit >= 50) { lastEmit = ts; setDisplay(numeric * eased); }
+      if (ts - lastEmit >= 50) { lastEmit = ts; setDisplay(countUpFrame({ from, to: numeric, progress: p })); }
       frame.current = requestAnimationFrame(step);
     };
 

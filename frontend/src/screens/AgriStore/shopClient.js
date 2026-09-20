@@ -108,3 +108,20 @@ export async function confirmPayment({ razorpayOrderId, razorpayPaymentId, razor
   return data?.data || null;
 }
 
+/**
+ * Cancel a still-pending order.
+ *
+ * The server restocks the lines, raises the refund for an online-paid order and
+ * answers with what it actually did:
+ *
+ *   { id, status: 'CANCELLED', refundAmount?: '1234.00', paymentStatus?: 'refund_pending' }
+ *
+ * `refundAmount` is absent when nothing is owed (cash on delivery, or a payment
+ * that was never captured) — which is why the screen must read it rather than
+ * assume the order total came back.
+ */
+export async function cancelOrder(orderId) {
+  const { data } = await api.put(`/agristore/orders/${orderId}/cancel`);
+  return data?.data || null;
+}
+

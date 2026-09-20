@@ -27,6 +27,7 @@ import {
 } from '../utils/response.js';
 import { stripHtml } from '../utils/encrypt.js';
 import { sanitizeSearch } from '../utils/sanitizeSearch.js';
+import { districtIn } from '../utils/districtAliases.js';
 
 const router = Router();
 router.param('id', uuidParamGuard);     // group id
@@ -41,7 +42,9 @@ router.get('/', authenticate, async (req, res) => {
   const limit = parsePageSize(req.query.limit, 20, 50);
 
   const where = { isPublic: true };
-  if (district) where.district = { equals: district, mode: 'insensitive' };
+  // Any spelling of a renamed district: a group created by a farmer whose profile
+  // says Osmanabad has to be discoverable by one whose profile says Dharashiv.
+  if (district) where.district = districtIn(district);
   if (city)     where.city     = { equals: city, mode: 'insensitive' };
   if (search)   where.name     = { contains: search, mode: 'insensitive' };
 
@@ -121,6 +124,30 @@ router.post(
     const { name, description, isPublic, district, city } = req.body;
     const avatarUrls = await uploadFiles(req.files || [], 'groups');
 
+    // authenticate() puts only { id, role } on req.user, so `req.user.district`
+    // and `req.user.city` were undefined and a create that omitted them stored
+    // NULL. Discovery is `GET /groups?district=…` → `where.district =
+    // districtIn(district)`, and `district IN (…)` never matches NULL — so a
+    // group created without an explicit district was invisible in every district
+    // listing and could only be reached by name search. Same shape as the
+    // community-post district bug, one screen over.
+    //
+    // The client's value still wins (unchanged precedence); the profile is only
+    // consulted for a field the body left out, so a create that supplies both
+    // costs no extra query.
+    let authorDistrict = null;
+    let authorCity = null;
+    if (!district || !city) {
+      const author = await prisma.user.findUnique({
+        where:  { id: req.user.id },
+        select: { district: true, city: true },
+      });
+      // Verbatim: a profile saying Osmanabad is stored as Osmanabad, and
+      // districtIn() makes it discoverable under Dharashiv too.
+      authorDistrict = author?.district?.trim() || null;
+      authorCity     = author?.city?.trim() || null;
+    }
+
     const group = await prisma.$transaction(async (tx) => {
       const g = await tx.group.create({
         data: {
@@ -128,8 +155,8 @@ router.post(
           avatar: avatarUrls[0] || null,
           createdById: req.user.id,
           isPublic: isPublic !== false,
-          district: district || req.user.district || null,
-          city: city || req.user.city || null,
+          district: district || authorDistrict || null,
+          city: city || authorCity || null,
           memberCount: 1,
           lastMessageAt: new Date(),
         },
@@ -214,6 +241,16 @@ router.post('/:id/join', authenticate, async (req, res) => {
   });
   if (existing) return sendError(res, 'Already a member', 400);
 
+  // authenticate() puts only { id, role } on req.user, so `req.user.name` was
+  // undefined and this system line read "A user joined the group" for everyone.
+  // Cosmetic next to the district bugs above, but the message is persisted, so
+  // the group's history is permanently anonymous. Only the join/leave paths pay
+  // this read, not the message-list or send paths.
+  const joiner = await prisma.user.findUnique({
+    where:  { id: req.user.id },
+    select: { name: true },
+  });
+
   await prisma.$transaction([
     prisma.groupMember.create({ data: { groupId: group.id, userId: req.user.id, role: 'MEMBER' } }),
     prisma.group.update({ where: { id: group.id }, data: { memberCount: { increment: 1 } } }),
@@ -222,7 +259,7 @@ router.post('/:id/join', authenticate, async (req, res) => {
       data: {
         groupId: group.id,
         senderId: req.user.id,
-        text: `${req.user.name || 'A user'} joined the group`,
+        text: `${joiner?.name?.trim() || 'A user'} joined the group`,
         type: 'system',
       },
     }),
@@ -238,6 +275,12 @@ router.post('/:id/leave', authenticate, async (req, res) => {
   });
   if (!membership) return sendError(res, 'Not a member', 400);
 
+  // Same dead `req.user.name` as the join path above — see the note there.
+  const leaver = await prisma.user.findUnique({
+    where:  { id: req.user.id },
+    select: { name: true },
+  });
+
   await prisma.$transaction([
     prisma.groupMember.delete({ where: { id: membership.id } }),
     prisma.group.update({ where: { id: req.params.id }, data: { memberCount: { decrement: 1 } } }),
@@ -245,7 +288,7 @@ router.post('/:id/leave', authenticate, async (req, res) => {
       data: {
         groupId: req.params.id,
         senderId: req.user.id,
-        text: `${req.user.name || 'A user'} left the group`,
+        text: `${leaver?.name?.trim() || 'A user'} left the group`,
         type: 'system',
       },
     }),
