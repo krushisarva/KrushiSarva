@@ -905,9 +905,31 @@ subcategoriesRouter.delete('/:id', [param('id').isUUID()], validate, async (req,
 export const paymentIntentsRouter = Router();
 
 /**
+ * The two "needs a human" predicates, shared by the list and the summary below.
+ *
+ * They are one definition on purpose: a chip that counts a different set from
+ * the list it opens would tell an operator the wrong amount of money is
+ * stranded, which is worse than showing no number at all.
+ */
+const refundFailedWhere = () => ({
+  status: 'REFUND_INITIATED',
+  failureReason: { startsWith: AUTO_REFUND_FAILED },
+});
+
+const orphanedWhere = () => ({
+  orderId: null,
+  OR: [{ status: 'PAID' }, refundFailedWhere()],
+});
+
+/**
  * The queue that matters most: PAID intents with no order. Each row is a farmer
  * whose money was taken and who has nothing to show for it. Includes automatic
  * refunds whose gateway call failed (REFUND_INITIATED + "AUTO-REFUND FAILED").
+ *
+ * `purpose` narrows the queue to one product area. Since PAY-001 one payment
+ * core serves them all, so a REFUND_INITIATED shop order and a REFUND_INITIATED
+ * rent booking sit in the same list while being worked by different people with
+ * different questions to answer.
  *
  * `refundFailed=true` narrows that to only those failures — the rows a human has
  * to finish by hand. An automatic refund that is merely under way
@@ -918,6 +940,7 @@ paymentIntentsRouter.get(
   '/',
   [
     query('status').optional().isIn(['CREATED', 'PENDING', 'PAID', 'ORDER_CREATED', 'FAILED', 'CANCELLED', 'REFUND_INITIATED', 'REFUNDED', 'EXPIRED']),
+    query('purpose').optional().isIn(['SHOP_ORDER', 'RENT_BOOKING', 'AI_CREDITS', 'ANIMAL_TOKEN']),
     query('orphaned').optional().isBoolean(),
     query('refundFailed').optional().isBoolean(),
     query('limit').optional().isInt({ min: 1, max: 100 }),
@@ -928,22 +951,25 @@ paymentIntentsRouter.get(
       const where = {};
       if (req.query.status) where.status = req.query.status;
       if (req.query.refundFailed === 'true') {
-        where.status = 'REFUND_INITIATED';
-        where.failureReason = { startsWith: AUTO_REFUND_FAILED };
+        // Overwrites any `status` the caller also sent, exactly as before: the
+        // view IS a status, and the two cannot both be honoured.
+        Object.assign(where, refundFailedWhere());
       } else if (req.query.orphaned === 'true') {
         delete where.status;
-        where.orderId = null;
-        where.OR = [
-          { status: 'PAID' },
-          { status: 'REFUND_INITIATED', failureReason: { startsWith: AUTO_REFUND_FAILED } },
-        ];
+        Object.assign(where, orphanedWhere());
       }
+
+      // Applied AFTER the view branches above, and never defaulted. The orphan
+      // view deletes `where.status`, so a purpose set earlier could be dropped
+      // along with it; and a default would quietly hide every non-shop payment
+      // from an operator who had not asked it to.
+      if (req.query.purpose) where.purpose = req.query.purpose;
 
       const { cursor, limit } = listParams(req);
       const page = await keysetList(prisma.paymentIntent, {
         where, cursor, limit,
         select: {
-          id: true, userId: true, provider: true, providerOrderId: true,
+          id: true, userId: true, provider: true, purpose: true, providerOrderId: true,
           providerPaymentId: true, amount: true, currency: true, status: true,
           orderId: true, failureReason: true, reconciledAt: true, reconcileNote: true,
           createdAt: true, updatedAt: true,
@@ -954,6 +980,75 @@ paymentIntentsRouter.get(
       });
     } catch (err) {
       return sendServerError(res, err, 'Failed to load payment intents');
+    }
+  },
+);
+
+/**
+ * How many rows each "needs a human" view holds — the number the admin panel
+ * puts on its triage chips.
+ *
+ * It exists because the list above is keyset-paginated: counting the rows on the
+ * loaded page and calling it a total would understate how much money is
+ * stranded, and an operator who reads "3" when there are 300 stops looking.
+ *
+ * Counts are CAPPED rather than exact. `take` turns each COUNT into
+ * `SELECT count(*) FROM (SELECT … LIMIT 501)`, so the query cost is bounded no
+ * matter how large payment_intents grows; `capped: true` says the real number is
+ * larger, and the panel renders "500+" rather than a wrong exact figure. Both
+ * counts ride @@index([status, createdAt]) — PAID and REFUND_INITIATED are
+ * transient states, so the index prunes to a small set before the filters apply.
+ *
+ * `purpose` narrows exactly as it does on the list, so a chip count always
+ * matches the list that clicking the chip opens.
+ */
+const SUMMARY_CAP = 500;
+
+async function cappedCount(where) {
+  const n = await prisma.paymentIntent.count({ where, take: SUMMARY_CAP + 1 });
+  return { count: Math.min(n, SUMMARY_CAP), capped: n > SUMMARY_CAP };
+}
+
+paymentIntentsRouter.get(
+  '/summary',
+  [query('purpose').optional().isIn(['SHOP_ORDER', 'RENT_BOOKING', 'AI_CREDITS', 'ANIMAL_TOKEN'])],
+  validate,
+  async (req, res) => {
+    try {
+      const scope = req.query.purpose ? { purpose: req.query.purpose } : {};
+      const orphWhere = { ...orphanedWhere(), ...scope };
+
+      const [orphaned, refundFailed] = await Promise.all([
+        cappedCount(orphWhere),
+        cappedCount({ ...refundFailedWhere(), ...scope }),
+      ]);
+
+      // Who should pick these up — the split that decides which team works the
+      // queue. Only run the aggregate once the capped count has proved the set
+      // is small; a groupBy has no LIMIT to hide behind.
+      let byPurpose = null;
+      if (!orphaned.capped && orphaned.count > 0) {
+        const grouped = await prisma.paymentIntent.groupBy({
+          by: ['purpose'],
+          where: orphWhere,
+          _count: { _all: true },
+        });
+        byPurpose = Object.fromEntries(grouped.map((g) => [g.purpose, g._count._all]));
+      } else if (orphaned.count === 0) {
+        byPurpose = {};
+      }
+
+      return sendSuccess(res, {
+        cap: SUMMARY_CAP,
+        orphaned,
+        refundFailed,
+        // null when the orphan set is too large to break down cheaply — the
+        // panel then shows no split rather than a partial one.
+        byPurpose,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      return sendServerError(res, err, 'Failed to summarise payment intents');
     }
   },
 );

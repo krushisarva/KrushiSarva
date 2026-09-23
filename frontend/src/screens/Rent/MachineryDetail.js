@@ -26,8 +26,11 @@ import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import { MachineryIcon } from '../../components/MachineryIcons';
 import { invalidateFocusData } from '../../hooks/useFocusRefresh';
 import useContactReveal from '../../hooks/useContactReveal';
-import { classifyError, ERROR_CODES } from '../../utils/apiError';
 import { SkeletonDetail } from '../../components/ui/Skeleton';
+import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
+import useRentBooking from './components/useRentBooking';
+import { noticeText } from './components/rentBookingFlow';
+import { inr } from '../AgriStore/shopUtils';
 
 // Machinery icon registry keys — fall back to 'tractor' so the hero is never blank.
 const MACH_ICON_KEYS = ['tractor','harvester','sprayer','rotavator','thresher','transplanter','truck','tempo'];
@@ -185,9 +188,8 @@ export default function MachineryDetail({ route, navigation }) {
   const [selStart,     setSelStart]     = useState(null);
   const [selEnd,       setSelEnd]       = useState(null);
   const [notes,        setNotes]        = useState('');
-  const [booking,      setBooking]      = useState(false);
   const [loadingData,  setLoadingData]  = useState(!passedData);
-  // Success popup after a booking request is sent: { start, end, days, amount } | null
+  // Success popup after a booking is made: { start, end, days, amount, paid } | null
   const [bookingDone,  setBookingDone]  = useState(null);
   // The current user's existing active/pending booking on THIS listing (null if none).
   const [myBooking,    setMyBooking]    = useState(null);
@@ -238,7 +240,25 @@ export default function MachineryDetail({ route, navigation }) {
   // does the fetch and the dial; the result is cached for this screen so
   // tapping Call twice does not spend two of the hourly reveals.
   // Double-submit guard for the Book button — see handleBook.
+  //
+  // It used to be released in handleBook's own `finally`, which was right when
+  // booking was one request. It is not right now: a paid booking is
+  // initiate → payment sheet → confirm, and the sheet is a MODAL the farmer sits
+  // in front of for a minute. Releasing the ref when `book()` returns would
+  // re-arm the button while a gateway order was already live behind the modal,
+  // so a farmer who backed out and pressed again would raise a second order —
+  // two charges for one tractor. So it is now released only by a terminal
+  // outcome: onBooked, onNotice, or a press that never started anything.
   const bookingRef = useRef(false);
+  // Post-booking availability refresh is the one request this screen fires
+  // after an unmount is possible (the success popup can be dismissed by a
+  // back-gesture). Aborted with the screen rather than writing into a dead tree.
+  const aliveRef   = useRef(true);
+  const availAcRef = useRef(null);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; availAcRef.current?.abort(); };
+  }, []);
 
   const { call: callOwner, revealing } = useContactReveal(
     id ? `/rent/machinery/${id}/contact` : null,
@@ -322,6 +342,69 @@ export default function MachineryDetail({ route, navigation }) {
     return days > 0 && m ? days * (m.pricePerDay || 0) : 0;
   };
 
+  // ── Booking, paid or free ───────────────────────────────────────────────────
+  // `useRentBooking` decides which: the gateway when /payments/config says the
+  // server can actually collect, and the free POST /rent/bookings this screen
+  // has always used otherwise. Both land on `onBooked`, so everything below —
+  // the calendar refresh, the success popup, the RentHome invalidation — runs
+  // exactly once per booking whichever way it was made.
+  const refreshAvailability = useCallback(() => {
+    const fetchId = id || passedData?.id;
+    if (!fetchId) return;
+    availAcRef.current?.abort();
+    const ac = new AbortController();
+    availAcRef.current = ac;
+    api.get(`/rent/machinery/${fetchId}/availability`, {
+      params: { year: calYear, month: calMonth + 1 },
+      signal: ac.signal,
+    })
+      .then((r) => { if (aliveRef.current) setBookedRanges(r.data.data || []); })
+      .catch(() => { /* the badge is cosmetic; a failed refresh is not an error */ });
+  }, [id, passedData?.id, calYear, calMonth]);
+
+  const rentBooking = useRentBooking({
+    type: 'machinery',
+
+    onBooked: ({ booking: created, paid, amount, request }) => {
+      bookingRef.current = false;
+      if (!aliveRef.current) return;
+      const bStart = request?.startDate ?? null;
+      const bEnd   = request?.endDate   ?? null;
+      const bDays  = Number(request?.days) || 0;
+      setSelStart(null); setSelEnd(null);
+      refreshAvailability();
+      setMyBooking({ status: created?.status || 'PENDING', startDate: bStart, endDate: bEnd });
+      setBookingDone({
+        start: bStart, end: bEnd, days: bDays,
+        // The FULL rent, which is what the summary card showed and what the
+        // farmer is agreeing to. `paidAmount` is the advance actually taken —
+        // a different number, so it gets its own line rather than replacing
+        // this one.
+        amount: Number(created?.totalAmount) || (bDays * (m?.pricePerDay || 0)),
+        paid: !!paid,
+        paidAmount: paid ? amount : null,
+      });
+      // RentHome badges this listing from its bookingMap — make its next focus
+      // reload instead of showing the card as un-booked.
+      invalidateFocusData('rent');
+    },
+
+    onNotice: (notice) => {
+      bookingRef.current = false;
+      if (!aliveRef.current) return;
+      const { title, body } = noticeText(notice, t, inr);
+      Alert.alert(title, body);
+      // The dates went to someone else — show that on the calendar rather than
+      // leaving a range selected that can never be booked. Money having moved
+      // also means a booking may exist elsewhere, so RentHome is re-read too.
+      if (notice?.kind === 'SLOT_GONE' || notice?.kind === 'SLOT_TAKEN') {
+        setSelStart(null); setSelEnd(null);
+        refreshAvailability();
+      }
+      if (notice?.moneyTaken) invalidateFocusData('rent');
+    },
+  });
+
   const handleBook = async () => {
     if (isOwner) {
       Alert.alert(t('rent.ownListingTitle', 'Your Listing'), t('rent.ownListingMsg', "This is your own listing — you can't book it."));
@@ -344,54 +427,30 @@ export default function MachineryDetail({ route, navigation }) {
       );
       return;
     }
-    // A ref, not the `booking` state: setState lags a fast double tap by a
-    // render, so both presses see booking===false and both fire. Two identical
-    // requests would collide on the server's date-conflict check and the second
-    // would come back as a confusing 409 on a booking the farmer just made.
+    // A ref, not state: setState lags a fast double tap by a render, so both
+    // presses would read "not busy" and both fire. On the free path that means
+    // two identical requests colliding on the server's date-conflict check, and
+    // a confusing 409 on a booking the farmer just made. On the paid path it
+    // means TWO GATEWAY ORDERS, and a farmer looking at two charges — which is
+    // why the release moved out of this function entirely (see its declaration).
     if (bookingRef.current) return;
     bookingRef.current = true;
 
-    // Capture details for the confirmation popup before we clear the selection.
-    const bStart = selStart, bEnd = selEnd, bAmount = totalCost();
-    setBooking(true);
-    try {
-      await api.post('/rent/bookings', {
-        machineryListingId: m.id,
-        startDate:          bStart,
-        endDate:            bEnd,
-        // `days` and `totalAmount` are sent for older servers; the current API
-        // derives both from the date range and the listing's own price, so
-        // whatever the client says here is ignored.
-        days,
-        totalAmount:        bAmount,
-        notes:              notes.trim() || null,
-      });
-      setSelStart(null); setSelEnd(null);
-      // Refresh availability so the just-booked dates show as occupied.
-      const fetchId = id || passedData?.id;
-      const r = await api.get(`/rent/machinery/${fetchId}/availability`, { params: { year: calYear, month: calMonth + 1 } });
-      setBookedRanges(r.data.data || []);
-      setMyBooking({ status: 'PENDING', startDate: bStart, endDate: bEnd });
-      setBookingDone({ start: bStart, end: bEnd, days, amount: bAmount });
-      // RentHome badges this listing from its bookingMap — make its next focus
-      // reload instead of showing the card as un-booked.
-      invalidateFocusData('rent');
-    } catch (err) {
-      // Typed so the message matches the cause: no signal, session expired and
-      // "those dates just went" need different words and different next steps.
-      const e = classifyError(err, t('rent.bookingFailed'));
-      const title = e.code === ERROR_CODES.OFFLINE
-        ? t('rent.offlineTitle', 'No internet connection')
-        : t('rent.bookingFailed');
-      // A 409 is the useful case: someone booked the same slot first.
-      const msg = e.status === 409
-        ? (err.response?.data?.error?.message || t('rent.slotTakenMsg', 'Those dates were just booked by someone else. Please pick another range.'))
-        : e.message;
-      Alert.alert(title, msg);
-    } finally {
-      bookingRef.current = false;
-      setBooking(false);
-    }
+    // No amount is sent. The server prices the range off the listing on both
+    // paths — `buildInitiateArgs` and `buildLegacyBody` are written so a total
+    // cannot reach the wire at all (claude.md §51).
+    const outcome = await rentBooking.book({
+      listingId: m.id,
+      startDate: selStart,
+      endDate:   selEnd,
+      days,
+      notes,
+    });
+    // The hook was already mid-flight (its own ref beat ours), so nothing new
+    // started and this press owns nothing to release later.
+    if (outcome?.skipped) bookingRef.current = false;
+    // Otherwise the ref stays held until onBooked / onNotice fires — see the
+    // comment on its declaration.
   };
 
   if (loadingData || !m) {
@@ -742,16 +801,26 @@ export default function MachineryDetail({ route, navigation }) {
               </View>
             ) : (
               <TouchableOpacity
-                style={[D.bookBtn2, (!selStart || !selEnd || booking) && { opacity: 0.5 }]}
+                style={[D.bookBtn2, (!selStart || !selEnd || rentBooking.busy) && { opacity: 0.5 }]}
                 onPress={handleBook}
-                disabled={!selStart || !selEnd || booking}
+                disabled={!selStart || !selEnd || rentBooking.busy}
               >
-                {booking
+                {rentBooking.busy
                   ? <ActivityIndicator size="small" color={COLORS.white} />
                   : <>
-                      <Ionicons name="calendar" size={20} color={COLORS.white} />
+                      <Ionicons name={rentBooking.payOnline ? 'card' : 'calendar'} size={20} color={COLORS.white} />
                       <Text style={D.bookBtn2Txt} numberOfLines={1}>
-                        {selStart && selEnd ? `${t('rent.booking')} ${days}d — ₹${total.toLocaleString()}` : t('rent.selectDatesPlaceholder')}
+                        {!selStart || !selEnd
+                          ? t('rent.selectDatesPlaceholder')
+                          // Deliberately no rupee figure on the paid button. The
+                          // server decides the ADVANCE (totalAmount × advancePct)
+                          // and only says so in its initiate reply, so a number
+                          // here would be the full rent pretending to be what is
+                          // about to be charged. The summary card above shows the
+                          // total; the payment sheet shows what is actually taken.
+                          : rentBooking.payOnline
+                            ? `${t('rent.payAndBook', 'Pay & book')} · ${days}d`
+                            : `${t('rent.booking')} ${days}d — ₹${total.toLocaleString()}`}
                       </Text>
                     </>
                 }
@@ -768,10 +837,21 @@ export default function MachineryDetail({ route, navigation }) {
             <View style={D.bkIconCircle}>
               <Ionicons name="checkmark" size={40} color={COLORS.white} />
             </View>
-            <Text style={D.bkTitle}>{t('rent.bookingSentTitle', 'Booking request sent!')}</Text>
-            <Text style={D.bkBody}>
-              {t('rent.bookingSentMsg', 'The owner will review your request and confirm it shortly. You’ll be notified once it’s approved.')}
+            <Text style={D.bkTitle}>
+              {bookingDone?.paid
+                ? t('payments.bookingConfirmed', 'Booking confirmed')
+                : t('rent.bookingSentTitle', 'Booking request sent!')}
             </Text>
+            <Text style={D.bkBody}>
+              {bookingDone?.paid
+                ? t('payments.bookingConfirmedMsg', 'Your booking is confirmed. You can see it under My Bookings.')
+                : t('rent.bookingSentMsg', 'The owner will review your request and confirm it shortly. You’ll be notified once it’s approved.')}
+            </Text>
+            {bookingDone?.paidAmount ? (
+              <Text style={D.bkPaid} numberOfLines={2}>
+                {t('rent.advancePaid', { amount: inr(bookingDone.paidAmount), defaultValue: '{{amount}} advance paid' })}
+              </Text>
+            ) : null}
             {bookingDone ? (
               <View style={D.bkPill}>
                 <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
@@ -786,6 +866,45 @@ export default function MachineryDetail({ route, navigation }) {
             <TouchableOpacity style={D.bkBtn} onPress={() => { setBookingDone(null); navigation.goBack(); }} activeOpacity={0.85}>
               <Text style={D.bkBtnTxt}>{t('rent.done')}</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Payment sheet ──
+          Mounted unconditionally but `visible` only while the flow is in its
+          checkout state, so no WebView exists on the screen until there is a
+          real gateway order to open — the difference between a blank detail
+          page and a 30MB WebView on a 2GB phone. */}
+      <RazorpayCheckout
+        // Keyed on the gateway order so a SECOND booking attempt in the same
+        // screen session gets a fresh component. RazorpayCheckout latches
+        // `settled` after a success and never clears it, so a reused instance
+        // would swallow the next attempt's dismissal — the one event this
+        // whole flow is built to hear.
+        key={rentBooking.checkoutProps.orderId || 'no-order'}
+        {...rentBooking.checkoutProps}
+        keyId={rentBooking.keyId}
+        buyerName={user?.name}
+        buyerPhone={user?.phone}
+        description={m?.name}
+      />
+
+      {/* ── Verifying overlay ──
+          Shown while the app is asking the server what happened. The dismissal
+          wording is different on purpose: a farmer who just closed the sheet is
+          about to be tempted to pay again, and this is the moment to say don't. */}
+      <Modal visible={rentBooking.verifying} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={D.bkBackdrop}>
+          <View style={D.vfCard}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={D.vfTitle}>
+              {rentBooking.verifyReason === 'dismiss'
+                ? t('payments.dismissedCheck', 'Checking whether your payment went through…')
+                : t('payments.verifying', 'Confirming your payment')}
+            </Text>
+            <Text style={D.vfBody}>
+              {t('payments.doNotClose', 'Please do not close the app or pay again.')}
+            </Text>
           </View>
         </View>
       </Modal>
@@ -890,6 +1009,12 @@ const D = StyleSheet.create({
   bkPillTxt:    { fontSize: 13, fontWeight: '700', color: COLORS.primary, flexShrink: 1 },
   bkBtn:        { width: '100%', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
   bkBtnTxt:     { fontSize: 15, fontWeight: '800', color: COLORS.white },
+  bkPaid:       { fontSize: 13, fontWeight: '800', color: COLORS.primary, textAlign: 'center', marginBottom: 12 },
+
+  // Verifying-a-payment overlay (reuses bkBackdrop).
+  vfCard:       { width: '100%', maxWidth: 340, backgroundColor: COLORS.white, borderRadius: 20, padding: 24, alignItems: 'center', gap: 12 },
+  vfTitle:      { fontSize: 16, fontWeight: '800', color: COLORS.textDark, textAlign: 'center' },
+  vfBody:       { fontSize: 13, color: COLORS.textMedium, textAlign: 'center', lineHeight: 19 },
 });
 
 const C = StyleSheet.create({

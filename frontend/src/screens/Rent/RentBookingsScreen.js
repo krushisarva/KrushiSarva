@@ -8,7 +8,7 @@
  *  • "My Bookings" — bookings I have made as a customer
  */
 import { COLORS } from '@krushisarva/shared/constants/colors';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, Image, StatusBar, RefreshControl, Modal,
@@ -22,6 +22,12 @@ import { SHADOWS } from '@krushisarva/shared/constants/colors';
 import { MachineryIcon } from '../../components/MachineryIcons';
 import { LabourIcon } from '../../components/LabourIcon';
 import { SkeletonList } from '../../components/ui/Skeleton';
+import { fetchRentPaymentStatus } from '../../services/paymentClient';
+import { inr } from '../AgriStore/shopUtils';
+import {
+  PAY_STATE, RECHECK, bookingPayState, bookingOrderId,
+  payStateBadge, recheckStrategy, paymentStatusPatch,
+} from './components/rentBookingFlow';
 
 const ORANGE = COLORS.cta;
 const RED    = COLORS.error;
@@ -39,6 +45,40 @@ const STATUS_CONFIG = {
 
 function fmt(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ── Payment badge ─────────────────────────────────────────────────────────────
+// `payStateBadge` decides the words and the tone; the palette stays here,
+// because rentBookingFlow.js is pure logic that also runs under the plain-node
+// test config and must not reach for react-native constants.
+const PAY_TONE = {
+  good:    { fg: COLORS.primary, bg: COLORS.primaryPale },
+  warn:    { fg: ORANGE,         bg: COLORS.orangeWarm  },
+  info:    { fg: BLUE,           bg: COLORS.blueBg      },
+  neutral: { fg: GREY,           bg: COLORS.divider     },
+};
+
+/**
+ * What has happened to the money for this booking.
+ *
+ * Shown on every booking, including the ones made through the free path: that
+ * row reads "Pay on handover", which is the truth about a booking nobody was
+ * ever charged for, rather than an alarming blank.
+ */
+function PayBadge({ booking, t }) {
+  const state = bookingPayState(booking);
+  const b     = payStateBadge(state);
+  const tone  = PAY_TONE[b.tone] || PAY_TONE.neutral;
+  const paid  = Number(booking?.paidAmount) || 0;
+  return (
+    <View style={[S.payBadge, { backgroundColor: tone.bg }]}>
+      <Ionicons name={b.icon} size={12} color={tone.fg} />
+      <Text style={[S.payBadgeTxt, { color: tone.fg }]} numberOfLines={1}>
+        {t(b.labelKey, b.labelFallback)}
+        {state === PAY_STATE.PAID && paid > 0 ? `  ·  ${inr(paid)}` : ''}
+      </Text>
+    </View>
+  );
 }
 
 // ── Booking card (received) ───────────────────────────────────────────────────
@@ -94,6 +134,13 @@ function ReceivedCard({ item, onApprove, onReject, loading, t }) {
         </View>
       </View>
 
+      {/* Whether the renter has paid an advance. The owner deciding whether to
+          approve genuinely needs this — it is the difference between a request
+          and a committed booking. */}
+      <View style={S.payRow}>
+        <PayBadge booking={item} t={t} />
+      </View>
+
       {item.notes ? (
         <View style={S.notesRow}>
           <Ionicons name="chatbubble-ellipses-outline" size={12} color={COLORS.grayLight2} />
@@ -132,7 +179,8 @@ function ReceivedCard({ item, onApprove, onReject, loading, t }) {
 }
 
 // ── My booking card (customer view) ──────────────────────────────────────────
-function MyBookingCard({ item, t }) {
+function MyBookingCard({ item, t, onCheckPayment, checking, note }) {
+  const canCheck = recheckStrategy(item) !== RECHECK.NONE;
   const listing = item.machineryListing || item.labourListing;
   const type    = item.machineryListing ? t('rent.typeMachinery') : t('rent.typeLabour');
   const st      = STATUS_CONFIG[item.status] || STATUS_CONFIG.PENDING;
@@ -179,6 +227,42 @@ function MyBookingCard({ item, t }) {
         </View>
       </View>
 
+      {/* What happened to the money. Its own row rather than crowding the
+          status badge above: "confirmed" and "paid" are two different facts and
+          a farmer chasing a payment should not have to infer one from the other. */}
+      <View style={S.payRow}>
+        <PayBadge booking={item} t={t} />
+        {canCheck && (
+          <TouchableOpacity
+            style={[S.checkBtn, checking && { opacity: 0.5 }]}
+            onPress={() => onCheckPayment(item)}
+            disabled={!!checking}
+            accessibilityRole="button"
+          >
+            {checking
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <>
+                  <Ionicons name="refresh" size={13} color={COLORS.primary} />
+                  <Text style={S.checkBtnTxt}>{t('payments.checkStatus', 'Check status')}</Text>
+                </>}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* The answer to the last check, in place. An interrupted payment is
+          exactly the moment a farmer is tempted to pay again, so the result is
+          left on screen rather than flashed in a toast they may miss. */}
+      {note ? (
+        <View style={[S.payNote, note.bad && { backgroundColor: COLORS.redPale }]}>
+          <Ionicons
+            name={note.bad ? 'alert-circle-outline' : 'information-circle-outline'}
+            size={13}
+            color={note.bad ? RED : COLORS.primary}
+          />
+          <Text style={[S.payNoteTxt, note.bad && { color: RED }]}>{note.text}</Text>
+        </View>
+      ) : null}
+
       {item.status === 'PENDING' && (
         <View style={S.waitingRow}>
           <Ionicons name="hourglass-outline" size={13} color={ORANGE} />
@@ -202,20 +286,103 @@ export default function RentBookingsScreen({ navigation }) {
   const [confirm,  setConfirm]  = useState(null); // { item, action: 'approve' | 'reject' }
   const [actErr,   setActErr]   = useState(null); // error message shown inside the popup
 
+  // ── Payment recovery ────────────────────────────────────────────────────────
+  // A booking left PENDING by an interrupted payment needs a way back to the
+  // truth. There are exactly two, and neither of them is a loop (claude.md
+  // §42, §46): the list is re-read on FOCUS — which already carries the
+  // `paymentStatus` the webhook and the reconciler write — and a PENDING row
+  // gets a "Check status" button that makes ONE request on a tap.
+  const [checking, setChecking] = useState(null);  // booking id being checked
+  const [payNote,  setPayNote]  = useState(null);  // { id, text, bad } | null
+
+  const aliveRef = useRef(true);
+  const acRef    = useRef(null);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; acRef.current?.abort(); };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
+    // The rows are about to be replaced with fresher ones, so a note describing
+    // the old row would be stale the moment it lands.
+    setPayNote(null);
+    acRef.current?.abort();
+    const ac = new AbortController();
+    acRef.current = ac;
     try {
       const [rRes, mRes] = await Promise.allSettled([
-        api.get('/rent/bookings/received'),
-        api.get('/rent/bookings'),
+        api.get('/rent/bookings/received', { signal: ac.signal }),
+        api.get('/rent/bookings', { signal: ac.signal }),
       ]);
+      if (ac.signal.aborted || !aliveRef.current) return;
       setReceived(rRes.status === 'fulfilled' ? (rRes.value.data?.data || []) : []);
       setMyBooks( mRes.status === 'fulfilled' ? (mRes.value.data?.data || []) : []);
     } catch { /* keep empty */ }
-    finally { setLoading(false); }
+    finally { if (!ac.signal.aborted && aliveRef.current) setLoading(false); }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  /**
+   * "Check status" — one request, then say what the server said.
+   *
+   * Two ways to ask, because a booking row does not always carry a gateway
+   * order id (see `recheckStrategy`). Either way the answer is the SERVER's,
+   * never an assumption: the one sentence this screen must never produce is a
+   * confident "no money was taken" for a farmer who has in fact paid.
+   */
+  const checkPayment = useCallback(async (item) => {
+    if (checking) return;
+    const strategy = recheckStrategy(item);
+    if (strategy === RECHECK.NONE) return;
+
+    setChecking(item.id);
+    setPayNote(null);
+    const ac = new AbortController();
+    try {
+      let patch = null;
+      if (strategy === RECHECK.ORDER) {
+        patch = paymentStatusPatch(
+          await fetchRentPaymentStatus(bookingOrderId(item), ac.signal),
+        );
+      } else {
+        const { data } = await api.get(`/rent/bookings/${item.id}`, { signal: ac.signal });
+        patch = data?.data || null;
+      }
+      if (!aliveRef.current || ac.signal.aborted) return;
+
+      const merged = patch ? { ...item, ...patch, id: item.id } : item;
+      if (patch) setMyBooks((prev) => prev.map((b) => (b.id === item.id ? merged : b)));
+
+      const state = bookingPayState(merged);
+      const amt   = Number(merged.paidAmount) || 0;
+      if (state === PAY_STATE.PAID) {
+        setPayNote({ id: item.id, bad: false, text: amt > 0
+          ? t('rent.payCheckPaidAmount', { amount: inr(amt), defaultValue: 'Payment received — {{amount}} has been paid for this booking.' })
+          : t('rent.payCheckPaid', 'Payment received. This booking is paid.') });
+      } else if (state === PAY_STATE.REFUNDED) {
+        setPayNote({ id: item.id, bad: false, text: t('payments.refundInitiatedMsg',
+          'Your payment is being refunded — it reaches the account you paid from in 5–7 working days.') });
+      } else if (state === PAY_STATE.UNPAID) {
+        // The server's own record, stated as a record. Deliberately NOT "no
+        // money was taken" — that is a claim about the gateway this screen is
+        // in no position to make.
+        setPayNote({ id: item.id, bad: false, text: t('rent.payCheckUnpaid',
+          'No payment has been recorded for this booking yet.') });
+      } else {
+        setPayNote({ id: item.id, bad: true, text: t('payments.unknownMsg',
+          'Do not pay again. Please check in a few minutes — if no money was taken, you can try again.') });
+      }
+    } catch {
+      if (!aliveRef.current) return;
+      // Could not reach the server. Say exactly that — not an outcome.
+      setPayNote({ id: item.id, bad: true, text: t('payments.unknownMsg',
+        'Do not pay again. Please check in a few minutes — if no money was taken, you can try again.') });
+    } finally {
+      if (aliveRef.current) setChecking(null);
+    }
+  }, [checking, t]);
 
   // Open the in-app confirmation popup (Alert button callbacks don't fire on web).
   const handleApprove = (item) => { setActErr(null); setConfirm({ item, action: 'approve' }); };
@@ -317,6 +484,10 @@ export default function RentBookingsScreen({ navigation }) {
           maxToRenderPerBatch={10}
           removeClippedSubviews
           data={data}
+          // A plain string, not an array literal: VirtualizedList compares
+          // `extraData` by identity, so a fresh `[...]` every render would
+          // re-render every visible row on every keystroke elsewhere.
+          extraData={`${acting || ''}|${checking || ''}|${payNote?.id || ''}`}
           keyExtractor={i => i.id}
           contentContainerStyle={S.list}
           showsVerticalScrollIndicator={false}
@@ -324,7 +495,13 @@ export default function RentBookingsScreen({ navigation }) {
           renderItem={({ item }) =>
             tab === 'received'
               ? <ReceivedCard item={item} onApprove={handleApprove} onReject={handleReject} loading={acting} t={t} />
-              : <MyBookingCard item={item} t={t} />
+              : <MyBookingCard
+                  item={item}
+                  t={t}
+                  onCheckPayment={checkPayment}
+                  checking={checking === item.id}
+                  note={payNote?.id === item.id ? payNote : null}
+                />
           }
         />
       )}
@@ -426,6 +603,15 @@ const S = StyleSheet.create({
 
   waitingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.orangeWarm, borderRadius: 8, padding: 8, marginTop: 4 },
   waitingTxt: { fontSize: 12, color: ORANGE, fontWeight: '600' },
+
+  // Payment state + the one-tap recheck for an interrupted payment.
+  payRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
+  payBadge:    { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5, flexShrink: 1 },
+  payBadgeTxt: { fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  checkBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: COLORS.primary + '55', minHeight: 30 },
+  checkBtnTxt: { fontSize: 11, fontWeight: '800', color: COLORS.primary },
+  payNote:     { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: COLORS.primaryPale, borderRadius: 8, padding: 8, marginBottom: 10 },
+  payNoteTxt:  { flex: 1, fontSize: 12, color: COLORS.primary, fontWeight: '600', lineHeight: 17 },
 
   actionRow:   { flexDirection: 'row', gap: 10, marginTop: 10 },
   rejectBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: RED, borderRadius: 10, paddingVertical: 10 },

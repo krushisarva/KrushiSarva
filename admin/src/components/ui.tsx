@@ -1,6 +1,7 @@
 /** Lightweight shadcn-style UI primitives (Tailwind, no runtime UI dep). */
 import clsx from 'clsx';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 const cn = clsx;
@@ -112,4 +113,66 @@ export function StatusBadge({ value, label }: { value?: string | null; label?: s
 
 export function BoolBadge({ value, trueLabel = 'Yes', falseLabel = 'No' }: { value?: boolean | null; trueLabel?: string; falseLabel?: string }) {
   return <Badge tone={value ? 'green' : 'slate'}>{value ? trueLabel : falseLabel}</Badge>;
+}
+
+// ── Copy to clipboard ─────────────────────────────────────────────────────────
+
+/**
+ * A value plus a one-click copy — for the ids whose whole purpose is to be
+ * pasted somewhere else (a gateway payment id into the Razorpay dashboard, a
+ * user id into a support ticket).
+ *
+ * The full value is always readable as text: `navigator.clipboard` needs a
+ * secure context and can be refused by the browser, so the button is a shortcut
+ * and never the only way to get the value out. A refusal says so rather than
+ * flashing a success the operator would trust.
+ */
+export function CopyValue({ value, label, mono = true, className }: {
+  value?: string | null;
+  /** What was copied, for the button's accessible name. Defaults to "value". */
+  label?: string;
+  mono?: boolean;
+  className?: string;
+}) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<number>();
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  if (!value) return <span className="text-slate-400">—</span>;
+
+  const flash = (next: 'copied' | 'failed') => {
+    setState(next);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState('idle'), 1600);
+  };
+
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(value);
+      flash('copied');
+    } catch {
+      flash('failed');
+    }
+  };
+
+  return (
+    <span className={cn('group inline-flex max-w-full items-center gap-1.5', className)}>
+      <span className={cn('min-w-0 break-all', mono && 'font-mono text-xs')}>{value}</span>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={state === 'copied' ? `Copied ${label ?? 'value'}` : `Copy ${label ?? 'value'}`}
+        title={state === 'failed' ? 'Copy blocked by the browser — select the text instead' : `Copy ${label ?? 'value'}`}
+        className={cn(
+          'shrink-0 rounded p-1 transition-colors',
+          state === 'copied' ? 'text-green-600' : state === 'failed' ? 'text-red-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600',
+        )}
+      >
+        {state === 'copied' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+      <span className="sr-only" role="status">{state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : ''}</span>
+    </span>
+  );
 }

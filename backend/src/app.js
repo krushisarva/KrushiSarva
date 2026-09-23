@@ -31,7 +31,7 @@ installAsyncRouteSafety();
 import authRoutes          from './routes/auth.routes.js';
 import userRoutes          from './routes/user.routes.js';
 import agriStoreRoutes     from './routes/agristore.routes.js';
-import shopWebhookRoutes   from './routes/shopWebhooks.routes.js';
+import paymentWebhookRoutes from './routes/paymentWebhooks.routes.js';
 import sellerComplianceRoutes from './routes/sellerCompliance.routes.js';
 import animalTradeRoutes   from './routes/animaltrade.routes.js';
 import communityRoutes     from './routes/community.routes.js';
@@ -49,6 +49,7 @@ import schemesRoutes       from './routes/schemes.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 // Rent marketplace
 import rentRoutes          from './routes/rent.routes.js';
+import paymentRoutes       from './routes/payments.routes.js';
 // Saved delivery addresses
 import addressesRoutes     from './routes/addresses.routes.js';
 // PIN code → locality lookup (India Post)
@@ -282,7 +283,23 @@ app.use(`${API}/ai/soil-card-ocr`, skipMultipart(express.json({ limit: '12mb' })
 // sequences, whitespace). Mounted BEFORE the global JSON parser so req.body is
 // the untouched Buffer, and mounted here rather than inside the router because
 // by the time a router runs, body-parser has already consumed the stream.
-app.use(`${API}/shop-webhooks`, express.raw({ type: '*/*', limit: '256kb' }), shopWebhookRoutes);
+//
+// Mounted at TWO paths, deliberately. `/webhooks` is the name that will still
+// be right when rent bookings and credit packs raise payments through the same
+// endpoint; `/shop-webhooks` is the URL already configured in the Razorpay
+// dashboard, and changing a live webhook URL means a window where captures go
+// nowhere. The alias costs one line and removes that window entirely.
+//
+// Both mounts MUST stay above the global JSON parser below: under it,
+// express.json consumes the stream and the raw body — and therefore the HMAC
+// this endpoint exists to verify — is gone.
+//
+// One Router instance, so both paths share the router's own rate limiter. Its
+// key (`rl:webhook:razorpay:<ip>`) has no path component, which is the intended
+// reading: one gateway, one allowance, not one per URL spelling.
+const razorpayWebhookBody = express.raw({ type: '*/*', limit: '256kb' });
+app.use(`${API}/webhooks`, razorpayWebhookBody, paymentWebhookRoutes);
+app.use(`${API}/shop-webhooks`, razorpayWebhookBody, paymentWebhookRoutes);
 
 app.use(skipMultipart(express.json({ limit: '100kb' })));
 app.use(skipMultipart(express.urlencoded({ extended: true, limit: '100kb' })));
@@ -454,6 +471,9 @@ app.use(`${API}/groups`,       groupsRoutes);
 app.use(`${API}/messages`,     messagesRoutes);
 app.use(`${API}/upload`,       uploadRoutes);
 app.use(`${API}/rent`,         rentRoutes);
+// Purpose-neutral payment surface. /agristore/payment-config still serves the
+// same handler for app builds already in farmers' hands.
+app.use(`${API}/payments`,     paymentRoutes);
 // FarmMind AI + Weather
 app.use(`${API}/ai`,           aiRoutes);
 app.use(`${API}/weather`,      weatherRoutes);

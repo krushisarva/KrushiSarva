@@ -101,13 +101,48 @@ const TIER_CONFIG = {
   enterprise: { monthlyCredits: 10000, maxDailyTokens: 2_000_000, label: 'Enterprise' },
 };
 
-// ── Credit pack prices (for future payment integration) ──────────────────────
-const CREDIT_PACKS = [
+// ── Credit pack prices (PAY-004) ─────────────────────────────────────────────
+/**
+ * The ONLY place a credit pack has a price.
+ *
+ * The purchase endpoints take a PACK ID and never an amount: the client says
+ * which pack, the server says what it costs. That is not a style preference —
+ * a client-supplied amount is a client-supplied price, and a farmer could buy
+ * 5000 credits for ₹1.
+ *
+ * `pricePaise` is derived once, here, with Math.round over an integer rupee
+ * value, so the gateway boundary sees an exact integer and nothing downstream
+ * ever does `price * 100` on a float. `priceInr` stays for the UI copy.
+ *
+ * Frozen because these objects are handed out by reference (getCreditSummary
+ * returns the array straight to the client) and a mutated pack would be a
+ * mutated price.
+ */
+const CREDIT_PACKS = Object.freeze([
   { id: 'pack_100',  credits: 100,  priceInr: 49,   label: '100 Credits' },
   { id: 'pack_500',  credits: 500,  priceInr: 199,  label: '500 Credits' },
   { id: 'pack_1000', credits: 1000, priceInr: 349,  label: '1000 Credits' },
   { id: 'pack_5000', credits: 5000, priceInr: 1499, label: '5000 Credits' },
-];
+].map((p) => Object.freeze({ ...p, pricePaise: Math.round(p.priceInr * 100) })));
+
+export { CREDIT_PACKS };
+
+/**
+ * Resolve a pack id to its server-side definition, or null.
+ *
+ * Returning null (rather than throwing, or falling back to a default pack) is
+ * what makes an unknown id a clean 400 at the route instead of a payment for
+ * something nobody defined.
+ */
+export function getCreditPack(packId) {
+  if (typeof packId !== 'string') return null;
+  return CREDIT_PACKS.find((p) => p.id === packId) || null;
+}
+
+/** The shape the purchase endpoints hand to the client. No internal fields. */
+export function publicCreditPack(pack) {
+  return { id: pack.id, credits: pack.credits, priceInr: pack.priceInr, pricePaise: pack.pricePaise, label: pack.label };
+}
 
 /**
  * Get or create user's credit record.
@@ -404,12 +439,32 @@ export async function releaseCredits(userId, featureType, { reserved = 0, holdId
 }
 
 /**
- * Add credits (purchase, admin grant, referral, etc.)
+ * Make sure the user has a credit row (and that any due monthly refill has been
+ * applied) WITHOUT opening a transaction.
+ *
+ * PAY-004 needs this as a separate step: the purchase grant runs inside one
+ * transaction with the payment-intent row that authorises it, and creating the
+ * account lazily in there would mean a first-time buyer's grant holds an INSERT
+ * on ai_credits for the length of a payment settlement. Ensure first, grant
+ * second.
  */
-export async function addCredits(userId, amount, type = 'purchase', description = '') {
-  const credit = await getOrCreateCredits(userId);
+export async function ensureCreditAccount(userId) {
+  return getOrCreateCredits(userId);
+}
 
-  const updated = await prisma.aICredit.update({
+/**
+ * The balance increment + its ledger row, on a caller-supplied client.
+ *
+ * This is the body of addCredits, lifted so a caller that is ALREADY inside a
+ * transaction (a credit-pack purchase, which must grant in the same transaction
+ * that moves the payment intent to its terminal state) reuses exactly one
+ * code path rather than growing a second, subtly different, way to mint credits.
+ *
+ * `client` must be either the shared prisma client or an interactive-transaction
+ * client. The AICredit row must already exist — call ensureCreditAccount first.
+ */
+export async function addCreditsWith(client, userId, amount, type = 'purchase', description = '', metadata = null) {
+  const updated = await client.aICredit.update({
     where: { userId },
     data: {
       balance: { increment: amount },
@@ -417,17 +472,26 @@ export async function addCredits(userId, amount, type = 'purchase', description 
     },
   });
 
-  const transaction = await prisma.aICreditTransaction.create({
+  const transaction = await client.aICreditTransaction.create({
     data: {
-      creditId: credit.id,
+      creditId: updated.id,
       amount,
       balanceAfter: updated.balance,
       type,
       description: description || `+${amount} credits (${type})`,
+      ...(metadata ? { metadata } : {}),
     },
   });
 
   return { balance: updated.balance, transaction };
+}
+
+/**
+ * Add credits (purchase, admin grant, referral, etc.)
+ */
+export async function addCredits(userId, amount, type = 'purchase', description = '', metadata = null) {
+  await getOrCreateCredits(userId);
+  return addCreditsWith(prisma, userId, amount, type, description, metadata);
 }
 
 /**

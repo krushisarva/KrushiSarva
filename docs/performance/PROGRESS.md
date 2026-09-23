@@ -2,6 +2,441 @@
 
 ## Current Item
 
+**PAY-002 — rent booking payments — COMPLETE.** PAY-004 (AI credit packs) is
+also COMPLETE, and was verified against a database for the first time.
+
+## Status
+
+COMPLETED — pending the production SQL a human has to apply (see "Still owed by
+a human" below).
+
+## PAY-002 — rent booking payments (COMPLETE)
+
+### The three endpoints, verbatim
+
+A farmer-app agent is coding against these. Any change is a breaking change.
+
+```
+POST /rent/bookings/initiate
+  body  { listingId, type: 'machinery'|'labour', startDate, endDate, hours?, workerCount?, notes? }
+  200   { razorpayOrderId, amount, amountInPaise, currency: 'INR', receipt,
+          quote: { days, rate, total, advancePct, payable }, mock }
+  400   dates invalid / range > 365 days / listing inactive / outside the
+        listing's availability window / payable below the gateway minimum
+  403   the owner booking their own listing
+  409   { code: 'SLOT_TAKEN' }  the slot is already taken
+  503   the intent could not be recorded (nothing has been charged)
+
+POST /rent/bookings/confirm
+  body  { razorpayOrderId, razorpayPaymentId, razorpaySignature }
+  200   { booking, paymentStatus: 'PAID' }
+  400   bad signature / not this farmer's intent / not a RENT_BOOKING intent —
+        NO booking is created and NO state changes
+  409   error.details { refunded, paymentCaptured, providerOrderId, code }
+        code is SLOT_TAKEN or PRICE_CHANGED; the money has been refunded and
+        error.message says so
+
+GET /rent/bookings/payment-status/:providerOrderId
+  200   { state, status, paid, amount, booking, message? }
+        status === state; amount is a 2-dp string; booking is null until confirm
+  404   unknown reference, another farmer's intent, or a non-rent intent
+```
+
+Two deliberate deviations from the brief, both additive:
+
+1. **`status` is accompanied by `state`** (the same value) on payment-status,
+   for parity with AgriStore's `/orders/payment-status`, plus `message` on
+   non-terminal states. Reading `status` alone is correct and sufficient.
+2. **The 409 body is the house error envelope**, so `refunded` lives at
+   `error.details.refunded` and the message at `error.message`. `sendError` has
+   no shape that puts them at the top level, and inventing one here would make
+   rent the only endpoint in the codebase with a bespoke error body.
+
+### What confirm does, and where the transaction boundary is
+
+```
+verify the HMAC                     outside — pure, and a forged pair must not
+                                    reach a database write
+load the intent                     outside — object-level authorization; a
+                                    signature proves Razorpay signed the pair,
+                                    NOT that it belongs to this farmer
+already bound?                      outside — return that booking (the webhook
+                                    or an earlier attempt got here first)
+fetch the gateway order             outside — a network call must not be held
+                                    inside a Serializable transaction
+-- BEGIN SERIALIZABLE --
+  re-check the range is free
+  re-price from the listing; refuse if the payable moved
+  bind amount_paid to the recomputed total (receipt + amount vs the gateway)
+  INSERT the Booking (paymentIntentId UNIQUE)
+  UPDATE the intent -> ORDER_CREATED, refType 'booking', refId <booking>
+-- COMMIT --
+```
+
+The split is AgriStore's, not a new one. Everything whose atomicity matters is
+inside; the two things that cannot be are outside and are re-validated within.
+
+### Decisions worth recording
+
+- **Nothing is reserved at /initiate.** A cart holds stock, which is fungible; a
+  booking holds a slot, which is not. Reserving one would need a third booking
+  state that blocks the calendar for everyone while one farmer's UPI app
+  decides. The availability check that binds is the one inside the confirm
+  transaction.
+- **The availability WINDOW is checked at initiate only, not at confirm.**
+  Refusing before a rupee moves is free; refusing after costs a refund. The
+  window is owner-set and static during a checkout, and the residual exposure —
+  a booking just outside a window the owner narrowed two minutes ago — is
+  something the owner can still reject.
+- **The quote is frozen into `PaymentIntent.metadata` and confirm re-prices
+  anyway.** The metadata says WHAT was bought (listing, dates, worker count);
+  the price is re-derived from the listing. Without the metadata, confirm would
+  have to take the listing and dates from the request body, and a farmer could
+  pay for a one-day hire and then confirm a ten-day one.
+- **`hours` is stored and still not charged for.** The recon note asked whether
+  an hourly rate is meant to exist; the answer here is that the paid path must
+  quote the same figure as the legacy path and as the app's own display.
+  Charging for hours now would make the three disagree. It stays a product
+  question.
+
+### reconcileRentPayments was NOT wired — it is now
+
+`rentPayment.service.js` exported it and nothing called it. It is now wired into
+the existing `shop-payment-reconcile` cron in `server.js` (every 10 minutes),
+inside the SAME `withLeaderLock` callback rather than as a second cron entry: one
+scheduler, one lock, one place to read, and the two passes cannot interleave
+against the gateway. It stays a separate PASS because the shop reconciler's rule
+is "captured with no Order by paymentRef -> refund", and a rent payment never has
+an Order — running rent through it would refund every successful booking.
+
+## PAY-004 — AI credit packs (COMPLETE)
+
+Written by a previous agent and never executed against a database. Run for the
+first time here: **22 tests, all passing** after one fixture fix — the suite
+captured its `before` balance while the `AICredit` row did not yet exist (it is
+created lazily at the free monthly grant), so every balance assertion was off by
+exactly that grant and looked like a double grant rather than a missing
+baseline. The row is now warmed through `GET /ai/credits` in `beforeEach`.
+
+## Database state
+
+`booking_payment_fields_additive.sql` and `payment_intent_purpose_additive.sql`
+had reached **no** database, not even locally. Both are now applied to the dev
+(`cropsetu`) and test (`cropsetu_test`) databases; both are idempotent and
+self-verifying, so the re-run of the purpose script was a confirmed no-op.
+`prisma validate` and `prisma generate` are both clean.
+
+## Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `api/rentPayment.api.test.js` | did not exist | 22 / 22 |
+| `api/aiCreditPurchase.api.test.js` | never run (10 failed on first execution) | 22 / 22 |
+| `api/paymentPurposeScope.api.test.js` | 10 (1 failing) | 10 / 10 |
+| `api/shopPayment` + `orderRefund` + `orderRefundFailure` + `paymentAutoRefund` + `adminPaymentIntents` | 63 | 63 / 63 unchanged |
+| `unit` + `security` payment / refund / money / credit (8 suites) | 65 | 65 / 65 unchanged |
+| `api/rent` + `api/rentPrivacy` | 63 | 63 / 63 unchanged |
+| `load/booking-concurrency` + `security/referentialIntegrity` | 11 | 11 / 11 unchanged |
+
+Two pre-existing tests needed a change, and neither was an assertion loosened:
+
+- `paymentPurposeScope.api.test.js` — "a purpose with no handler" used
+  AI_CREDITS, which now HAS one (PAY-004 registered it). Repointed at
+  ANIMAL_TOKEN, which is deliberately unhandled (PAY-005 is an open product
+  decision), with a comment saying the next purpose to be implemented must move
+  this block on again rather than delete it.
+- `aiCreditPurchase.api.test.js` — the baseline fix described above.
+
+## Still owed by a human, before this deploys
+
+**Apply the manual SQL to production FIRST, then deploy the code**, in this
+order:
+
+```
+1.  backend/prisma/manual/payment_intent_purpose_additive.sql   (PAY-001 — may
+    already be applied; it is idempotent and self-verifying, so re-running it is
+    safe and is the cheapest way to be sure)
+2.  backend/prisma/manual/booking_payment_fields_additive.sql   (PAY-002)
+3.  deploy the code
+```
+
+The other order breaks production. Prisma selects every scalar field it knows
+about, so code that knows `paymentStatus` issues
+`SELECT ... "paymentStatus" ... FROM bookings` against a table without it and
+**every booking read fails with 42703** — including the existing unpaid booking
+flow, which works today. The reverse is harmless: old code never mentions the new
+columns.
+
+The deploy runs `prisma db push`, which cannot be relied on for either script: it
+tries to drop the FastAPI-owned tables it does not know about and aborts on data
+loss, applying nothing. Never add `--accept-data-loss`.
+
+## Next item
+
+**PAY-003 — wire the seller ledger.** Nothing writes SALE or COMMISSION
+entries, so every payout computes to zero. Recon is already in FINDINGS.md,
+including the two traps: `SellerLedgerEntry` has no `@@unique` yet (the
+idempotency key PAY-003 needs does not exist), and
+`admin/finance.routes.js:90-91` computes a running balance with JS `Number` into
+a `Decimal(12,2)` column.
+
+---
+
+## Previous item — PAY-001, generalise the payment core (COMPLETE)
+
+## Current Feature
+
+Payments (`docs/PAYMENT_GATEWAY_PROMPT.md`). Razorpay already works for
+AgriStore and is NOT being rebuilt; PAY-001 widens that one core so rent
+bookings, AI credit packs and anything later can raise an intent against it.
+
+### What was discovered before writing anything
+
+Two things the payments directive did not know, both of which changed the plan:
+
+1. **A migration file alone never reaches production.** The deploy runs
+   `prisma db push`, which tries to drop the FastAPI-owned tables
+   (`ai_scan_diagnoses`, `ai_scan_feedback`), aborts on data loss, and then
+   applies nothing. Every additive change in this repo therefore also ships a
+   hand-applied `prisma/manual/*.sql`. PAY-001 has one.
+
+2. **The reconciler is purpose-blind, and that is why `purpose` had to land
+   first.** `reconcilePendingPayments` (shopPayment.service.js:336) sweeps
+   every non-terminal intent through one hard-coded shop path: look for an
+   `Order` by `paymentRef`, find none, release stock reservations, auto-refund
+   after 30 minutes. Ship rent payments before the discriminator and a farmer
+   who takes 11 minutes over a UPI approval gets refunded for a booking they
+   completed — silently, with nothing in the logs calling it wrong.
+
+### Step 1 — schema, migration, prod-apply script (COMPLETE)
+
+Files:
+```
+backend/prisma/schema.prisma                                        + enum PaymentPurpose, 4 fields, 2 indexes
+backend/prisma/migrations/20260921120000_payment_intent_purpose/    new
+backend/prisma/manual/payment_intent_purpose_additive.sql           new — the one that reaches prod
+ARCHITECTURE.md                                                     counts, PaymentIntent fields, enum table, both inventories
+docs/performance/FINDINGS.md                                        PAY backlog + PAY-001 entry
+```
+
+Verified, not assumed:
+- `prisma validate` passes.
+- `prisma migrate diff` (read-only, DB vs schema) reports **zero** drift on
+  `payment_intents` — the hand-written SQL and `schema.prisma` agree exactly,
+  so a later `db push` is a no-op rather than a second, differently-named index.
+- The manual script was applied to **two** databases (dev + test) and run
+  **twice** on one: idempotent, and self-verifying (it re-reads the catalog
+  inside the transaction and rolls back rather than reporting a partial apply).
+- Payment suites: **9 suites / 81 tests, all passing**, unchanged.
+
+### One thing the test run exposed that was not mine
+
+The first run failed 31 tests. Cause was **pre-existing local drift**, not the
+change: `order_items.batchQuantity` — the previous item's column — had never
+been applied to either local database, so every order-creating test died with
+P2022. This is exactly the failure the manual-SQL policy exists to catch, and it
+had gone unnoticed because nobody had run the order suites since. Fixed by
+applying the repo's own `order_item_batch_quantity_additive.sql` to both local
+DBs. Still outstanding on those DBs: the two read-path indexes from
+`read_path_indexes.sql` (performance only, nothing fails without them).
+
+### Step 2 — extract the purpose-agnostic core (COMPLETE, and it absorbed step 4)
+
+`backend/src/services/paymentIntent.service.js` (new) owns the intent state
+machine and the webhook inbox for every purpose:
+
+```
+PAYMENT_PURPOSE, TERMINAL, REFUNDING, SETTLED
+receiptFor, createIntent, findIntent, findIntentsForRef
+markIntentPaid, markIntentFailed
+claimWebhookEvent, finishWebhookEvent, webhookEventId
+```
+
+`shopPayment.service.js` keeps the shop half — `createIntent` (now a thin
+wrapper that freezes the cart quote), `attachOrderToIntent`,
+`bindIntentToOrderTx`, `refundUnorderedPayment`, `reconcilePendingPayments`,
+`intentPublicStatus`, `AUTO_REFUND_FAILED` — and **re-exports** the moved
+names. All 14 public symbols still resolve from the old path, so none of the
+four importers (`agristore.routes.js`, `shopWebhooks.routes.js`, `server.js`,
+`admin/shopCompliance.routes.js`) changed.
+
+**Step 4 was pulled forward into this change, deliberately.** An adversarial
+review of the split made the point that a generalised `createIntent` can mint a
+RENT_BOOKING intent, while the reconciler still filtered on `status` alone —
+and the migration comment already *promised* a purpose guard that did not
+exist. Shipping the generaliser without the guard would have created exactly
+the bug the guard is for, so `RECONCILED_PURPOSES` landed here instead.
+
+**One new invariant, not a move:** `createIntent` accepts rupees or paise and
+derives the other. When both are supplied and disagree it throws rather than
+picking one — a row that says ₹49 while the gateway charged ₹499 is the worst
+shape a payments bug can take, and it is silent.
+
+Two review points were acted on, one rejected:
+
+- *Acted on:* the missing reconciler purpose guard (above).
+- *Acted on:* `SETTLED` containing `ORDER_CREATED` reads as shop vocabulary.
+  It stays — PAY-002 also lands a paid booking in `ORDER_CREATED` — but the
+  state now means "fulfilment created", and says so.
+- *Rejected:* "don't move `TERMINAL`, it has one reader and that reader stays."
+  True today, but the same review argued the exactly-once invariant must not be
+  split across two files. `SETTLED` and `REFUNDING` had to move; splitting the
+  trio would have put half a state machine in each module. All three moved.
+
+Tests:
+```
+tests/backend/unit/paymentIntentCore.test.js    19 new — money guard, purpose validation,
+                                                 enum/JS drift, receipt uniqueness, event ids
+tests/backend/api/paymentPurposeScope.api.test.js  4 new — the reconciler guard
+```
+
+`paymentPurposeScope` was confirmed to **fail with the guard reverted** (2 of 4)
+and pass with it restored, so it pins the property rather than merely
+accompanying it. That matters more than usual here: the behaviour it protects
+belongs to a feature that does not exist yet, so nothing else in the suite
+would notice the filter being deleted as "an unnecessary where clause".
+
+Payment suites after the split: **9 suites / 81 tests, unchanged, all passing.**
+
+### Step 3 — the webhook becomes a dispatcher (COMPLETE)
+
+`shopWebhooks.routes.js` → `paymentWebhooks.routes.js`. The URL is unchanged,
+so the endpoint already configured in the Razorpay dashboard keeps working; only
+the file name and the shape changed.
+
+```
+verify signature -> claim event -> load intent -> record the money
+                                               -> PURPOSE_HANDLERS[intent.purpose]
+```
+
+The shop half moved into `shopWebhookHandler` in `shopPayment.service.js`
+(`captured` / `failed` / `refunded`), registered against SHOP_ORDER. The route
+itself now knows nothing about carts, orders or stock.
+
+**Three decisions worth recording, because each could reasonably have gone the
+other way:**
+
+1. **An unhandled purpose still marks the intent PAID.** The handler is what is
+   missing, not the payment. Leaving it CREATED would mean a real capture whose
+   only trace is a webhook row — the exact silence this machinery exists to
+   prevent. PAID with no fulfilment surfaces in the admin orphan queue; CREATED
+   does not. The event is IGNORED, with an `[ALERT]` log naming the purpose.
+
+2. **IGNORED returns 200, never 5xx.** Razorpay retries a 5xx for 24 hours, and
+   every retry would reach the same missing handler. The answer will not change,
+   so the gateway should not keep asking.
+
+3. **A missing intent is NOT treated as an unknown purpose.** On
+   `payment.failed` and on refunds, no intent row still gets the SHOP handler.
+   `/orders/initiate` deliberately swallows a failed `createIntent` so
+   telemetry can never fail a checkout — but it has already taken the stock hold
+   by then. Routing that case to "no handler" would strand held stock that
+   nothing else releases. This preserved a real recovery path that the obvious
+   refactor would have quietly removed.
+
+Tests: 3 added to `paymentPurposeScope.api.test.js` — unknown purpose is
+IGNORED with 200, the money is still recorded, and a SHOP_ORDER capture is still
+PROCESSED.
+
+**Payment suites after step 3: 11 suites / 107 tests, all passing.** The 13
+properties the existing webhook tests pin — the five signature refusals, the
+replay header and `duplicate: true` body, the FAILED event for an unknown
+gateway order, the IGNORED event for an unhandled event type — are reproduced
+unchanged by the dispatcher.
+
+Docs corrected in the same pass: 11 stale `shopWebhooks.routes.js` references in
+ARCHITECTURE.md (with their line ranges re-derived rather than carried over), a
+mount reference that had said `app.js:211` since before this work, and
+`.env.example`, which never documented `RAZORPAY_WEBHOOK_SECRET` at all —
+despite the webhook failing closed without it.
+
+### Step 5 — the neutral webhook URL (COMPLETE)
+
+One Router, two mounts, both above the global JSON parser:
+
+```
+/api/v1/webhooks/razorpay        the name that stays right when rent and credits arrive
+/api/v1/shop-webhooks/razorpay   the URL already in the Razorpay dashboard
+```
+
+Changing a live webhook URL means a window where captures go nowhere. The alias
+costs one line and removes that window entirely.
+
+Two constraints, both load-bearing and both now commented at the mount:
+- **Above `express.json`.** Below it the stream is consumed and the raw body —
+  and therefore the HMAC this endpoint exists to verify — is gone.
+- **One Router instance**, so both paths share the router's rate limiter. Its
+  key (`rl:webhook:razorpay:<ip>`) has no path component: one gateway, one
+  allowance, not one per URL spelling.
+
+Tests (3 added): each path handles a capture identically, and — the property
+that makes the alias safe rather than merely convenient — **they share one event
+inbox**. The same delivery sent to the other path comes back `duplicate: true`
+with `X-Webhook-Replay`, and `payment_webhook_events` holds exactly one row.
+Without that, Razorpay retrying a capture against a different URL would be
+processed twice.
+
+### Step 6 — the admin queue learns what a payment was for (COMPLETE)
+
+```
+backend  GET /admin/payment-intents  ?purpose=  + purpose in the select
+admin    PaymentIntents.tsx          "For" column + "For" filter
+admin    paymentState.ts             PAYMENT_PURPOSES, purposeLabel
+```
+
+The filter is applied **after** the view branches and is never defaulted. Both
+halves of that matter: the orphan view does `delete where.status`, so a purpose
+set earlier could be dropped along with it, and a default would quietly hide
+every non-shop payment from an operator who had not asked it to.
+
+One gotcha worth keeping: `FilterSelect`'s "all" option is the empty string, and
+axios omits `undefined` but sends `''` as `purpose=` — which the route would
+then reject as an invalid enum. Hence `purpose ? { purpose } : {}` rather than
+passing the state through.
+
+Tests (5 added to `adminPaymentIntents.api.test.js`): the filter returns only
+that area; the shop queue excludes other areas **and still contains rows written
+before the column existed**; purpose ANDs with the orphan view rather than
+replacing it; an unknown purpose is a 400, not a silent ignore; and no filter
+still returns every area. Admin `tsc --noEmit` and `vite build` both clean.
+
+### PAY-001 — done, pending the full-suite run
+
+```
+1 schema + migration + prod-apply SQL     COMPLETE
+2 extract paymentIntent.service.js        COMPLETE
+3 webhook -> per-purpose dispatcher       COMPLETE
+4 reconciler scoped to known purposes     COMPLETE (landed inside step 2)
+5 /webhooks/razorpay alias                COMPLETE
+6 admin purpose column + filter           COMPLETE
+```
+
+31 tests added across four files. Every existing payment test passes unchanged.
+
+**Still owed by a human, before the code deploys:** apply
+`backend/prisma/manual/payment_intent_purpose_additive.sql` to production
+FIRST. Deploy the code first and Prisma selects `purpose` against a table
+without it — every payment read fails with 42703.
+
+### The recon that shaped PAY-002 (all three facts held up)
+
+`Booking` had no payment field and no unique constraint at all, so
+double-booking was prevented solely by a Serializable overlap query; pricing was
+already server-authoritative (the client's `totalAmount` was validated and then
+never read); and `hours` was validated 1-24 but appeared in no pricing
+arithmetic. PAY-002 added the UNIQUE (`paymentIntentId`), kept the Serializable
+overlap query as the binding check, kept pricing server-side, and left `hours`
+uncharged — see the PAY-002 section at the top for why.
+
+Step 5's constraint also held: the webhook alias must be mounted before the
+global JSON parser, or `express.json` consumes the stream and the raw body — and
+therefore the HMAC — is gone. Both mounts share one rate-limit budget
+(`rl:webhook:razorpay:<ip>` has no path component): one gateway, one budget.
+
+---
+
+## Previous item — the 79-section directive audit
+
 Working the 79-section directive audit. The audit corrected this document: the
 previous version claimed "the §71 backlog is drained", and it was not — three
 items were still open in code (PERF-042). Treat that as the reason this section

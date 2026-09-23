@@ -1,12 +1,25 @@
 /**
  * LabourDetail — Worker/group profile.
  * Shows: photo gallery, skills, experience, languages, pricing, location.
- * Primary action: Call the worker directly. No booking flow.
+ * Actions: call the provider, or book them for a date range.
+ *
+ * ── Why there is a booking form here now ─────────────────────────────────────
+ * This screen was call-only, and the backend has always accepted a labour
+ * booking (`POST /rent/bookings` with `labourListingId`, priced
+ * pricePerDay × days × workerCount). With advance payment arriving for rent,
+ * "ring them and sort it out yourself" is no longer the whole product: there
+ * has to be a booking for a payment to belong to. The form is deliberately the
+ * smallest one that can produce a valid request — range, how many workers, a
+ * note — and the Call button is untouched, because for a lot of providers a
+ * phone call is still how the job actually gets agreed.
+ *
+ * The flow itself is not here: `useRentBooking` decides paid-vs-free and
+ * `rentBookingFlow` decides what is said, both shared with MachineryDetail.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, ActivityIndicator, Dimensions, StatusBar,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  Image, ActivityIndicator, Dimensions, StatusBar, Alert, Modal,
 } from 'react-native';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import useContactReveal from '../../hooks/useContactReveal';
@@ -21,6 +34,12 @@ import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { COLORS } from '@krushisarva/shared/constants/colors';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import { SkeletonDetail } from '../../components/ui/Skeleton';
+import RentAvailabilityPicker from '../../components/ui/RentAvailabilityPicker';
+import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
+import { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import useRentBooking from './components/useRentBooking';
+import { noticeText } from './components/rentBookingFlow';
+import { inr } from '../AgriStore/shopUtils';
 
 const { width: W } = Dimensions.get('window');
 
@@ -96,18 +115,110 @@ export default function LabourDetail({ route, navigation }) {
   const [galIdx,      setGalIdx]      = useState(0);
   const [loadingData, setLoadingData] = useState(!passedData);
 
+  // ── Booking form ────────────────────────────────────────────────────────────
+  const [bookFrom,    setBookFrom]    = useState(null);   // 'YYYY-MM-DD'
+  const [bookTo,      setBookTo]      = useState(null);
+  const [workerCount, setWorkerCount] = useState(1);
+  const [notes,       setNotes]       = useState('');
+  // { start, end, days, amount, paid, paidAmount } | null
+  const [bookingDone, setBookingDone] = useState(null);
+
   const listingId = id || passedData?.id;
+
+  const aliveRef   = useRef(true);
+  // Same guard, and the same reasoning, as MachineryDetail's: released only by
+  // a terminal outcome, so the button stays disarmed for the whole
+  // initiate → payment sheet → confirm window rather than re-arming the moment
+  // `book()` returns and letting a second tap raise a second gateway order.
+  const bookingRef = useRef(false);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!listingId) return;
+    const ac = new AbortController();
     (async () => {
       try {
-        const res = await api.get(`/rent/labour/${listingId}`);
-        setData(res.data.data);
+        const res = await api.get(`/rent/labour/${listingId}`, { signal: ac.signal });
+        if (!ac.signal.aborted) setData(res.data.data);
       } catch { /* keep passedData */ }
-      finally { setLoadingData(false); }
+      finally { if (!ac.signal.aborted) setLoadingData(false); }
     })();
+    return () => ac.abort();
   }, [listingId]);
+
+  const bookedDays = (() => {
+    if (!bookFrom || !bookTo) return 0;
+    const s = new Date(bookFrom), e = new Date(bookTo);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return 0;
+    return Math.round((e - s) / 86400000) + 1;
+  })();
+  // Mirrors the server's own arithmetic (rent.routes.js: pricePerDay × days ×
+  // workerCount) so the card shows what the booking will cost. It is a PREVIEW,
+  // never an input — no total is sent on either path.
+  const bookedTotal = bookedDays > 0
+    ? bookedDays * (Number(data?.pricePerDay) || 0) * Math.max(1, workerCount)
+    : 0;
+
+  const rentBooking = useRentBooking({
+    type: 'labour',
+
+    onBooked: ({ booking: created, paid, amount, request }) => {
+      bookingRef.current = false;
+      if (!aliveRef.current) return;
+      const bDays = Number(request?.days) || 0;
+      setBookFrom(null); setBookTo(null); setNotes('');
+      setBookingDone({
+        start: request?.startDate ?? null,
+        end:   request?.endDate   ?? null,
+        days:  bDays,
+        amount: Number(created?.totalAmount)
+          || (bDays * (Number(data?.pricePerDay) || 0) * Math.max(1, Number(request?.workerCount) || 1)),
+        paid: !!paid,
+        paidAmount: paid ? amount : null,
+      });
+      invalidateFocusData('rent');
+    },
+
+    onNotice: (notice) => {
+      bookingRef.current = false;
+      if (!aliveRef.current) return;
+      const { title, body } = noticeText(notice, t, inr);
+      Alert.alert(title, body);
+      if (notice?.kind === 'SLOT_GONE' || notice?.kind === 'SLOT_TAKEN') {
+        setBookFrom(null); setBookTo(null);
+      }
+      if (notice?.moneyTaken) invalidateFocusData('rent');
+    },
+  });
+
+  const handleBook = useCallback(async () => {
+    if (!bookFrom || !bookTo) {
+      Alert.alert(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
+      return;
+    }
+    if (bookedDays <= 0) {
+      Alert.alert(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
+      return;
+    }
+    if (bookingRef.current) return;
+    bookingRef.current = true;
+
+    // `workerCount` is a HEAD COUNT, not money: the server multiplies its own
+    // rate by it. Nothing resembling a total is on the wire (claude.md §51).
+    const outcome = await rentBooking.book({
+      listingId: listingId,
+      startDate: bookFrom,
+      endDate:   bookTo,
+      days:      bookedDays,
+      workerCount,
+      notes,
+    });
+    if (outcome?.skipped) bookingRef.current = false;
+  }, [bookFrom, bookTo, bookedDays, workerCount, notes, listingId, rentBooking, t]);
 
   if (loadingData || !data) {
     return (
@@ -119,6 +230,9 @@ export default function LabourDetail({ route, navigation }) {
   }
 
   const l = data;
+  // How many workers this listing can actually supply. `groupSize` is 1 for a
+  // lone worker, in which case the stepper is not rendered at all.
+  const maxWorkers = Math.max(1, Number(l.groupSize) || 1);
   // A provider viewing their own worker listing can't hire themselves — show
   // owner controls (Edit) instead of the Call/Hire actions.
   const isOwner = !!user && (user.id === l.provider?.id || user.id === l.providerId);
@@ -320,6 +434,100 @@ export default function LabourDetail({ route, navigation }) {
             </TouchableOpacity>
           )}
 
+          {/* ── Book this worker ── */}
+          {!isOwner && (
+            <View style={D.bookCard}>
+              <View style={D.bookHead}>
+                <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+                <Text style={D.bookTitle}>{t('rent.bookWorker', 'Book this worker')}</Text>
+              </View>
+
+              <RentAvailabilityPicker
+                from={bookFrom}
+                to={bookTo}
+                onChange={({ from, to }) => { setBookFrom(from); setBookTo(to); }}
+                t={t}
+              />
+
+              {/* Head count. Capped at the group size the provider listed — a
+                  request for more workers than exist is a booking the provider
+                  can only reject. */}
+              {maxWorkers > 1 && (
+                <View style={D.wcRow}>
+                  <Text style={D.wcLabel}>{t('rent.workersNeeded', 'Workers needed')}</Text>
+                  <View style={D.wcStepper}>
+                    <TouchableOpacity
+                      style={[D.wcBtn, workerCount <= 1 && { opacity: 0.35 }]}
+                      onPress={() => setWorkerCount((n) => Math.max(1, n - 1))}
+                      disabled={workerCount <= 1}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('rent.fewerWorkers', 'Fewer workers')}
+                    >
+                      <Ionicons name="remove" size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <Text style={D.wcValue}>{workerCount}</Text>
+                    <TouchableOpacity
+                      style={[D.wcBtn, workerCount >= maxWorkers && { opacity: 0.35 }]}
+                      onPress={() => setWorkerCount((n) => Math.min(maxWorkers, n + 1))}
+                      disabled={workerCount >= maxWorkers}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('rent.moreWorkers', 'More workers')}
+                    >
+                      <Ionicons name="add" size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {bookedDays > 0 ? (
+                <>
+                  <View style={D.bookTotalRow}>
+                    <Text style={D.bookTotalLbl}>
+                      {bookedDays} {t('rent.day')}
+                      {workerCount > 1 ? ` × ${workerCount}` : ''} × ₹{Number(data.pricePerDay || 0).toLocaleString()}
+                    </Text>
+                    <Text style={D.bookTotalAmt}>{inr(bookedTotal)}</Text>
+                  </View>
+                  <TextInput
+                    style={D.bookNotes}
+                    placeholder={t('rent.notesPlaceholder')}
+                    placeholderTextColor={COLORS.grayLightMid}
+                    value={notes}
+                    onChangeText={setNotes}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </>
+              ) : null}
+
+              <TouchableOpacity
+                style={[D.bookBtn, (bookedDays <= 0 || rentBooking.busy) && { opacity: 0.5 }]}
+                onPress={handleBook}
+                disabled={bookedDays <= 0 || rentBooking.busy}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+              >
+                {rentBooking.busy
+                  ? <ActivityIndicator size="small" color={COLORS.white} />
+                  : <>
+                      <Ionicons name={rentBooking.payOnline ? 'card' : 'calendar'} size={18} color={COLORS.white} />
+                      {/* No rupee figure on the paid button: the server decides
+                          the advance and only says so in its initiate reply, so a
+                          number here would be the full amount pretending to be
+                          what is about to be charged. */}
+                      <Text style={D.bookBtnTxt} numberOfLines={1}>
+                        {bookedDays <= 0
+                          ? t('rent.selectDatesPlaceholder')
+                          : rentBooking.payOnline
+                            ? `${t('rent.payAndBook', 'Pay & book')} · ${bookedDays}d`
+                            : `${t('rent.booking')} ${bookedDays}d — ${inr(bookedTotal)}`}
+                      </Text>
+                    </>
+                }
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* ── Skills ── */}
           {(l.skills || []).length > 0 && (
             <>
@@ -421,6 +629,75 @@ export default function LabourDetail({ route, navigation }) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ── Booking made popup ── */}
+      <Modal visible={!!bookingDone} transparent animationType="fade" onRequestClose={() => setBookingDone(null)}>
+        <View style={D.ovBackdrop}>
+          <View style={D.ovCard}>
+            <View style={D.ovIconCircle}>
+              <Ionicons name="checkmark" size={34} color={COLORS.white} />
+            </View>
+            <Text style={D.ovTitle}>
+              {bookingDone?.paid
+                ? t('payments.bookingConfirmed', 'Booking confirmed')
+                : t('rent.bookingSentTitle', 'Booking request sent!')}
+            </Text>
+            <Text style={D.ovBody}>
+              {bookingDone?.paid
+                ? t('payments.bookingConfirmedMsg', 'Your booking is confirmed. You can see it under My Bookings.')
+                : t('rent.bookingSentMsg', 'The owner will review your request and confirm it shortly. You’ll be notified once it’s approved.')}
+            </Text>
+            {bookingDone?.start && bookingDone?.end ? (
+              <Text style={D.ovPill} numberOfLines={2}>
+                {fmtDate(bookingDone.start)} → {fmtDate(bookingDone.end)}
+                {bookingDone.amount ? `  ·  ${inr(bookingDone.amount)}` : ''}
+              </Text>
+            ) : null}
+            {bookingDone?.paidAmount ? (
+              <Text style={D.ovPaid} numberOfLines={2}>
+                {t('rent.advancePaid', { amount: inr(bookingDone.paidAmount), defaultValue: '{{amount}} advance paid' })}
+              </Text>
+            ) : null}
+            <TouchableOpacity style={D.ovBtn} onPress={() => setBookingDone(null)} activeOpacity={0.85}>
+              <Text style={D.ovBtnTxt}>{t('rent.done')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Payment sheet — `visible` is false until a real gateway order exists,
+          so no WebView is mounted on a screen nobody is paying from. */}
+      <RazorpayCheckout
+        // Keyed on the gateway order so a SECOND booking attempt in the same
+        // screen session gets a fresh component. RazorpayCheckout latches
+        // `settled` after a success and never clears it, so a reused instance
+        // would swallow the next attempt's dismissal — the one event this
+        // whole flow is built to hear.
+        key={rentBooking.checkoutProps.orderId || 'no-order'}
+        {...rentBooking.checkoutProps}
+        keyId={rentBooking.keyId}
+        buyerName={user?.name}
+        buyerPhone={user?.phone}
+        description={l.name || l.leader}
+      />
+
+      {/* Asking the server what happened. Closing the sheet is NOT a failure —
+          this overlay is what the farmer sees while we find out. */}
+      <Modal visible={rentBooking.verifying} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={D.ovBackdrop}>
+          <View style={[D.ovCard, { gap: 12 }]}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={D.ovTitle}>
+              {rentBooking.verifyReason === 'dismiss'
+                ? t('payments.dismissedCheck', 'Checking whether your payment went through…')
+                : t('payments.verifying', 'Confirming your payment')}
+            </Text>
+            <Text style={D.ovBody}>
+              {t('payments.doNotClose', 'Please do not close the app or pay again.')}
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
     </AnimatedScreen>
   );
@@ -501,4 +778,31 @@ const D = StyleSheet.create({
   bottomCallBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 15, paddingHorizontal: 12, minHeight: 50 },
   bottomOwnerBtn:{ backgroundColor: COLORS.primaryPale, borderWidth: 1.5, borderColor: COLORS.primary + '40' },
   bottomCallTxt: { fontSize: fs(15), fontWeight: '800', color: COLORS.white, flexShrink: 1 },
+
+  // Booking card
+  bookCard:     { backgroundColor: COLORS.white, borderRadius: 16, padding: 14, marginBottom: 20, borderWidth: 1, borderColor: COLORS.lightGray2, gap: 12 },
+  bookHead:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  bookTitle:    { fontSize: fs(14), fontWeight: '800', color: COLORS.textDark },
+  wcRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  wcLabel:      { fontSize: fs(13), color: COLORS.textMedium, fontWeight: '600', flexShrink: 1 },
+  wcStepper:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  wcBtn:        { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primaryPale, justifyContent: 'center', alignItems: 'center' },
+  wcValue:      { fontSize: fs(15), fontWeight: '800', color: COLORS.textDark, minWidth: 22, textAlign: 'center' },
+  bookTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTopWidth: 1, borderTopColor: COLORS.lightGray2, paddingTop: 10 },
+  bookTotalLbl: { fontSize: fs(12), color: COLORS.textLight, flexShrink: 1 },
+  bookTotalAmt: { fontSize: fs(16), fontWeight: '900', color: COLORS.primary },
+  bookNotes:    { borderWidth: 1, borderColor: COLORS.lightGray2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: fs(13), color: COLORS.textDark, minHeight: 44, textAlignVertical: 'top' },
+  bookBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13 },
+  bookBtnTxt:   { fontSize: fs(14), fontWeight: '800', color: COLORS.white, flexShrink: 1 },
+
+  // Shared overlay card (booking done / verifying a payment)
+  ovBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  ovCard:       { width: '100%', maxWidth: 360, backgroundColor: COLORS.white, borderRadius: 20, padding: 24, alignItems: 'center' },
+  ovIconCircle: { width: 62, height: 62, borderRadius: 31, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  ovTitle:      { fontSize: fs(17), fontWeight: '800', color: COLORS.textDark, textAlign: 'center', marginBottom: 8 },
+  ovBody:       { fontSize: fs(13), color: COLORS.textMedium, textAlign: 'center', lineHeight: 19, marginBottom: 12 },
+  ovPill:       { fontSize: fs(13), fontWeight: '700', color: COLORS.primary, textAlign: 'center', marginBottom: 10 },
+  ovPaid:       { fontSize: fs(12), fontWeight: '800', color: COLORS.primary, textAlign: 'center', marginBottom: 12 },
+  ovBtn:        { width: '100%', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  ovBtnTxt:     { fontSize: fs(15), fontWeight: '800', color: COLORS.white },
 });

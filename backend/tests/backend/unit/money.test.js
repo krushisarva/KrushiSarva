@@ -83,3 +83,42 @@ describe('serializeDecimals — API boundary (Decimal → Number)', () => {
     expect(json).toBe('{"price":5.5}'); // not {"price":"5.5"}
   });
 });
+
+describe('serializeDecimals — does not touch what it is given', () => {
+  /**
+   * This walk used to assign in place. That held until a module returned a
+   * FROZEN constant: CREDIT_PACKS is Object.freeze'd so nothing can rewrite a
+   * price, and the walk threw "Cannot assign to read only property 'id'" —
+   * GET /ai/credits answered 500, from the serializer, on a payload with no
+   * Decimal in it at all.
+   */
+  test('serializes a frozen constant instead of throwing', () => {
+    const PACKS = Object.freeze([
+      Object.freeze({ id: 'pack_100', credits: 100, priceInr: 49, pricePaise: 4900 }),
+    ]);
+    expect(() => serializeDecimals({ packs: PACKS })).not.toThrow();
+    expect(serializeDecimals({ packs: PACKS }).packs[0].id).toBe('pack_100');
+  });
+
+  test('a frozen object containing a Decimal still converts', () => {
+    const frozen = Object.freeze({ price: new Decimal('12.50') });
+    expect(serializeDecimals(frozen).price).toBe(12.5);
+    // The source is unchanged — it is still the caller's Decimal.
+    expect(Prisma.Decimal.isDecimal(frozen.price)).toBe(true);
+  });
+
+  test('leaves the caller’s object alone', () => {
+    // The mutation was a latent bug past the crash: this runs on the caller's
+    // own object, so it rewrote cached values and Prisma results that the
+    // caller still held a reference to.
+    const source = { total: new Decimal('10.00'), items: [{ price: new Decimal('2.50') }] };
+    const out = serializeDecimals(source);
+
+    expect(out.total).toBe(10);
+    expect(out.items[0].price).toBe(2.5);
+    expect(Prisma.Decimal.isDecimal(source.total)).toBe(true);
+    expect(Prisma.Decimal.isDecimal(source.items[0].price)).toBe(true);
+    expect(out).not.toBe(source);
+    expect(out.items).not.toBe(source.items);
+  });
+});

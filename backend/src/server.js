@@ -20,6 +20,7 @@ import { runRetentionSweep } from './services/retention.service.js';
 import { refreshActiveSellerStats } from './services/sellerStats.service.js';
 import { refreshAllSellerMetrics } from './services/sellerMetrics.service.js';
 import { reconcilePendingPayments } from './services/shopPayment.service.js';
+import { reconcileRentPayments } from './services/rentPayment.service.js';
 import { sweepBatchExpiry } from './services/shopCompliance.service.js';
 import { sweepExpiredReservations } from './services/stockReservation.service.js';
 import { reportOrphanedReferences } from './services/referentialIntegrity.service.js';
@@ -477,6 +478,24 @@ async function start() {
             logger.error({ count: stats.orphanedPaid }, '[ShopPayment] ALERT: captured payments with no order — manual refund needed');
           }
         } catch (err) { logger.warn('[ShopPayment] reconciliation failed: %s', err.message); }
+
+        // ── Rent booking payments (PAY-002) ───────────────────────────────────
+        // Same schedule, same leader lock, deliberately a SEPARATE pass. The shop
+        // reconciler's rule for a captured payment is "no Order with this
+        // paymentRef → refund it", and a rent payment NEVER has an Order — it has
+        // a Booking. Running rent through it would refund every successful
+        // booking, silently, because by shop rules that would be correct.
+        //
+        // Inside the same lock callback rather than its own cron entry so the two
+        // passes cannot interleave against the gateway, and so there is still one
+        // scheduler, one lock and one place to read.
+        try {
+          const rent = await reconcileRentPayments({ olderThanMinutes: 10 });
+          if (rent.scanned) logger.info({ ...rent }, '[RentPayment] reconciliation complete');
+          if (rent.orphanedPaid) {
+            logger.error({ count: rent.orphanedPaid }, '[RentPayment] ALERT: captured payments with no booking — manual refund needed');
+          }
+        } catch (err) { logger.warn('[RentPayment] reconciliation failed: %s', err.message); }
       }));
 
       // ── Agri-chemical batch expiry sweep ────────────────────────────────────
