@@ -163,6 +163,14 @@ export const SETTINGS_MANIFEST = [
   { key: 'compliance.expiryAlertDays', type: 'NUMBER', category: 'Compliance', label: 'Warn admins this many days before expiry', description: 'Batches inside this window are surfaced in the admin expiry queue and marked EXPIRING_SOON so a seller can clear them.', min: 1, max: 365, integer: true, default: 45 },
   { key: 'compliance.safetyNotice', type: 'STRING', category: 'Compliance', label: 'Chemical safety notice', description: 'Shown on every regulated product page and at checkout. Keep it a pointer to the approved label and a qualified professional — this platform must never author dosage or mixing advice.', default: 'Always read and follow the approved product label. Wear the protective equipment the label specifies. Consult a qualified agriculture officer or Krushi Seva Kendra before use, especially before mixing any two products.' },
 
+  // ── Rent bookings (PAY-002) ─────────────────────────────────────────────────
+  // 100 is a product decision, not a placeholder. Anything below it leaves a
+  // balance owed after the booking is made, and there is no collection policy,
+  // no dunning path and no rule for a balance that never arrives — so a partial
+  // advance would quietly create an unbilled receivable per booking. Lower it
+  // only once someone owns collecting the rest.
+  { key: 'rent.advancePct', type: 'NUMBER', category: 'Marketplace', label: 'Advance collected at booking (%)', description: 'Share of the booking total taken online when the farmer books. 100 = the whole amount up front, which is the only value with a complete money story today: a lower advance leaves a balance owed on handover that nothing in the platform collects, chases or refunds. The rest of the quote is unchanged either way — the farmer is always shown the full total.', min: 1, max: 100, integer: true, default: 100 },
+
   // ── Seller metrics job ──────────────────────────────────────────────────────
   { key: 'sellerMetrics.windowDays', type: 'NUMBER', category: 'Marketplace', label: 'Seller metrics window (days)', description: 'Rolling window for cancellation / dispatch / return rates. Older history is ignored so a seller can recover from a bad month.', min: 1, max: 3650, integer: true, default: 180 },
   { key: 'sellerMetrics.defaultDispatchSlaDays', type: 'NUMBER', category: 'Marketplace', label: 'Assumed dispatch SLA when unknown (days)', description: 'Used to judge on-time dispatch for an order item whose listing has since been deleted.', min: 1, max: 365, integer: true, default: 2 },

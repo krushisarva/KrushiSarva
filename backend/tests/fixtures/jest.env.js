@@ -15,6 +15,38 @@ import 'dotenv/config';
 process.env.OTP_DEV_BYPASS_ENABLED = 'true';
 
 /**
+ * Force the payment gateway into MOCK mode, whatever the developer's .env says.
+ *
+ * `isMock()` (services/payment.service.js) is simply "no key id or no secret",
+ * and the payment suites are written around it: they mint fake gateway orders,
+ * sign their own webhooks, and assert that /payment-config reports online
+ * payment DISABLED. None of that holds once real keys are present.
+ *
+ * This is not hypothetical. docs/PAYMENT_GATEWAY_PROMPT.md tells the owner to
+ * put test keys in .env so they can drive a real checkout locally — and doing
+ * exactly that turned 28 passing shopPayment tests into 47 failures across the
+ * payment suites, every one of them reading like a genuine regression in code
+ * that had not changed. A suite whose result depends on a developer's local
+ * secrets is a suite that cannot be trusted either way.
+ *
+ * `orderRefund.api.test.js` already cleared these two per-suite, and
+ * `shopPayment.api.test.js` carried a comment ASSERTING the suite runs without
+ * them. Enforcing it here makes that true for every suite instead of the two
+ * that remembered.
+ *
+ * A test that wants the gateway configured sets `ENV.RAZORPAY_KEY_ID` itself
+ * and restores it afterwards — shopPayment.api.test.js already does this for
+ * the "online payment enabled" case, and that keeps working.
+ *
+ * The webhook secret goes too: the suites assign their own, and a real one
+ * reaching a test run is worse than none (the endpoint fails CLOSED without it,
+ * which is the safe default to test against).
+ */
+process.env.RAZORPAY_KEY_ID = '';
+process.env.RAZORPAY_KEY_SECRET = '';
+process.env.RAZORPAY_WEBHOOK_SECRET = '';
+
+/**
  * Redirect the suite onto a DEDICATED test database.
  *
  * cleanupTestData() ends every suite with `prisma.user.deleteMany()` and friends

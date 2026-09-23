@@ -5,6 +5,314 @@ verified** — code written is not completion (`claude.md` §4.3).
 
 ---
 
+## PAY-002 — A rent booking can finally be paid for
+
+```
+ID:        PAY-002
+Feature:   Rent (machinery + labour bookings)
+Priority:  P0
+Status:    COMPLETE — verified, pending the production SQL
+```
+
+**What changed.** Three endpoints on `rent.routes.js`:
+
+```
+POST /rent/bookings/initiate                  price the slot, raise a gateway order
+POST /rent/bookings/confirm                   verify, re-check, create the Booking
+GET  /rent/bookings/payment-status/:orderId   "did my payment go through?"
+```
+
+plus four additive `bookings` columns (`advanceAmount`, `paidAmount`,
+`paymentIntentId` UNIQUE, `paymentStatus`), and `reconcileRentPayments` wired
+into the existing 10-minute leader-locked reconcile cron in `server.js`.
+
+**Why.** Rent bookings were created with no money involved at all. The app showed
+a total, the server computed the same total, wrote it to `Booking.totalAmount` —
+and nothing ever collected it. A platform that quotes a price it never charges is
+a noticeboard with extra steps.
+
+**The one failure this exists to prevent.** A farmer pays, and while they were
+paying somebody else took the slot. That cannot be made impossible: the money
+moves at the gateway, outside any database transaction. What IS impossible now is
+KEEPING it. The conflict is detected inside the same Serializable transaction
+that creates the Booking, and the loser's payment is refunded through
+`refundUnorderedPayment` — the same exactly-once claim AgriStore uses, so a
+retried confirm, the webhook and the reconciler cannot each issue a refund.
+
+**Decisions worth recording.**
+
+1. **Nothing is reserved at /initiate.** A cart holds STOCK, which is fungible,
+   so the shop reserves units for the payment window. A booking holds a SLOT,
+   which is indivisible and has no partial fulfilment — reserving one would need
+   a third booking state that blocks the calendar for everyone else while one
+   farmer's UPI app decides. Rent does the opposite: no hold, and the
+   availability check that binds is the one inside the confirm transaction.
+
+2. **The legacy unpaid `POST /rent/bookings` is untouched, deliberately.**
+   Installed APKs call it, and it is the fallback when the gateway is
+   unreachable. A booking made there stays `paymentStatus: 'UNPAID'` with
+   `advanceAmount` NULL — which is exactly what every booking was before this —
+   and a test pins that it still does.
+
+3. **The availability WINDOW is checked at /initiate only.** Refusing before a
+   rupee moves is free; refusing after costs a refund. The window is owner-set
+   and static during a checkout, and the residual case — a booking just outside a
+   window the owner narrowed two minutes ago — is one the owner can still reject.
+
+4. **The quote is frozen into `PaymentIntent.metadata`, and confirm re-prices
+   from the listing anyway.** The metadata is the record of WHAT was bought, not
+   of what it cost. Without it, confirm would have to take the listing and the
+   dates from the request body, and a farmer could pay for a one-day hire and
+   then confirm a ten-day one.
+
+5. **`hours` is stored and still not charged for.** The paid path must quote the
+   same figure as the legacy path and as the app's own display; charging for
+   hours now would make the three disagree. Whether an hourly rate should exist
+   is still a product question.
+
+6. **`reconcileRentPayments` is a separate PASS, in the same cron and the same
+   leader lock.** The shop reconciler's rule for a captured payment is "no
+   `Order` with this `paymentRef` -> refund it", and a rent payment never has an
+   `Order` — it has a `Booking`. Running rent through it would refund every
+   successful booking, silently, because by shop rules that is correct. It shares
+   the cron callback rather than adding a second entry so the two passes cannot
+   interleave against the gateway.
+
+**Files changed.**
+
+```
+backend/src/routes/rent.routes.js                 + 3 endpoints; legacy POST /rent/bookings untouched
+backend/src/server.js                             reconcileRentPayments wired into shop-payment-reconcile
+backend/src/services/rentPayment.service.js       (pre-existing) quote, conflict, bind, refund, webhook, reconcile
+backend/prisma/schema.prisma                      Booking + 4 columns, paymentIntentId UNIQUE
+backend/prisma/manual/booking_payment_fields_additive.sql
+backend/prisma/migrations/20260921140000_booking_payment_fields/
+backend/tests/backend/api/rentPayment.api.test.js (new, 22 tests)
+```
+
+**Tests run.**
+
+| Suite | Result |
+|---|---|
+| `api/rentPayment.api.test.js` (new) | 22 / 22 |
+| `api/aiCreditPurchase.api.test.js` | 22 / 22 |
+| `api/paymentPurposeScope.api.test.js` | 10 / 10 |
+| `api/shopPayment` + `orderRefund` + `orderRefundFailure` + `paymentAutoRefund` + `adminPaymentIntents` | 63 / 63, unchanged |
+| `unit` + `security` payment / refund / money / credit (8 suites) | 65 / 65, unchanged |
+| `api/rent` + `api/rentPrivacy` | 63 / 63, unchanged |
+| `load/booking-concurrency` + `security/referentialIntegrity` | 11 / 11, unchanged |
+
+The concurrency test is the one that matters: two farmers initiate on the same
+slot before either confirms (so neither advisory check fires), then both confirm
+simultaneously. Result is one 200 and one 409, **one** booking row, and
+**exactly one** refund — for the loser's payment id.
+
+**Before / after measurement.** No latency change on any existing path; nothing
+on the read path moved. The measurable change is behavioural: a rent booking
+could not be paid for at all, and now can, with zero paid-but-unbooked states
+reachable from the confirm path.
+
+**Known limitations.**
+
+- A confirm that loses three Serializable retries in a row returns 409
+  `SERIALIZATION_CONFLICT` without refunding — the payment is left for
+  `reconcileRentPayments`, which refunds it after the 30-minute window. Correct,
+  but slower than the direct path.
+- Partial advances (`rent.advancePct` < 100) are schema-supported and untested as
+  a product flow: the balance owed on handover has no collection path. The
+  setting is documented as "100 is the only value with a complete money story".
+- The refund path depends on `refundUnorderedPayment`'s shop-shaped `Order`
+  lookup being a guaranteed miss for rent payments. It is, but it is a coupling
+  worth remembering if that function ever changes.
+
+**Rollback.** Revert the three route handlers and the one `server.js` cron block.
+The four `bookings` columns can stay — unused columns cost nothing and leaving
+them makes a re-apply a no-op. Dropping them is only safe while no booking has
+been paid for: `SELECT count(*) FROM "bookings" WHERE "paymentIntentId" IS NOT NULL`.
+
+**Still owed by a human.** Apply
+`backend/prisma/manual/booking_payment_fields_additive.sql` to production
+**before** the code deploys (and `payment_intent_purpose_additive.sql` first, if
+it has not already landed). The other order makes every booking read fail with
+42703, including the existing unpaid flow that works today.
+
+---
+
+## PAY-004 — AI credit packs could be priced but not bought
+
+```
+ID:        PAY-004
+Feature:   AI credits
+Priority:  P1
+Status:    COMPLETE — verified
+```
+
+**What changed.** The code (`aiCreditPayment.service.js` + four `/ai/credits/...`
+routes + `aiCreditsWebhookHandler` registered against `PAYMENT_PURPOSE.AI_CREDITS`)
+was written by an earlier pass and had **never been executed against a database**.
+This item is the verification, plus the fixes that verification produced.
+
+**What verification found.** Ten of twenty-two tests failed on first execution,
+all from one cause, and it was in the test rather than the service: the suite
+captured its `before` balance while the `AICredit` row did not yet exist.
+`getOrCreateCredits` seeds a new row lazily with the free monthly grant (100 by
+default), so `before` read 0 and the post-purchase balance read
+`free_grant + pack_credits`. Every balance assertion was off by exactly the free
+grant, which presents as a double grant — the single most alarming shape a
+credits bug can take, and here it was a missing baseline. The row is now warmed
+through the app's own `GET /ai/credits` in `beforeEach`.
+
+**One pre-existing test also had to move.** `paymentPurposeScope.api.test.js`
+asserted that an unhandled purpose is IGNORED, using AI_CREDITS — which now HAS a
+handler. Repointed at `ANIMAL_TOKEN`, which is deliberately unhandled (PAY-005 is
+an open product decision), with a comment saying the next purpose to be
+implemented must move this block on again rather than delete it. The assertion
+was not loosened.
+
+**Files changed.** `backend/tests/backend/api/aiCreditPurchase.api.test.js`,
+`backend/tests/backend/api/paymentPurposeScope.api.test.js`. No service change
+was needed — the implementation held up under all 22 tests, including the four
+exactly-once orderings (webhook first, confirm first, simultaneous, redelivered).
+
+**Tests run.** 22 / 22 on `aiCreditPurchase`, 10 / 10 on `paymentPurposeScope`.
+
+**Known limitation.** `GET /ai/credits/purchase/status/:providerOrderId` and the
+purchase routes have no reconciler of their own. A capture whose confirm never
+arrives is granted by the webhook, which is sufficient today because credits need
+no slot and no stock — but there is no sweep for an intent stuck `CREATED` with a
+real capture behind it and no webhook delivery at all.
+
+**Rollback.** Revert the two test files; the service and routes are unchanged.
+
+---
+
+## PAY-001 — One payment core, not an AgriStore-shaped one
+
+```
+ID:        PAY-001
+Feature:   Payments (all product areas)
+Priority:  P0 — blocks PAY-002 and PAY-004 entirely
+Status:    COMPLETE — verified
+```
+
+**What changed.** `PaymentIntent` gained `purpose` / `refType` / `refId` /
+`metadata`; the purpose-agnostic half of `shopPayment.service.js` moved to a new
+`paymentIntent.service.js`; the webhook became a per-purpose dispatcher; the
+reconciler now sweeps only purposes it has rules for; the endpoint gained a
+neutral `/webhooks/razorpay` URL alongside the one Razorpay is configured with;
+and the admin queue can be filtered by product area.
+
+**Why it had to come first.** Every column that said what a payment was FOR
+named a shop concept — `cartHash`, `quoteSnapshot`, `orderId`. There was no
+discriminator, so a second product area could not raise a payment without either
+inheriting shop semantics or growing a second copy of signature verification,
+webhook idempotency and intent state. A second copy of any of those is a defect:
+the invariants are only invariants if there is one of them.
+
+**The trap this closed, which was the real reason for the ordering.**
+`reconcilePendingPayments` swept *every* non-terminal intent through one
+hard-coded path: look for an `Order` by `paymentRef`, find none, release stock
+reservations, refund the capture after 30 minutes. Ship rent payments before the
+discriminator and a farmer who takes eleven minutes over a UPI approval — normal
+on a village connection — is refunded for a booking they completed. Nothing in
+the logs would call it wrong, because by shop rules it is correct.
+
+**Decisions worth recording.**
+
+| Decision | Why |
+|---|---|
+| An unhandled purpose still marks the intent PAID | The handler is missing, not the payment. `CREATED` would leave a real capture traceable only by a webhook row; `PAID` with no fulfilment shows up in the admin orphan queue |
+| IGNORED returns 200, never 5xx | Razorpay retries a 5xx for 24 h, and every retry reaches the same missing handler. The answer will not change |
+| A missing intent is **not** an unknown purpose | `/orders/initiate` swallows a failed `createIntent` so telemetry cannot fail a checkout — but it has already taken the stock hold. Routing that to "no handler" would strand held stock nothing else releases |
+| `createIntent` throws when `amount` and `amountPaise` disagree | A row saying ₹49 while the gateway charged ₹499 is the worst shape a payments bug takes, and it is silent |
+| Both webhook URLs share one event inbox | Otherwise Razorpay retrying a capture against the other URL would be processed twice |
+| `TERMINAL` moved with `SETTLED`/`REFUNDING` despite having only one reader, which stayed | Splitting the trio would put half a state machine in each module. An adversarial review argued the opposite; this is the one of its three points that was rejected, and why |
+
+**Files.**
+
+```
+backend/prisma/schema.prisma                                     enum + 4 fields + 2 indexes
+backend/prisma/migrations/20260921120000_payment_intent_purpose/ new
+backend/prisma/manual/payment_intent_purpose_additive.sql        new — the one that reaches prod
+backend/src/services/paymentIntent.service.js                    new, 274 lines
+backend/src/services/shopPayment.service.js                      520 -> 442 lines
+backend/src/routes/paymentWebhooks.routes.js                     renamed from shopWebhooks.routes.js
+backend/src/app.js                                               two mounts, both above express.json
+backend/src/routes/admin/shopCompliance.routes.js                purpose filter + field
+admin/src/lib/paymentState.ts                                    PAYMENT_PURPOSES, purposeLabel
+admin/src/pages/PaymentIntents.tsx                               "For" column + filter
+backend/.env.example                                             RAZORPAY_WEBHOOK_SECRET documented
+ARCHITECTURE.md                                                  counts, fields, enum table, 11 stale refs
+```
+
+**Tests run.** 31 added across four files:
+
+```
+tests/backend/unit/paymentIntentCore.test.js         19  money guard, purpose validation,
+                                                         JS/Prisma enum drift, receipts, event ids
+tests/backend/api/paymentPurposeScope.api.test.js    10  reconciler guard, dispatcher, dual URL
+tests/backend/api/adminPaymentIntents.api.test.js     5  admin purpose filter
+```
+
+**Before / after.** This is a shape change, not a cost change: no measurable
+latency, query-count or payload difference, and that is the intended result. The
+deliverables are structural.
+
+```
+before   1 purpose, implicit and unnamed; reconciler swept everything by shop rules
+after    4 purposes declared, 1 implemented; reconciler sweeps only what it has rules for
+before   payment_intents: 4 indexes
+after    payment_intents: 6 indexes (+ purpose/status/createdAt, + refType/refId)
+```
+
+**Verification.**
+
+- `prisma validate` passes.
+- `prisma migrate diff` (read-only, DB vs schema): **zero drift** on
+  `payment_intents` — the hand-written prod SQL and `schema.prisma` agree
+  exactly, so a later `db push` is a no-op rather than a second index under a
+  different name.
+- The manual script was applied to two databases and run twice on one:
+  idempotent, and self-verifying inside its transaction.
+- Payment suites: **11 suites / 107 tests, all passing**, the 9 pre-existing
+  suites unchanged.
+- Full backend suite: **153 suites / 1780 tests, 0 failures** (4 suite-level
+  errors are `node --test` files under `src/__tests__/` that the project's own
+  `npm test` path filter excludes — see PERF-046, found by this run).
+- Admin `tsc --noEmit` and `vite build`: clean.
+- `paymentPurposeScope` was confirmed to **fail 2 of 4 with the reconciler guard
+  reverted** and pass with it restored, so it pins the property rather than
+  merely accompanying it. That matters here more than usual: the behaviour it
+  protects belongs to a feature that does not exist yet, so nothing else in the
+  suite would notice the filter being deleted as an unnecessary where clause.
+
+**Known limitations.**
+
+- `ANIMAL_TOKEN` is declared with no handler on purpose. PAY-005 is an open
+  product decision (escrow, disputes, refund policy on a live animal), so an
+  intent carrying it is refused rather than half-served.
+- The reconciler counts nothing for unswept purposes — it simply does not select
+  them. When PAY-002 lands, rent needs its own reconciliation rules, not a
+  widened filter.
+- Three defects were found in neighbouring code and deliberately **not** fixed
+  here: `addCredits` is non-transactional with no idempotency key,
+  `admin/finance.routes.js:90` does ledger money in JS floats into a
+  `Decimal(12,2)`, and `admin/orders.routes.js:133` sets order status with no
+  transaction and no transition guard. All three are recorded in FINDINGS.md
+  against the items that own them.
+
+**Owner action required before deploy.** Apply
+`backend/prisma/manual/payment_intent_purpose_additive.sql` to production
+FIRST, then deploy. Reversed, Prisma selects `purpose` against a table without
+it and every payment read fails with 42703. The deploy's `prisma db push` cannot
+do this — it would try to drop the FastAPI-owned tables and abort.
+
+**Rollback.** Revert the code. The four columns can stay: nothing outside this
+feature reads them, and leaving them makes a re-apply a no-op. Full DDL rollback
+is in the manual script's header, and is only safe before PAY-002 ships.
+
+---
+
 ## PERF-045 — PIN code lookup behind one cached, breaker-guarded endpoint
 
 ```

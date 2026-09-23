@@ -48,7 +48,7 @@ import { sanitizeSearch } from '../utils/sanitizeSearch.js';
 import { districtContainsAny, districtContainsAnySql } from '../utils/districtAliases.js';
 import prisma from '../config/db.js';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendServerError, paginationMeta, parsePageSize } from '../utils/response.js';
-import { D } from '../utils/money.js';
+import { D, toMinorUnits } from '../utils/money.js';
 import { geoPageIds, haversineKm } from '../utils/geo.js';
 import { Prisma } from '@prisma/client';
 import { stripHtml } from '../utils/encrypt.js';
@@ -63,6 +63,21 @@ import {
   toPublicMachinery, toPublicLabour, redactBookingContacts,
   daysBetweenInclusive, hasBookingRelationship,
 } from '../services/rentListing.service.js';
+// ── Booking payments (PAY-002) ───────────────────────────────────────────────
+// The gateway calls and the intent state machine are SHARED with AgriStore —
+// one signature verifier, one webhook inbox, one refund claim. Nothing below
+// reimplements any of them; rentPayment.service.js holds only what is specific
+// to pricing a slot and turning a captured payment into a Booking.
+import logger from '../utils/logger.js';
+import { createPaymentOrder, fetchPaymentOrder, verifyPaymentSignature } from '../services/payment.service.js';
+import {
+  PAYMENT_PURPOSE, createIntent, findIntent, markIntentPaid, markIntentFailed, receiptFor,
+} from '../services/paymentIntent.service.js';
+import { intentPublicStatus } from '../services/shopPayment.service.js';
+import {
+  RENT_REF_TYPE, advancePct, quoteRentBooking, findSlotConflict,
+  bindIntentToBookingTx, refundRentPayment, refundNotice,
+} from '../services/rentPayment.service.js';
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
 // Redis-backed and shared across instances, keyed on the authenticated user
@@ -1419,6 +1434,501 @@ router.post(
     }
   }
 );
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BOOKINGS — PAID PATH (PAY-002)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Three endpoints, and none of them replaces POST /rent/bookings above. That one
+// stays EXACTLY as it is: installed app builds call it, and it is the fallback
+// when the gateway is unreachable. A booking made there is simply UNPAID, which
+// is what every booking was until today.
+//
+//   POST /rent/bookings/initiate                  price the slot, raise a gateway order
+//   POST /rent/bookings/confirm                   verify, re-check, create the Booking
+//   GET  /rent/bookings/payment-status/:orderId   "did my payment go through?"
+//
+// NOTHING here reads an amount from the request body. The server prices the
+// booking from the listing and the date range, both times, and the second
+// computation is compared against what the gateway actually holds.
+//
+// ── Why nothing is reserved at /initiate ─────────────────────────────────────
+// A cart holds STOCK, and the shop reserves units for the payment window. A
+// booking holds a SLOT, which is indivisible and has no partial fulfilment, so
+// reserving one would mean inventing a third booking state that blocks the
+// calendar for everybody else while one farmer's UPI app decides. Rent instead
+// does the availability check that MATTERS inside the confirm transaction, under
+// Serializable isolation, in the same transaction that creates the Booking.
+//
+// That leaves exactly one bad case — the farmer pays and somebody else took the
+// slot meanwhile — and it cannot be designed away, because the money moves at
+// the gateway, outside any database transaction. What IS made impossible is
+// KEEPING that money: the conflict path refunds through the same exactly-once
+// claim AgriStore uses, and the farmer is told the truth.
+
+/** Both payment endpoints raise or settle real money — worth their own ceiling. */
+const bookingPayLimit = rateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  prefix: 'rent:booking:pay',
+  key: (req) => req.user?.id || clientIp(req),
+  message: 'Too many payment attempts. Please wait a few minutes and try again.',
+});
+
+/** Shape the listing names onto a booking for the app, as the legacy path does. */
+const BOOKING_PAYMENT_INCLUDE = {
+  machineryListing: { select: { name: true, ownerName: true, ownerPhone: true } },
+  labourListing:    { select: { name: true, phone: true } },
+};
+
+/**
+ * Validate the date half of both bodies and derive the billed day count.
+ * Returns `{ error, status }` or `{ start, end, days }` — never throws.
+ *
+ * `days` is DERIVED, never read from the request, for the reason the legacy
+ * endpoint records: a range of 1–30 January with `days: 1` blocked the machine
+ * for a month and charged for a day.
+ */
+function parseBookingWindow({ startDate, endDate }) {
+  const start = new Date(startDate);
+  const end   = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { error: 'startDate and endDate must be valid dates', status: 400 };
+  }
+  if (end < start) return { error: 'endDate must be after startDate', status: 400 };
+  const days = daysBetweenInclusive(start, end);
+  if (days > 365) return { error: 'A booking cannot be longer than a year', status: 400 };
+  return { start, end, days };
+}
+
+/**
+ * The quote frozen into `PaymentIntent.metadata` at /initiate and read back at
+ * /confirm.
+ *
+ * It is NOT trusted as a price — confirm re-derives the price from the listing —
+ * it is the record of WHAT was bought. Without it, confirm would have to take the
+ * listing and the dates from the request body, and a farmer could pay for a
+ * ₹500 one-day hire and then confirm a ten-day one.
+ */
+function bookingIntentMetadata({ type, listingId, start, end, quote, hours, workerCount, notes }) {
+  return {
+    type,
+    listingId,
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    days: quote.days,
+    hours: hours != null ? parseInt(hours, 10) : null,
+    workerCount: workerCount != null ? parseInt(workerCount, 10) : 1,
+    rate: quote.rate,
+    total: quote.total,
+    advancePct: quote.advancePct,
+    payable: quote.payable,
+    notes: notes ? String(notes).trim().slice(0, 1000) : null,
+  };
+}
+
+/** What the app renders on the checkout sheet. Never includes the listing row. */
+const publicQuote = (q) => ({
+  days: q.days, rate: q.rate, total: q.total, advancePct: q.advancePct, payable: q.payable,
+});
+
+// ── Payment: initiate ────────────────────────────────────────────────────────
+router.post(
+  '/bookings/initiate',
+  authenticate,
+  bookingPayLimit,
+  idempotency('rent_payment_initiate'),
+  [
+    body('listingId').notEmpty().isString().isLength({ max: 64 }),
+    body('type').isIn(['machinery', 'labour']).withMessage("type must be 'machinery' or 'labour'"),
+    body('startDate').isISO8601().withMessage('startDate must be a valid date'),
+    body('endDate').isISO8601().withMessage('endDate must be a valid date'),
+    body('hours').optional().isInt({ min: 1, max: 24 }),
+    body('workerCount').optional().isInt({ min: 1, max: 500 }),
+    body('notes').optional().trim().isLength({ max: 1000 }),
+    // Accepted and IGNORED. A client may still send a figure it computed;
+    // validating the field stops a 400 on something that has no effect, and
+    // nothing below ever reads it. The server prices the booking.
+    body('totalAmount').optional().isFloat({ min: 0 }),
+    body('amount').optional().isFloat({ min: 0 }),
+  ],
+  validate,
+  async (req, res) => {
+    const { listingId, type, startDate, endDate, hours, workerCount, notes } = req.body;
+
+    const window = parseBookingWindow({ startDate, endDate });
+    if (window.error) return sendError(res, window.error, window.status);
+    const { start, end, days } = window;
+
+    try {
+      const pct = await advancePct();
+      const quote = await quoteRentBooking(prisma, {
+        userId: req.user.id, listingId, type, start, end, days, workerCount, pct,
+      });
+
+      // Checked HERE and not in /confirm on purpose. Refusing before a rupee has
+      // moved is free; refusing after costs a refund. The window is owner-set and
+      // effectively static during a checkout, so the exposure of not re-checking
+      // it post-payment is a booking slightly outside a window the owner narrowed
+      // in the last two minutes — which the owner can still reject. Taking money
+      // and handing it straight back would be the worse trade.
+      if (!withinAvailability(startDate, endDate, quote.listing.availableFrom, quote.listing.availableTo)) {
+        return sendError(res, "Selected dates are outside this listing's availability window", 400);
+      }
+
+      // Advisory only. The BINDING check is the one inside the confirm
+      // transaction; this one exists so an obviously-taken slot is refused before
+      // the farmer ever opens a payment sheet.
+      const conflict = await findSlotConflict(prisma, { type, listingId, start, end });
+      if (conflict) {
+        return sendError(
+          res,
+          type === 'machinery'
+            ? 'Machinery is already booked for these dates'
+            : 'Worker is already booked for these dates',
+          409,
+          { code: 'SLOT_TAKEN' },
+        );
+      }
+
+      // Unique per attempt. /confirm compares it against the gateway order, which
+      // is what binds a signed payment to THIS booking rather than to any earlier
+      // payment the same farmer made.
+      const receipt = receiptFor(req.user.id);
+      const razorpayOrder = await createPaymentOrder(quote.payablePaise, 'INR', receipt);
+
+      // Recorded BEFORE the id reaches the app: if the phone dies on the next
+      // screen, this row is what the webhook and the reconciler converge on.
+      //
+      // Unlike a shop checkout, a rent intent that was never recorded cannot be
+      // reconstructed afterwards — there is no cart to re-price and no quote
+      // anywhere else — so a failure here ends the attempt rather than being
+      // merely logged. Nothing has been charged at this point.
+      try {
+        await createIntent({
+          userId: req.user.id,
+          providerOrderId: razorpayOrder.id,
+          purpose: PAYMENT_PURPOSE.RENT_BOOKING,
+          refType: RENT_REF_TYPE,
+          refId: null,           // filled in by /confirm, once the Booking exists
+          amount: quote.payable,
+          receipt,
+          metadata: bookingIntentMetadata({ type, listingId, start, end, quote, hours, workerCount, notes }),
+        });
+      } catch (err) {
+        logger.error({ err, providerOrderId: razorpayOrder.id }, '[RentPayment] failed to record payment intent');
+        return sendError(res, 'Could not start the payment. Please try again.', 503);
+      }
+
+      return sendSuccess(res, {
+        razorpayOrderId: razorpayOrder.id,
+        // `amount` is the rupee figure older clients render directly;
+        // `amountInPaise` is what the checkout sheet is actually opened with.
+        amount: quote.payable,
+        amountInPaise: quote.payablePaise,
+        currency: 'INR',
+        receipt,
+        quote: publicQuote(quote),
+        mock: razorpayOrder.mock || false,
+      });
+    } catch (err) {
+      return sendServerError(res, err, 'Payment initiation failed. Please try again.');
+    }
+  },
+);
+
+// ── Payment: confirm ─────────────────────────────────────────────────────────
+/**
+ * The app reporting a completed checkout. This is where the Booking is born.
+ *
+ * Order of operations, and why it is this order:
+ *
+ *   1. verify the HMAC              cheapest refusal; a forged pair must never
+ *                                   reach a database write
+ *   2. load the intent              object-level authorization — a signature
+ *                                   proves Razorpay signed the pair, NOT that
+ *                                   the pair belongs to this farmer
+ *   3. already bound?               the webhook or an earlier attempt may have
+ *                                   got here first; return that booking
+ *   4. fetch the gateway order      a network call, so OUTSIDE the transaction
+ *   5. ── Serializable transaction ──
+ *        re-check the slot is free
+ *        re-price from the listing, refuse if the payable moved
+ *        bind amount_paid to the recomputed total
+ *        create the Booking
+ *        link intent -> booking, ORDER_CREATED
+ *
+ * Steps 1 and 4 cannot live inside the transaction — an HMAC is pure and a
+ * gateway round-trip would hold a Serializable transaction open across the
+ * network. Everything whose atomicity actually matters is inside it, which is
+ * the same split AgriStore's /orders/confirm uses.
+ */
+router.post(
+  '/bookings/confirm',
+  authenticate,
+  bookingPayLimit,
+  idempotency('rent_payment_confirm'),
+  [
+    body('razorpayOrderId').notEmpty().isString().isLength({ max: 64 }),
+    body('razorpayPaymentId').notEmpty().isString().isLength({ max: 64 }),
+    body('razorpaySignature').notEmpty().isString().isLength({ max: 128 }),
+  ],
+  validate,
+  async (req, res) => {
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+
+    if (!verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+      return sendError(res, 'Payment verification failed — signature mismatch', 400);
+    }
+
+    // The intent is BOTH the authorization check and the record of what was
+    // bought. No intent, someone else's intent, or an intent for a different
+    // product area are all reported identically, so a valid signature cannot be
+    // used to probe other farmers' payments.
+    const intent = await findIntent(razorpayOrderId);
+    if (!intent
+      || intent.userId !== req.user.id
+      || intent.purpose !== PAYMENT_PURPOSE.RENT_BOOKING) {
+      return sendError(res, 'Payment verification failed', 400);
+    }
+
+    // Already became a booking — a retried confirm, or the webhook's late bind.
+    // Returning it is the correct answer, not an error: the farmer paid and has
+    // their slot. `paymentIntentId` is UNIQUE, so this can match at most one.
+    const already = await prisma.booking.findUnique({
+      where: { paymentIntentId: intent.id },
+      include: BOOKING_PAYMENT_INCLUDE,
+    });
+    if (already) return sendSuccess(res, { booking: already, paymentStatus: already.paymentStatus });
+
+    const meta = intent.metadata || {};
+    const type = meta.type === 'labour' ? 'labour' : 'machinery';
+    const listingId = meta.listingId;
+    const start = meta.startDate ? new Date(meta.startDate) : null;
+    const end   = meta.endDate   ? new Date(meta.endDate)   : null;
+
+    // An intent with no usable metadata cannot be turned into a booking at all —
+    // there is nothing to say which listing or which dates. The money is real, so
+    // this is a refund, not a 500.
+    if (!listingId || !start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      await markIntentPaid({ providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId }).catch(() => {});
+      const refund = await refundRentPayment({
+        providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId,
+        reason: 'rent intent has no booking metadata', actorId: req.user.id, requestId: req.id,
+      });
+      logger.error({ intentId: intent.id }, '[RentPayment] confirm: intent carries no booking metadata');
+      return sendError(res, `Your payment went through, but we could not read the booking it was for. ${refundNotice(refund)}`, 409,
+        { refunded: refund.ok, paymentCaptured: true, providerOrderId: razorpayOrderId, code: 'INTENT_INCOMPLETE' });
+    }
+
+    const days = daysBetweenInclusive(start, end);
+
+    try {
+      const paymentOrder = await fetchPaymentOrder(razorpayOrderId);
+      const pct = Number.isFinite(Number(meta.advancePct)) ? Number(meta.advancePct) : await advancePct();
+
+      const booking = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+        // THE CHECK THAT MATTERS. Inside Serializable isolation, in the same
+        // transaction as the create below — two farmers confirming the same slot
+        // both read "free", both insert, and Postgres aborts one with 40001.
+        // withSerializableRetry replays it, the replay sees the winner's booking,
+        // and the loser lands on the refund path below rather than double-booking.
+        const conflict = await findSlotConflict(tx, { type, listingId, start, end });
+        if (conflict) {
+          throw Object.assign(
+            new Error(type === 'machinery'
+              ? 'Machinery is already booked for these dates'
+              : 'Worker is already booked for these dates'),
+            { statusCode: 409, expose: true, code: 'SLOT_TAKEN', paidConflict: true },
+          );
+        }
+
+        // Re-priced from the listing, not read back from the intent. If the owner
+        // changed the daily rate while the farmer was paying, the booking must not
+        // be created at a price nobody agreed to — in either direction.
+        const quote = await quoteRentBooking(tx, {
+          userId: req.user.id, listingId, type, start, end, days,
+          workerCount: meta.workerCount, pct,
+        });
+
+        if (quote.payablePaise !== Number(intent.amountPaise)) {
+          throw Object.assign(
+            new Error('The price of this listing changed while you were paying, so no booking was made.'),
+            { statusCode: 409, expose: true, code: 'PRICE_CHANGED', paidConflict: true },
+          );
+        }
+
+        // Bind the money to the recomputed total. In mock mode there is no real
+        // gateway order to compare against, so the intent's own paise figure —
+        // itself server-computed — is the only authority, and it was checked
+        // immediately above.
+        if (!paymentOrder.mock) {
+          if (intent.receipt && paymentOrder.receipt !== intent.receipt) {
+            throw Object.assign(
+              new Error('This payment does not match your booking.'),
+              { statusCode: 400, expose: true },
+            );
+          }
+          if (quote.payablePaise !== Number(paymentOrder.amount)) {
+            throw Object.assign(
+              new Error('Paid amount does not match the booking total. No booking was created.'),
+              { statusCode: 400, expose: true },
+            );
+          }
+        }
+
+        const created = await tx.booking.create({
+          data: {
+            userId:             req.user.id,
+            machineryListingId: type === 'machinery' ? listingId : null,
+            labourListingId:    type === 'labour'    ? listingId : null,
+            startDate:          start,
+            endDate:            end,
+            days,
+            hours:              meta.hours != null ? parseInt(meta.hours, 10) : null,
+            workerCount:        meta.workerCount != null ? parseInt(meta.workerCount, 10) : 1,
+            totalAmount:        quote.total,
+            advanceAmount:      quote.payable,
+            paidAmount:         quote.payable,
+            paymentIntentId:    intent.id,
+            paymentStatus:      'PAID',
+            notes:              meta.notes || null,
+            status:             'PENDING',
+          },
+          include: BOOKING_PAYMENT_INCLUDE,
+        });
+
+        // Bound in THIS transaction, under the intent's row lock. A payment the
+        // reconciler has already begun refunding is refused here, so one payment
+        // can never be both refunded and turned into a booking.
+        await bindIntentToBookingTx(tx, { intentId: intent.id, bookingId: created.id });
+
+        return created;
+      }, { isolationLevel: 'Serializable' }));
+
+      // Outside the transaction: the intent is already ORDER_CREATED, and this
+      // only fills in providerPaymentId for the ops surface and the reconciler.
+      // `markIntentPaid` never regresses a settled state, so it is a no-op on
+      // status and safe to call after the bind.
+      await prisma.paymentIntent.updateMany({
+        where: { id: intent.id, providerPaymentId: null },
+        data: { providerPaymentId: razorpayPaymentId },
+      }).catch(() => {});
+
+      // Notify the listing owner (fire-and-forget, as the legacy path does).
+      const listingName = booking.machineryListing?.name || booking.labourListing?.name || 'your listing';
+      (type === 'machinery'
+        ? prisma.machineryListing.findUnique({ where: { id: listingId }, select: { ownerId: true } })
+        : prisma.labourListing.findUnique({ where: { id: listingId }, select: { providerId: true } })
+      ).then(async (rec) => {
+        const ownerId = rec?.ownerId || rec?.providerId;
+        if (!ownerId || ownerId === req.user.id) return;
+        await prisma.notification.create({
+          data: {
+            userId: ownerId,
+            type:   'BOOKING_UPDATE',
+            title:  'New Paid Booking',
+            body:   `Someone has paid to rent "${listingName}" — tap to review the request.`,
+            data:   { bookingId: booking.id },
+          },
+        });
+      }).catch(() => {});
+
+      return sendSuccess(res, { booking, paymentStatus: 'PAID' });
+    } catch (err) {
+      // The unique on paymentIntentId fired: this payment already produced a
+      // booking, in a concurrent request. Return the winner rather than an error.
+      if (err?.code === 'P2002') {
+        const existing = await prisma.booking.findUnique({
+          where: { paymentIntentId: intent.id },
+          include: BOOKING_PAYMENT_INCLUDE,
+        }).catch(() => null);
+        if (existing) return sendSuccess(res, { booking: existing, paymentStatus: existing.paymentStatus });
+      }
+
+      // ── Paid, but no booking ────────────────────────────────────────────────
+      // The slot went while the farmer was paying, or the price moved. The money
+      // is already at the gateway and there is nothing to keep it for, so it goes
+      // back — through the same exactly-once claim the shop uses, so a retried
+      // confirm, the webhook and the reconciler cannot each issue a refund.
+      if (err?.paidConflict) {
+        await markIntentPaid({ providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId }).catch(() => {});
+        const refund = await refundRentPayment({
+          providerOrderId: razorpayOrderId, providerPaymentId: razorpayPaymentId,
+          reason: err.code === 'PRICE_CHANGED'
+            ? 'listing price changed between payment and confirmation'
+            : 'slot taken between payment and confirmation',
+          actorId: req.user.id, requestId: req.id,
+        });
+        return sendError(res, `${err.message} ${refundNotice(refund)}`, 409, {
+          refunded: refund.ok,
+          paymentCaptured: true,
+          providerOrderId: razorpayOrderId,
+          code: err.code || 'SLOT_TAKEN',
+        });
+      }
+
+      // A refund claimed the intent first (bindIntentToBookingTx). Nothing was
+      // created and nothing more is owed — the money is already on its way back.
+      if (err?.code === 'PAYMENT_REFUNDED') {
+        return sendError(res, err.message, 409, { refunded: true, code: 'PAYMENT_REFUNDED' });
+      }
+
+      return sendServerError(res, err, 'Booking confirmation failed. Please try again.');
+    }
+  },
+);
+
+// ── Payment: status ──────────────────────────────────────────────────────────
+/**
+ * "Did my payment go through?"
+ *
+ * The app calls this after any interrupted payment instead of guessing. Without
+ * it, a farmer whose connection dropped between paying and confirming sees a
+ * generic failure and pays again — the single worst outcome this module can
+ * produce.
+ */
+router.get('/bookings/payment-status/:providerOrderId', authenticate, async (req, res) => {
+  const { providerOrderId } = req.params;
+  if (typeof providerOrderId !== 'string' || !providerOrderId || providerOrderId.length > 64) {
+    return sendError(res, 'Invalid payment reference', 400);
+  }
+
+  const intent = await findIntent(providerOrderId);
+  // Object-level authorization. A gateway order id is guessable enough that it
+  // must not reveal another farmer's payment state, and a shop intent must not
+  // be readable through the rent surface — both are reported as "not found".
+  if (!intent
+    || intent.userId !== req.user.id
+    || intent.purpose !== PAYMENT_PURPOSE.RENT_BOOKING) {
+    return sendNotFound(res, 'Payment');
+  }
+
+  // `orderId` is an AgriStore concept and is always null here — dropped rather
+  // than sent as a permanently-null field the app might come to depend on.
+  const { orderId: _shopOnly, state, ...rest } = intentPublicStatus(intent);
+
+  const booking = await prisma.booking.findUnique({
+    where: { paymentIntentId: intent.id },
+    include: BOOKING_PAYMENT_INCLUDE,
+  }).catch(() => null);
+
+  return sendSuccess(res, {
+    ...rest,
+    // `state` is kept alongside for parity with the AgriStore payment-status
+    // response; `status` is this endpoint's documented field.
+    state,
+    status: state,
+    // "the money is with us and has not been sent back" — the question the app
+    // actually needs answered before it decides whether to offer paying again.
+    paid: intent.status === 'PAID' || intent.status === 'ORDER_CREATED',
+    // Two decimals, as a string — the same shape /initiate returns for `amount`,
+    // so the app renders one figure one way. `String(intent.amount)` would give
+    // "7500" here and "7500.00" there for the same payment.
+    amount: D(intent.amount).toFixed(2),
+    booking,
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOOKINGS — detail

@@ -25,7 +25,7 @@ import {
   fetchCartQuote, fetchPaymentConfig, fetchPaymentStatus, initiatePayment, confirmPayment,
   classifyError, paymentStatusNotice, confirmFailureNotice, inr, thumbUrl,
 } from './shopClient';
-import RazorpayCheckout from './RazorpayCheckout';
+import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 
 /**
  * A fresh idempotency key per order ATTEMPT.

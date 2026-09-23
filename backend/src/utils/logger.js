@@ -131,6 +131,68 @@ const logger = {
   },
 };
 
+// ── Throttled warnings ────────────────────────────────────────────────────────
+// Reconnecting clients (Redis subscribers, BullMQ queue/worker connections) emit
+// an 'error' on EVERY retry attempt. With the backoff capped at 5s that is one
+// warning per client every 5 seconds for the whole outage — four clients turned a
+// stopped local Redis into a continuous wall of identical ECONNREFUSED lines that
+// buries the request log. The signal ("this client can't reach Redis") is the same
+// every time; only the first occurrence carries information. config/redis.js
+// already de-dups its own [ALERT] this way — these clients did not.
+//
+// warnThrottled logs the FIRST occurrence of a key immediately, suppresses repeats
+// for WARN_THROTTLE_MS, then logs again with a count of what was suppressed, so a
+// sustained outage stays visible (and quantified) without flooding.
+const WARN_THROTTLE_MS = 60_000;
+// Keys are call-site tags plus an error code — a small constant set. The cap is a
+// belt-and-braces bound so a caller keying by unbounded input can't leak memory.
+const WARN_THROTTLE_MAX_KEYS = 200;
+const _warnState = new Map(); // key -> { last: epochMs, suppressed: number }
+
+/** Clear throttle state. Exported for tests. */
+export function resetWarnThrottle() {
+  _warnState.clear();
+}
+
+/**
+ * logger.warn, de-duplicated per `key` over a 60s window.
+ *
+ * @param {string} key  throttle bucket; include the error code so a DIFFERENT
+ *                      failure still surfaces immediately (e.g. `queue:ECONNREFUSED`).
+ * @param {...any} args exactly what you would pass to logger.warn.
+ * @returns {boolean} true if the line was emitted, false if suppressed.
+ */
+export function warnThrottled(key, ...args) {
+  const now = Date.now();
+  const entry = _warnState.get(key);
+
+  if (entry && now - entry.last < WARN_THROTTLE_MS) {
+    entry.suppressed += 1;
+    return false;
+  }
+
+  // New key while at capacity: drop the whole table rather than grow unbounded.
+  // Losing throttle state only costs one extra log line per key.
+  if (!entry && _warnState.size >= WARN_THROTTLE_MAX_KEYS) _warnState.clear();
+
+  const suppressed = entry ? entry.suppressed : 0;
+  _warnState.set(key, { last: now, suppressed: 0 });
+
+  // Append the suppressed count to the printf format string so it reads as one
+  // line. Only valid for the string-first shape; object-first calls log as-is.
+  if (suppressed > 0 && typeof args[0] === 'string') {
+    logger.warn(
+      `${args[0]} (+%d suppressed in the last %ds)`,
+      ...args.slice(1),
+      suppressed,
+      Math.round(WARN_THROTTLE_MS / 1000),
+    );
+  } else {
+    logger.warn(...args);
+  }
+  return true;
+}
+
 /**
  * Text for an error in a log line. Connection failures from ioredis on a
  * dual-stack host (localhost → ::1 and 127.0.0.1) arrive as an AggregateError

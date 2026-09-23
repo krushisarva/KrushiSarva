@@ -21,12 +21,23 @@ export function serializeDecimals(value) {
   if (value === null || typeof value !== 'object') return value;
   if (Prisma.Decimal.isDecimal(value)) return value.toNumber();
   if (value instanceof Date || Buffer.isBuffer(value)) return value;
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) value[i] = serializeDecimals(value[i]);
-    return value;
-  }
-  for (const k of Object.keys(value)) value[k] = serializeDecimals(value[k]);
-  return value;
+  // Copies rather than assigning in place. It used to mutate, which worked
+  // until a module returned a FROZEN constant: `CREDIT_PACKS` is
+  // Object.freeze'd precisely so nothing can rewrite a price, and this walk
+  // then threw "Cannot assign to read only property 'id'" — a 500 on
+  // GET /ai/credits, from a serializer, for a payload containing no Decimal at
+  // all. Every module is now free to return a shared or frozen constant, which
+  // is what a read path should be returning.
+  //
+  // The mutation was a latent bug beyond that one crash: this runs on the
+  // caller's own object, so it also rewrote cached values and Prisma results
+  // that the caller still held a reference to. The copy costs one object per
+  // node on a payload that is about to be JSON.stringify'd anyway.
+  if (Array.isArray(value)) return value.map(serializeDecimals);
+
+  const out = {};
+  for (const k of Object.keys(value)) out[k] = serializeDecimals(value[k]);
+  return out;
 }
 
 /**

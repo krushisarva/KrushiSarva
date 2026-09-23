@@ -120,7 +120,7 @@ There is **no clustering** in either service; horizontal scale is instance-level
 | Fact | Value |
 |---|---|
 | Prisma models | **90** |
-| Prisma enums | **43** |
+| Prisma enums | **44** |
 | `@@index` declarations | **282** |
 | Composite `@@unique` | **25** (28 occurrences, 3 of them inside comments) |
 | Field-level `@unique` | **22** |
@@ -396,7 +396,7 @@ sequence diagram in §3.2.2 shows the three-channel race; this shows what each l
 | 5 | Stock hold | `services/stockReservation.service.js` inside a Serializable tx | `holdStock`: decrement `seller_listings.stockQty`, write `HELD` rows with `expiresAt`. Failure ⇒ `markIntentFailed` + 409 "an item just sold out" — **nothing is charged**, the gateway order is orphaned. |
 | 6 | Payment | Razorpay sheet | Out of our process entirely. Everything after this point is a race. |
 | 7 | **Terminator A — client confirm** | `agristore.routes.js` `/orders/confirm` | `verifyPaymentSignature` (regex-guarded before `timingSafeEqual`, so a malformed signature returns false rather than throwing) → object-level authz (`intent.userId === req.user.id`) → Serializable tx: revalidate cart against the quote, `order.create({ paymentRef, paymentStatus:'paid' })`, `consumeReservations` (`HELD → CONSUMED`, guarded on `status:'HELD'`), clear the cart. |
-| 8 | **Terminator B — webhook** | `shopWebhooks.routes.js` | HMAC over the **raw bytes** (`app.js` raw parser at app level — re-serialised JSON does not reproduce what was signed), **fails closed** with no `RAZORPAY_WEBHOOK_SECRET`, claims `eventId` (`@unique`) **before** doing any work. It calls `markIntentPaid` and **never creates an order**: the cart may have changed, stock may have sold, and there is no delivery address in the payload. |
+| 8 | **Terminator B — webhook** | `paymentWebhooks.routes.js` (per-purpose dispatcher since PAY-001; `intent.purpose` selects the handler, an unregistered purpose is IGNORED with 200) | HMAC over the **raw bytes** (`app.js` raw parser at app level — re-serialised JSON does not reproduce what was signed), **fails closed** with no `RAZORPAY_WEBHOOK_SECRET`, claims `eventId` (`@unique`) **before** doing any work. It calls `markIntentPaid` and **never creates an order**: the cart may have changed, stock may have sold, and there is no delivery address in the payload. |
 | 9 | **Terminator C — reconciler** | `shopPayment.service.js:230-275`, cron every 10 min, leader-locked | Sweeps `CREATED`/`PENDING`/`PAID` intents, asks Razorpay for the truth, and applies `markIntentPaid` / `attachOrderToIntent` / `markIntentFailed` / `EXPIRED` (no payment attempt + older than `INTENT_EXPIRY_MINUTES = 30`). It is also what repairs the `ORDER_CREATED → PAID` regression a redelivered webhook can cause. |
 | 10 | Convergence | `orders.paymentRef @unique`, `payment_intents.orderId @unique` | The **database**, not application code, serialises the three terminators. Every loser gets `P2002` and returns the winner's order at **200**, not an error. |
 | 11 | Abandonment | `shop-reservation-sweep` cron, every 2 min, leader-locked | `HELD` rows past `expiresAt` become `EXPIRED` and the units return to `stockQty`. A buyer who closes the sheet costs the seller at most one sweep interval of stock. |
@@ -1078,11 +1078,11 @@ Pagination helpers live here too: `parsePageSize(raw, def=50, max=100)` and `par
 > **Canonical home for**: every Prisma model, field, relation, enum, index and unique constraint; the schema-management policy (`db push`, manual SQL, the FastAPI-owned tables); DB-enforced vs application-only invariants; growth/retention analysis; and the encryption-at-rest / masking / erasure inventory.
 > **Defers to**: Part 3.2 for how stock and money invariants are *used* at checkout; Part 7 for the deploy mechanics of `db push`; Part 4 for what FastAPI writes.
 >
-> Two numbers are re-verified here and correct the figure quoted elsewhere: the schema holds **90 models and 43 enums** in 3,192 lines (Part 4's "~60 models" is stale), and `mandi_prices` is a **Prisma-owned** table (`MandiPrice`, `schema.prisma:1575`) with zero references anywhere under `fastapi/` — the `admin_v2_additive.sql` comment that lists it as FastAPI-owned is inaccurate. See [Appendix A](#appendix-a--known-inconsistencies).
+> Two numbers are re-verified here and correct the figure quoted elsewhere: the schema holds **90 models and 44 enums** in 3,287 lines (Part 4's "~60 models" is stale), and `mandi_prices` is a **Prisma-owned** table (`MandiPrice`, `schema.prisma:1575`) with zero references anywhere under `fastapi/` — the `admin_v2_additive.sql` comment that lists it as FastAPI-owned is inaccurate. See [Appendix A](#appendix-a--known-inconsistencies).
 
 ### Data Model
 
-Single source of truth: `backend/prisma/schema.prisma` — 3192 lines, **90 models, 43 enums**, all in one file, one datasource, one generator. Everything below was read from that file plus `backend/src/config/db.js`, `backend/package.json`, `backend/prisma/migrations/`, `backend/prisma/manual/`, `backend/prisma/seed*.js`, `backend/src/constants/retention.js`, `backend/src/constants/pii.js`, `backend/src/services/retention.service.js`, `backend/src/services/keyRotation.service.js`, `backend/src/services/erasure.service.js`, `backend/src/utils/encrypt.js`, `backend/src/utils/mask.js`, `backend/src/utils/adminPii.js`, `backend/src/server.js` and `fastapi/persistence/diagnosis_repo.py`.
+Single source of truth: `backend/prisma/schema.prisma` — 3287 lines, **90 models, 44 enums**, all in one file, one datasource, one generator. Everything below was read from that file plus `backend/src/config/db.js`, `backend/package.json`, `backend/prisma/migrations/`, `backend/prisma/manual/`, `backend/prisma/seed*.js`, `backend/src/constants/retention.js`, `backend/src/constants/pii.js`, `backend/src/services/retention.service.js`, `backend/src/services/keyRotation.service.js`, `backend/src/services/erasure.service.js`, `backend/src/utils/encrypt.js`, `backend/src/utils/mask.js`, `backend/src/utils/adminPii.js`, `backend/src/server.js` and `fastapi/persistence/diagnosis_repo.py`.
 
 #### Engine, provider and connection setup
 
@@ -1116,7 +1116,7 @@ Single source of truth: `backend/prisma/schema.prisma` — 3192 lines, **90 mode
 | `postinstall` | `prisma generate` | `backend/package.json` |
 | `setup` | `npm install && npm run db:push && npm run db:seed:all` | `backend/package.json` |
 
-`backend/prisma/migrations/` holds **13 migration folders** and `migration_lock.toml` (`provider = "postgresql"`):
+`backend/prisma/migrations/` holds **15 migration folders** and `migration_lock.toml` (`provider = "postgresql"`):
 
 | Migration | Size | What it does |
 |---|---|---|
@@ -1133,6 +1133,8 @@ Single source of truth: `backend/prisma/schema.prisma` — 3192 lines, **90 mode
 | `20260610160000_content_flags` | 31 | `ModerationStatus` enum + `content_flags` table |
 | `20260616120000_user_email` | 11 | `users.email` + unique index |
 | `20260616130000_seller_licence` | 14 | Kendra licence columns on `seller_profiles` |
+| `20260920120000_order_item_batch_quantity` | 1 | `order_items.batchQuantity` — what the lot ledger actually gave up, so a cancel returns what was taken |
+| `20260921120000_payment_intent_purpose` | 6 | **PAY-001.** `PaymentPurpose` enum + `payment_intents.purpose/refType/refId/metadata` + 2 indexes |
 
 **The migration history is incomplete relative to `schema.prisma`.** Large blocks of the current schema (the whole catalog split — `product_variants`, `seller_listings`; the payments/compliance block — `payment_intents`, `payment_webhook_events`, `seller_licences`, `product_compliance`, `product_batches`, `product_recalls`, `sale_blocks`, `seller_service_areas`, `stock_reservations`; the admin v2 block) have **no migration folder**. They exist only as `schema.prisma` models plus hand-written SQL in `backend/prisma/manual/`:
 
@@ -1142,7 +1144,9 @@ Single source of truth: `backend/prisma/schema.prisma` — 3192 lines, **90 mode
 | `catalog_split_1_expand.sql` (22851 B) | EXPAND phase of the catalog/offer split |
 | `catalog_split_2_backfill.sql` (22977 B) | Backfill + verify queries |
 | `catalog_split_3_contract.sql` (6113 B) | **The only destructive file.** Drops the offer columns from `products`; its header enumerates the exact `schema.prisma` edits that must ship in the same deploy or `db push` re-adds the columns empty |
-| `seller_licence_additive.sql`, `user_email_additive.sql` | Prod-apply variants of the two matching migrations |
+| `seller_licence_additive.sql`, `user_email_additive.sql`, `order_item_batch_quantity_additive.sql` | Prod-apply variants of the matching migrations |
+| `read_path_indexes.sql` | PERF-015 read-path composite indexes |
+| `payment_intent_purpose_additive.sql` (PAY-001) | Prod-apply variant of `20260921120000`. Self-verifying: creates the enum outside the transaction (a new enum value cannot be used in the transaction that adds it), refuses a pre-existing `purpose` column of the wrong type, sets `lock_timeout` because `payment_intents` is on the checkout path, and re-reads the catalog before COMMIT so a partial apply rolls back rather than reporting success |
 
 The stated reason for the whole arrangement, verbatim from `admin_v2_additive.sql:3-9` and `user_email_additive.sql:3-8`: `prisma db push` makes the DB match `schema.prisma` **exactly**, so it tries to DROP the FastAPI-owned tables (`ai_scan_diagnoses`, its feedback table). Once those hold data, `db push` aborts with a data-loss error and **none** of the schema applies. Both files carry the instruction **"NEVER add `--accept-data-loss` to the deploy"**, because that would let `db push` drop the FastAPI tables.
 
@@ -1336,9 +1340,10 @@ This domain is mid-migration. The **catalog split** separates *catalog identity*
 
 ##### Domain 3 — Payments & finance (4 models)
 
-**`PaymentIntent` → `payment_intents`** (2786-2819) — one attempt to take money, recorded **before** the gateway is called.
+**`PaymentIntent` → `payment_intents`** (2834-2890) — one attempt to take money, recorded **before** the gateway is called. Since PAY-001 it serves **every** product area, not only AgriStore.
 - Why: `/orders/initiate` used to create a Razorpay order and write nothing locally, then `/orders/confirm` created the `Order`. If the app died between the two — the exact thing that happens on a village connection — the money was captured and no record of it existed anywhere; nothing could reconcile it because nothing knew a payment had started.
 - Fields: `provider String @default("razorpay")`; `providerOrderId String @unique` (so a webhook and a client confirm converge on one row instead of racing to create two); `providerPaymentId String? @unique`; `amount Decimal @db.Decimal(12,2)` + `amountPaise Int`; `currency String @default("INR")`; `receipt String`; `status PaymentIntentStatus @default(CREATED)`; `quoteSnapshot Json?` — the frozen quote this payment was raised for, so `confirm` rebuilds the quote and refuses if the payable moved; `cartHash String?` — cart fingerprint (listing ids + quantities + unit prices) so a cart edited in another tab between initiate and confirm is detected; `orderId String? @unique`; `failureReason String?`; `reconciledAt DateTime?` + `reconcileNote String?`.
+- **PAY-001 discriminator** — `purpose PaymentPurpose @default(SHOP_ORDER)`: what the money BUYS. Defaulted because every row written before the column existed is an AgriStore checkout, that being the only flow that has ever written this table, so no backfill was needed. The webhook dispatches on it and the reconciler sweeps only purposes with a registered handler — without that filter a slow rent payment would be swept by shop logic, find no `Order`, and be auto-refunded after 30 minutes. `refType String?` / `refId String?` — a loose pointer (`"booking"`, `"creditPack"`, `"animalListing"`) rather than a column per area, and deliberately **not** a relation so the finance block stays FK-free and `db push`-additive. `metadata Json?` — the frozen quote for non-AgriStore purposes; `SHOP_ORDER` keeps using `quoteSnapshot`/`cartHash`. Indexes `(purpose, status, createdAt)` and `(refType, refId)`.
 - Rel: none declared. Uniq: `providerOrderId`, `providerPaymentId`, `orderId`. Idx: `[userId, createdAt DESC]`, `[status, createdAt]` (the reconciler sweeps stale non-terminal intents).
 
 **`PaymentWebhookEvent` → `payment_webhook_events`** (2836-2861) — every gateway webhook, stored before it is acted on.
@@ -1653,13 +1658,14 @@ This domain is mid-migration. The **catalog split** separates *catalog identity*
 | 34 | `PayoutStatus` (2683) | `PENDING, PROCESSING, PAID, FAILED` | `Payout.status` |
 | 35 | `DisputeType` (2716) | `ANIMAL_TRADE, RENT_BOOKING, ORDER` | `Dispute.type` — also selects what `refId` points at |
 | 36 | `DisputeStatus` (2722) | `OPEN, INVESTIGATING, RESOLVED, CLOSED` | `Dispute.status` |
-| 37 | `PaymentIntentStatus` (2821) | `CREATED, PENDING, PAID, ORDER_CREATED, FAILED, CANCELLED, REFUND_INITIATED, REFUNDED, EXPIRED` | `PaymentIntent.status` |
-| 38 | `RegulatedKind` (2895) | `NONE, SEED, FERTILIZER, BIO_PRODUCT, PESTICIDE, INSECTICIDE, FUNGICIDE, HERBICIDE, PLANT_GROWTH_REGULATOR` | `SellerLicence.kind`, `ProductCompliance.regulatedKind` |
-| 39 | `LicenceStatus` (2907) | `PENDING, APPROVED, REJECTED, EXPIRED, SUSPENDED` | `SellerLicence.status` |
-| 40 | `ComplianceStatus` (2970) | `DRAFT, PENDING_REVIEW, APPROVED, REJECTED, SUSPENDED` | `ProductCompliance.status` |
-| 41 | `BatchStatus` (3011) | `ACTIVE, EXPIRING_SOON, EXPIRED, RECALLED, QUARANTINED, DAMAGED` | `ProductBatch.status` |
-| 42 | `SaleBlockScope` (3080) | `PRODUCT, SELLER, CATEGORY, BATCH, STATE, DISTRICT` | `SaleBlock.scope` |
-| 43 | `ReservationStatus` (3187) | `HELD, CONSUMED, RELEASED, EXPIRED` | `StockReservation.status` |
+| 37 | `PaymentIntentStatus` (2892) | `CREATED, PENDING, PAID, ORDER_CREATED, FAILED, CANCELLED, REFUND_INITIATED, REFUNDED, EXPIRED` | `PaymentIntent.status` |
+| 38 | `PaymentPurpose` (2910) | `SHOP_ORDER, RENT_BOOKING, AI_CREDITS, ANIMAL_TOKEN` | `PaymentIntent.purpose` — the webhook dispatcher and the reconciler switch on it. `ANIMAL_TOKEN` is declared but has no handler (PAY-005 is an open product decision), so an intent carrying it is refused rather than half-served |
+| 39 | `RegulatedKind` (2895) | `NONE, SEED, FERTILIZER, BIO_PRODUCT, PESTICIDE, INSECTICIDE, FUNGICIDE, HERBICIDE, PLANT_GROWTH_REGULATOR` | `SellerLicence.kind`, `ProductCompliance.regulatedKind` |
+| 40 | `LicenceStatus` (2907) | `PENDING, APPROVED, REJECTED, EXPIRED, SUSPENDED` | `SellerLicence.status` |
+| 41 | `ComplianceStatus` (2970) | `DRAFT, PENDING_REVIEW, APPROVED, REJECTED, SUSPENDED` | `ProductCompliance.status` |
+| 42 | `BatchStatus` (3011) | `ACTIVE, EXPIRING_SOON, EXPIRED, RECALLED, QUARANTINED, DAMAGED` | `ProductBatch.status` |
+| 43 | `SaleBlockScope` (3080) | `PRODUCT, SELLER, CATEGORY, BATCH, STATE, DISTRICT` | `SaleBlock.scope` |
+| 44 | `ReservationStatus` (3187) | `HELD, CONSUMED, RELEASED, EXPIRED` | `StockReservation.status` |
 
 Enum-shaped columns that are **plain `String`** and therefore unconstrained by the DB: `OrderItem.status` (`"PENDING"` default), `ReturnRequest`-adjacent `PaymentWebhookEvent.status` (`RECEIVED|PROCESSED|FAILED|IGNORED`), `ProductRecall.severity` (`HIGH|MEDIUM|LOW`), `Order.paymentMethod`/`paymentStatus`, `SellerListing.condition`/`sellScope`, `Product.shippingClass`, `SchemeApplication.status`, `CropCalendarTask.status`, `AICreditTransaction.type`, `AICredit.tier`, `ErrorLog.severity`, `PriceDataSync.status`, `PestAlert.severity`, `SavedAddress.type`, `PlannerTask.priority`, `SoilHealthRecord.inputMethod`, `FarmSoilReport.inputMethod`, `DeviceAccountLink.lastContext`, `ContentFlag.entityType`, `ConsentRecord.method`.
 
@@ -2885,7 +2891,7 @@ AnimalTrade classifieds, and the Rent (machinery + labour) marketplace.
 
 | Mount | Router file | Notes |
 |---|---|---|
-| `${API}/shop-webhooks` | `backend/src/routes/shopWebhooks.routes.js` | `backend/src/app.js:211`. Mounted with `express.raw({ type: '*/*', limit: '256kb' })` **before** the global JSON parser, because the HMAC is over the exact bytes Razorpay sent. Also mounted before the global per-IP limiter, so it carries its own. |
+| `${API}/shop-webhooks` | `backend/src/routes/paymentWebhooks.routes.js` | `backend/src/app.js:285`. Mounted with `express.raw({ type: '*/*', limit: '256kb' })` **before** the global JSON parser, because the HMAC is over the exact bytes Razorpay sent. Also mounted before the global per-IP limiter, so it carries its own. |
 | `${API}/agristore/seller-compliance` | `sellerCompliance.routes.js` | `app.js:362`. Mounted **before** `/agristore` so the more specific prefix wins. |
 | `${API}/agristore` | `agristore.routes.js` | `app.js:367`, wrapped in `shopMetricsMiddleware('shop')` so validation rejections and 404s are timed too. |
 | `${API}/animals` | `animaltrade.routes.js` | `app.js:368` |
@@ -2980,7 +2986,7 @@ Every write strips `status`, `reviewedBy`, `reviewedAt`, `rejectionReason`,
 
 | Method | Path | Auth | Rate limit | Key request fields | Response | DB models written | Side effects |
 |---|---|---|---|---|---|---|---|
-| POST | `/razorpay` | **none** — HMAC-SHA256 over the raw body against `RAZORPAY_WEBHOOK_SECRET`, in `X-Razorpay-Signature` | own limiter: 300 req / 60 s per IP, prefix `webhook:razorpay` (`shopWebhooks.routes.js:52-58`) | raw JSON body; `payload.event`, `payload.payload.payment.entity`, `.order.entity`, `.refund.entity` | `200 {success:true}` (handled or ignored), `200 {duplicate:true}` + `X-Webhook-Replay: true` on redelivery, `400` bad signature / unparseable, `500` on claim or handler failure | `payment_webhook_events` (claim + finish), `payment_intents`, `orders.paymentStatus` (refund events), `stock_reservations` (release on `payment.failed`) | Never creates an order; events `WEBHOOK_OK/FAIL/DUPLICATE/BAD_SIGNATURE` |
+| POST | `/razorpay` | **none** — HMAC-SHA256 over the raw body against `RAZORPAY_WEBHOOK_SECRET`, in `X-Razorpay-Signature` | own limiter: 300 req / 60 s per IP, prefix `webhook:razorpay` (`paymentWebhooks.routes.js:87-93`) | raw JSON body; `payload.event`, `payload.payload.payment.entity`, `.order.entity`, `.refund.entity` | `200 {success:true}` (handled or ignored), `200 {duplicate:true}` + `X-Webhook-Replay: true` on redelivery, `400` bad signature / unparseable, `500` on claim or handler failure | `payment_webhook_events` (claim + finish), `payment_intents`, `orders.paymentStatus` (refund events), `stock_reservations` (release on `payment.failed`) | Never creates an order; events `WEBHOOK_OK/FAIL/DUPLICATE/BAD_SIGNATURE` |
 
 Handled event types: `payment.captured`, `order.paid`, `payment.failed`,
 `refund.created`, `refund.processed`. Anything else is claimed and marked
@@ -3486,10 +3492,10 @@ stateDiagram-v2
 |---|---|---|---|
 | — | `CREATED` | `createIntent()` at `/orders/initiate`, before the app receives the gateway id | `shopPayment.service.js:55-73` |
 | `CREATED`/`PAID` | `PAID` | `markIntentPaid()` — from `/orders/confirm`, from the webhook's `payment.captured`/`order.paid`, or from the reconciler on a captured payment with no order | `shopPayment.service.js:84-105` |
-| `PAID` | `ORDER_CREATED` | `attachOrderToIntent()` after a successful confirm (unique `orderId` is the gate), the webhook when it finds an `Order` by `paymentRef`, or the reconciler | `:117-129`, `shopWebhooks.routes.js:134-139`, `shopPayment.service.js:230-241` |
+| `PAID` | `ORDER_CREATED` | `attachOrderToIntent()` after a successful confirm (unique `orderId` is the gate), the webhook when it finds an `Order` by `paymentRef`, or the reconciler | `:117-129`, `shopPayment.service.js:254-266` (`shopWebhookHandler.captured`), `shopPayment.service.js:230-241` |
 | non-terminal | `FAILED` | `markIntentFailed()` — reservation failure at initiate, webhook `payment.failed`, reconciler seeing a failed gateway payment | `:107-115` |
 | non-terminal | `EXPIRED` | reconciler: no payment attempt and `createdAt` older than `INTENT_EXPIRY_MINUTES = 30` | `:271-275` |
-| any | `REFUND_INITIATED` | webhook `refund.created` (`updateMany` by `providerPaymentId`) | `shopWebhooks.routes.js:165-172` |
+| any | `REFUND_INITIATED` | webhook `refund.created` (`updateMany` by `providerPaymentId`) | `paymentWebhooks.routes.js:220-246` + `shopPayment.service.js:280-285` |
 | any | `REFUNDED` | webhook `refund.processed` | same |
 | — | `PENDING`, `CANCELLED` | **never written by any code path in `backend/src/`** — declared in the enum and read by the reconciler's `status: { in: ['CREATED','PENDING','PAID'] }` filter only | — |
 
@@ -3814,7 +3820,7 @@ shelf. `reservationConfig()` clamps to `max(1, ttl) × 60000` ms.
 | Path | Where |
 |---|---|
 | confirm failure (any refusal or thrown error) | `agristore.routes.js:1684`, `:1700`, `:1826` |
-| webhook `payment.failed` | `shopWebhooks.routes.js:157` |
+| webhook `payment.failed` | `shopPayment.service.js:272-274` (`shopWebhookHandler.failed`) |
 | reconciler (`FAILED`, `EXPIRED`, or captured-with-no-order) | `shopPayment.service.js:255`, `:265`, `:277` |
 | TTL sweeper, every 2 minutes | `server.js:309` |
 
@@ -4189,7 +4195,7 @@ ORDER`), which is admin/support-owned and out of this router group.
 
 ##### 3.2.7.1 The three rules the endpoint obeys
 
-Stated as the router's contract (`shopWebhooks.routes.js:20-31`):
+Stated as the router's contract (`paymentWebhooks.routes.js:14-45`):
 
 1. **Verify the signature over the RAW BYTES.** Re-serialising parsed JSON does
    not reproduce what was signed (key order, unicode escaping, whitespace), so
@@ -4260,14 +4266,14 @@ must never fail the webhook.
 **It never creates an order.** By the time a webhook arrives the buyer's cart may
 have changed, stock may have sold, and there is no delivery address in the
 payload — fabricating an order from a payment would produce a shipment nobody
-chose (`shopWebhooks.routes.js:24-31`). It records the payment against its
+chose (`paymentWebhooks.routes.js:38-45`). It records the payment against its
 intent; the client's confirm creates the order; reconciliation escalates anything
 left paid-with-no-order for a human to refund.
 
 **Known limitation:** on a handler failure the event row is already claimed, so
 Razorpay's retry short-circuits as a duplicate and the failed work is never
 re-attempted through the webhook channel. This is acknowledged in the code
-(`shopWebhooks.routes.js:190-193`) — recovery is the reconciler's job, which asks
+(`paymentWebhooks.routes.js:262-267`) — recovery is the reconciler's job, which asks
 the gateway directly rather than waiting for another delivery.
 
 ##### 3.2.7.5 The third channel — the reconciler
@@ -6633,7 +6639,7 @@ max_size=10, command_timeout=15)` (`db_pool.py:23-25`). Every replica therefore 
 connections; N web replicas × 10 + N worker processes × 10 is the connection-budget arithmetic.
 
 **Shared-with-Express: partially.** Both services read a `DATABASE_URL` and both point at Postgres
-(Prisma-owned for Express — `backend/prisma/schema.prisma` has **90 models and 43 enums** in 3,192 lines;
+(Prisma-owned for Express — `backend/prisma/schema.prisma` has **90 models and 44 enums** in 3,287 lines;
 earlier revisions of this part said "~60 models", which was stale — the measured figure is in Part 2). In the *checked-in local*
 env they are **different databases**: `fastapi/.env` → `…/krushisarva`, `backend/.env` → `…/farmeasy_db`.
 Whether prod points both at one instance is an env-var question, not a code one — treat "shared
@@ -11936,8 +11942,8 @@ Each row names an invariant a change must not break, the file that enforces it, 
 | 4 | One payment ⇒ at most one order | `orders.paymentRef @unique`, `payment_intents.orderId @unique` | Client confirm, webhook and reconciler race; without the constraints two of them would each create a fully-paid order. |
 | 5 | The **quote** is the only payable; the client's number is never trusted | `services/shopPricing.service.js`, `assertClientTotalMatches`, `assertCartMatchesQuote`, `quoteFingerprint` on `PaymentIntent.cartHash` | The delivery fee once lived in the mobile app: the farmer approved ₹1,048 and was charged ₹999. |
 | 6 | Money is `Decimal` in the DB and in server arithmetic, integer **paise** at the gateway, and a JS number only at the HTTP boundary | `utils/money.js`, `serializeDecimals` in `utils/response.js` | Native `+` on a `Prisma.Decimal` string-concatenates (`0 + decimal → "0100.5"`); `* - /` coerce to float. |
-| 7 | The Razorpay webhook verifies over the **raw bytes**, fails **closed** without a secret, and claims the `eventId` **before** doing any work | `app.js:211` (raw parser at app level), `shopWebhooks.routes.js`, `payment_webhook_events.eventId @unique` | Re-serialised JSON does not reproduce what was signed; a redelivery would double-apply. |
-| 8 | The webhook **never creates an order** | `shopWebhooks.routes.js:24-31` | The cart may have changed, stock may have sold, and there is no delivery address in the payload. |
+| 7 | The Razorpay webhook verifies over the **raw bytes**, fails **closed** without a secret, and claims the `eventId` **before** doing any work | `app.js:211` (raw parser at app level), `paymentWebhooks.routes.js`, `payment_webhook_events.eventId @unique` | Re-serialised JSON does not reproduce what was signed; a redelivery would double-apply. |
+| 8 | The webhook **never creates an order** | `paymentWebhooks.routes.js:38-45` | The cart may have changed, stock may have sold, and there is no delivery address in the payload. |
 | 9 | A seller may **submit**; only an admin may **approve** | `routes/sellerCompliance.routes.js:51-66` (`rejectProtectedFields` 403s on `status`, `reviewedBy`, `reviewedAt`, `rejectionReason`, `sellerId`, `id`) | A mass-assignment hole in this one file makes the entire compliance layer decorative. |
 | 10 | The platform authors **no** agronomic content — the safety panel returns approved-label text verbatim, `null` for missing sections, with no fallback or derived dosage | `services/shopCompliance.service.js:378-426` | Inventing dosage or mixing advice for a regulated chemical is a legal and safety failure. |
 | 11 | Every LLM call holds credits **before** the call and reconciles after; `reserveCredits` is the only race-free gate | `services/aiCredit.service.js` | `checkCredits` was a read-then-return TOCTOU and now has zero callers; a new endpoint that skips the reserve is unmetered spend. |
@@ -12003,7 +12009,7 @@ bug and this appendix is the fix list.
 
 | # | The disagreement | Verified answer | Status in the body | How verified |
 |---|---|---|---|---|
-| 1 | An earlier revision of Part 4 said `backend/prisma/schema.prisma` has "~60 models"; Part 2 said 90 models / 43 enums. | **90 models, 43 enums, 3,192 lines.** Part 2 was correct. | **Corrected in the body** — Part 4's Postgres-pool section now states 90/43 inline; Part 2's preamble carries the same figure. Recorded here because the "~60" figure may still appear in downstream copies. | `grep -c '^model '` = 90, `grep -c '^enum '` = 43, `wc -l` = 3192 |
+| 1 | An earlier revision of Part 4 said `backend/prisma/schema.prisma` has "~60 models"; Part 2 said 90 models / 43 enums. | **90 models, 44 enums, 3,287 lines** — 43 enums / 3,192 lines when this was audited; PAY-001 added `PaymentPurpose`. Part 2 was correct. | **Corrected in the body** — Part 4's Postgres-pool section now states 90/43 inline; Part 2's preamble carries the same figure. Recorded here because the "~60" figure may still appear in downstream copies. | `grep -c '^model '` = 90, `grep -c '^enum '` = 44, `wc -l` = 3287 |
 | 2 | *Withdrawn.* An earlier draft of Part 1 was believed to quote "13 schedules" against Part 7's 12. | **The claim does not exist in the document.** Part 1, the At-a-glance table and Part 7 all say **12** `cron.schedule(...)` registrations **+ one boot-time mandi seed that is not a cron**, consistently. There is no disagreement left to reconcile. | **No body change needed.** Row retained (rather than deleted) so a reader comparing against an older copy of this document can see the discrepancy was chased down. | `grep -c "cron.schedule" backend/src/server.js` = 12, with the boot seed at `server.js:188-221`; `grep -n "13 schedules" ARCHITECTURE.md` returns nothing |
 | 3 | `admin_v2_additive.sql:6` lists `mandi_prices` among FastAPI-owned tables that `db push` must not drop, and Part 7 repeated it. | **`mandi_prices` is Prisma-owned** (`model MandiPrice` at `schema.prisma:1575`, written by `backend/src/services/mandiPrice.service.js`) and is referenced **nowhere** under `fastapi/`. Only `ai_scan_diagnoses` and `ai_scan_feedback` are genuinely Prisma-invisible. The SQL comment is wrong; the hazard is real for exactly those two tables. | **Corrected in the body** at both Part 7 sites (the `--accept-data-loss` hazard section and the schema-ownership policy section), each now naming two tables and flagging the SQL comment as the error. Recorded here because **the underlying source — the SQL file comment — still says otherwise** and will keep re-seeding the mistake. | `grep -rn "mandi_prices" fastapi/` returns nothing; `grep "^model" schema.prisma` finds `MandiPrice` |
 | 4 | Part 2 counts "25 composite `@@unique`"; a raw grep finds 28. | **25.** Three of the 28 occurrences are inside comments. Field-level `@unique` is 22 (50 total `@unique` matches minus the 28 `@@unique` lines). | **Body is correct as written** (Part 2 states 25). Recorded because the naive grep disagrees. | `grep -n '@@unique'` = 28, of which 3 match `^\s*//` |

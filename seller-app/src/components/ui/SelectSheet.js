@@ -257,7 +257,12 @@ export default function SelectSheet({
                 keyboardShouldPersistTaps="handled"
                 initialNumToRender={12}
                 windowSize={7}
-                removeClippedSubviews={Platform.OS === 'android'}
+                // NOT removeClippedSubviews: on the New Architecture (newArchEnabled,
+                // RN 0.81) Android clipping inside a Modal measures against the wrong
+                // window, so rows blank and flicker while the sheet scrolls — the same
+                // blanking MyProductsScreen and OrdersScreen already turn off. These
+                // lists are tens of rows, so windowSize alone is enough.
+                removeClippedSubviews={false}
                 ItemSeparatorComponent={() => <View style={ss.sep} />}
                 ListHeaderComponent={
                   clearLabel ? (

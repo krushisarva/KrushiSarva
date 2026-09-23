@@ -386,6 +386,65 @@ export const translations = {
       myCart: 'My Cart',
     },
 
+    // ── Payments — every purpose, not just the shop ────────────────────────
+    // Read by components/payments/usePaymentFlow.js, which drives shop orders,
+    // rent bookings and AI credit packs through one gateway. `checkout.*` below
+    // keeps the SHOP's own wording — it names the cart, My Orders and Cash on
+    // Delivery, none of which exist on a rent or credits screen.
+    //
+    // The rule every sentence here encodes: never tell a farmer "no money was
+    // taken" unless the SERVER said so. An unconfirmed payment gets
+    // `unknownTitle` / `unknownMsg`, which asks them to check before paying
+    // again — the alternative is the message that makes people pay twice.
+    //
+    // The shared sheet's own chrome (`checkout.securePayment`,
+    // `checkout.openingPayment`, `checkout.closePayment`) stays where it is:
+    // RazorpayCheckout.js already reads those keys in all ten languages.
+    payments: {
+      opening: 'Opening secure payment…',
+      verifying: 'Confirming your payment',
+      doNotClose: 'Please do not close the app or pay again.',
+      dismissedCheck: 'Checking whether your payment went through…',
+      failed: 'Payment failed',
+      failedMsg: 'No money was taken. You can try again.',
+      noConnection: 'Could not open the payment page. Check your internet connection and try again.',
+      couldNotStart: 'Could not start the payment',
+      couldNotStartMsg: 'Please check your connection and try again. No money was taken.',
+      unavailable: 'Online payment unavailable',
+      unavailableMsg: 'Online payment is not available right now. Please try again later.',
+      paid: 'Payment successful',
+      paidMsg: 'Your payment went through.',
+      unknownTitle: 'We could not confirm your payment',
+      unknownMsg: 'Do not pay again. Please check in a few minutes — if no money was taken, you can try again.',
+      refundInitiated: 'Your payment is being refunded',
+      refundInitiatedMsg: 'Your payment is being refunded — it reaches the account you paid from in 5–7 working days.',
+      refundInitiatedAmountMsg: '{{amount}} is being refunded — it reaches the account you paid from in 5–7 working days.',
+      slotTaken: 'Those dates were just booked',
+      slotTakenMsg: 'Someone booked this while you were paying. Your payment is being refunded — please pick another date.',
+      packGone: 'That pack is no longer available',
+      creditsAdded: 'Credits added',
+      creditsAddedMsg: '{{credits}} credits have been added. Your balance is now {{balance}}.',
+      bookingConfirmed: 'Booking confirmed',
+      bookingConfirmedMsg: 'Your booking is confirmed. You can see it under My Bookings.',
+      // Paid, but the thing being bought could not be completed AND no refund
+      // has been raised yet. Distinct from `refundInitiated` on purpose: no
+      // 5–7 day promise may be made here, because nothing has been promised.
+      takenTitle: 'Payment received',
+      takenMsg: 'Your payment went through but we could not finish this. Our team will contact you — please do not pay again.',
+      expired: 'Payment session expired',
+      expiredMsg: 'No money was taken. Please try again.',
+      cancelled: 'Payment cancelled',
+      cancelledMsg: 'No money was taken. You can try again whenever you are ready.',
+      // The webhook beat the confirm call to it. This is a SUCCESS — show the
+      // balance, not an apology.
+      alreadyCredited: 'Already added',
+      alreadyCreditedMsg: 'These credits are already on your balance. You have not been charged twice.',
+      checkStatus: 'Check status',
+      payAmount: 'Pay {{amount}}',
+      retry: 'Try again',
+      secureNote: 'Payment is processed securely. Do not close the app while paying.',
+    },
+
     // Checkout
     checkout: {
       securePayment: 'Secure payment',
@@ -888,6 +947,17 @@ export const translations = {
       experiencePlaceholder: 'e.g. 5 years...', aboutPlaceholder: 'Describe your work style...',
       fetchError: 'Could not load listings.',
       bookingConfirmed: 'Booking Confirmed!',
+      // Rent booking + payment (LabourDetail / MachineryDetail / RentBookings)
+      bookWorker: 'Book this worker',
+      tapToSeeNumber: 'Tap to see the number',
+      fewerWorkers: 'Fewer workers',
+      moreWorkers: 'More workers',
+      updateWorkerSub: 'Update your worker profile',
+      payAndBook: 'Pay & book',
+      advancePaid: '{{amount}} advance paid',
+      payCheckPaid: 'Payment received. This booking is paid.',
+      payCheckPaidAmount: 'Payment received — {{amount}} has been paid for this booking.',
+      payCheckUnpaid: 'No payment has been recorded for this booking yet.',
     },
     ai: {
       comingSoon: 'Coming Soon',
@@ -1932,6 +2002,11 @@ export const translations = {
       creditCosts: 'Credit Costs', free: 'FREE', buyCredits: 'Buy Credits',
       credits: 'credits', recentActivity: 'Recent Activity', noActivity: 'No activity yet',
       loadError: "Couldn't load your latest balance. Pull down to refresh.",
+      balanceLeft: 'Balance left',
+      usedThisMonth: 'Used this month',
+      monthlyBudget: 'Monthly budget',
+      pickPack: 'Choose a pack. Credits never expire.',
+      buySoon: 'Purchasing will be available soon.',
     },
 
     // ── Past Report Screen (Krushi Kendra share block) ────────────────────────
@@ -2851,6 +2926,47 @@ export const translations = {
       itemCountPlural: '{{count}} आइटम',
     },
 
+    // Payments — every purpose (shop, rent, AI credits). See the `en` block.
+    payments: {
+      opening: 'सुरक्षित भुगतान खोला जा रहा है…',
+      verifying: 'आपके भुगतान की पुष्टि हो रही है',
+      doNotClose: 'कृपया ऐप बंद न करें और दोबारा भुगतान न करें।',
+      dismissedCheck: 'जांच रहे हैं कि आपका भुगतान हुआ या नहीं…',
+      failed: 'भुगतान विफल',
+      failedMsg: 'कोई पैसा नहीं कटा। आप दोबारा कोशिश कर सकते हैं।',
+      noConnection: 'भुगतान पेज नहीं खुल सका। इंटरनेट जांचें और दोबारा कोशिश करें।',
+      couldNotStart: 'भुगतान शुरू नहीं हो सका',
+      couldNotStartMsg: 'कृपया इंटरनेट जांचें और दोबारा कोशिश करें। कोई पैसा नहीं कटा।',
+      unavailable: 'ऑनलाइन भुगतान उपलब्ध नहीं',
+      unavailableMsg: 'ऑनलाइन भुगतान अभी उपलब्ध नहीं है। कृपया कुछ देर बाद कोशिश करें।',
+      paid: 'भुगतान सफल',
+      paidMsg: 'आपका भुगतान हो गया है।',
+      unknownTitle: 'भुगतान की पुष्टि नहीं हो सकी',
+      unknownMsg: 'दोबारा भुगतान न करें। कुछ मिनट बाद जांचें — अगर कोई पैसा नहीं कटा है, तो आप दोबारा कोशिश कर सकते हैं।',
+      refundInitiated: 'आपका भुगतान वापस किया जा रहा है',
+      refundInitiatedMsg: 'आपका भुगतान वापस किया जा रहा है — जिस खाते से भुगतान किया था उसमें 5–7 कार्य दिवसों में पहुंच जाएगा।',
+      refundInitiatedAmountMsg: '{{amount}} वापस किया जा रहा है — जिस खाते से भुगतान किया था उसमें 5–7 कार्य दिवसों में पहुंच जाएगा।',
+      slotTaken: 'ये तारीखें अभी बुक हो गईं',
+      slotTakenMsg: 'आपके भुगतान के दौरान किसी और ने बुक कर लिया। आपका भुगतान वापस किया जा रहा है — कृपया दूसरी तारीख चुनें।',
+      packGone: 'यह पैक अब उपलब्ध नहीं है',
+      creditsAdded: 'क्रेडिट जुड़ गए',
+      creditsAddedMsg: '{{credits}} क्रेडिट जोड़ दिए गए हैं। आपका बैलेंस अब {{balance}} है।',
+      bookingConfirmed: 'बुकिंग पक्की हो गई',
+      bookingConfirmedMsg: 'आपकी बुकिंग पक्की हो गई है। आप इसे मेरी बुकिंग में देख सकते हैं।',
+      takenTitle: 'भुगतान मिल गया',
+      takenMsg: 'आपका भुगतान हो गया लेकिन यह पूरा नहीं हो सका। हमारी टीम संपर्क करेगी — कृपया दोबारा भुगतान न करें।',
+      expired: 'भुगतान का समय समाप्त',
+      expiredMsg: 'कोई पैसा नहीं कटा। कृपया दोबारा कोशिश करें।',
+      cancelled: 'भुगतान रद्द',
+      cancelledMsg: 'कोई पैसा नहीं कटा। आप जब चाहें दोबारा कोशिश कर सकते हैं।',
+      alreadyCredited: 'पहले ही जुड़ चुके हैं',
+      alreadyCreditedMsg: 'ये क्रेडिट आपके बैलेंस में पहले से जुड़े हैं। आपसे दो बार पैसे नहीं लिए गए।',
+      checkStatus: 'स्थिति देखें',
+      payAmount: '{{amount}} भुगतान करें',
+      retry: 'दोबारा कोशिश करें',
+      secureNote: 'भुगतान सुरक्षित तरीके से होता है। भुगतान के दौरान ऐप बंद न करें।',
+    },
+
     // Checkout
     checkout: {
       securePayment: 'सुरक्षित भुगतान',
@@ -3319,6 +3435,17 @@ export const translations = {
       groupNamePlaceholder: 'जैसे किसान मजदूर संगठन', groupSizePlaceholder: 'जैसे 5',
       experiencePlaceholder: 'जैसे 5 साल का अनुभव', aboutPlaceholder: 'अपने बारे में बताएं...',
       fetchError: 'डेटा लोड नहीं हो सका', bookingConfirmed: 'बुकिंग पुष्टि हुई!',
+      // किराया बुकिंग + भुगतान
+      bookWorker: 'इस मजदूर को बुक करें',
+      tapToSeeNumber: 'नंबर देखने के लिए टैप करें',
+      fewerWorkers: 'कम मजदूर',
+      moreWorkers: 'ज्यादा मजदूर',
+      updateWorkerSub: 'अपना मजदूर प्रोफाइल अपडेट करें',
+      payAndBook: 'भुगतान व बुक',
+      advancePaid: '{{amount}} अग्रिम भुगतान हुआ',
+      payCheckPaid: 'भुगतान मिल गया। इस बुकिंग का भुगतान हो चुका है।',
+      payCheckPaidAmount: 'भुगतान मिल गया — इस बुकिंग के लिए {{amount}} का भुगतान हो चुका है।',
+      payCheckUnpaid: 'इस बुकिंग के लिए अभी कोई भुगतान दर्ज नहीं है।',
     },
     ai: {
       comingSoon: 'जल्द आ रहा है',
@@ -4203,6 +4330,12 @@ export const translations = {
       used: 'उपयोग', total: 'कुल', today: 'आज', monthly: 'मासिक', lifetime: 'लाइफटाइम',
       creditCosts: 'क्रेडिट लागत', free: 'मुफ़्त', buyCredits: 'क्रेडिट खरीदें',
       credits: 'क्रेडिट', recentActivity: 'हाल की गतिविधि', noActivity: 'अभी कोई गतिविधि नहीं',
+      loadError: 'आपका ताज़ा बैलेंस लोड नहीं हो सका। रिफ्रेश करने के लिए नीचे खींचें।',
+      balanceLeft: 'शेष क्रेडिट',
+      usedThisMonth: 'इस महीने उपयोग',
+      monthlyBudget: 'मासिक बजट',
+      pickPack: 'एक पैक चुनें। क्रेडिट कभी समाप्त नहीं होते।',
+      buySoon: 'खरीदारी जल्द उपलब्ध होगी।',
     },
 
     planner: {
@@ -5068,6 +5201,47 @@ export const translations = {
       itemCountPlural: '{{count}} आयटम',
     },
 
+    // Payments — every purpose (shop, rent, AI credits). See the `en` block.
+    payments: {
+      opening: 'सुरक्षित पेमेंट उघडत आहे…',
+      verifying: 'तुमच्या पेमेंटची खात्री करत आहोत',
+      doNotClose: 'कृपया अ‍ॅप बंद करू नका आणि पुन्हा पैसे भरू नका.',
+      dismissedCheck: 'तुमचे पेमेंट झाले का ते तपासत आहोत…',
+      failed: 'पेमेंट अयशस्वी',
+      failedMsg: 'कोणतेही पैसे कापले गेले नाहीत. तुम्ही पुन्हा प्रयत्न करू शकता.',
+      noConnection: 'पेमेंट पेज उघडू शकले नाही. इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.',
+      couldNotStart: 'पेमेंट सुरू होऊ शकले नाही',
+      couldNotStartMsg: 'कृपया इंटरनेट तपासा आणि पुन्हा प्रयत्न करा. कोणतेही पैसे कापले गेले नाहीत.',
+      unavailable: 'ऑनलाइन पेमेंट उपलब्ध नाही',
+      unavailableMsg: 'ऑनलाइन पेमेंट सध्या उपलब्ध नाही. कृपया थोड्या वेळाने प्रयत्न करा.',
+      paid: 'पेमेंट यशस्वी',
+      paidMsg: 'तुमचे पेमेंट झाले आहे.',
+      unknownTitle: 'तुमच्या पेमेंटची खात्री होऊ शकली नाही',
+      unknownMsg: 'पुन्हा पैसे भरू नका. काही मिनिटांनी तपासा — जर पैसे कापले गेले नसतील, तर तुम्ही पुन्हा प्रयत्न करू शकता.',
+      refundInitiated: 'तुमचे पैसे परत केले जात आहेत',
+      refundInitiatedMsg: 'तुमचे पैसे परत केले जात आहेत — ज्या खात्यातून पेमेंट केले त्यात 5–7 कामाच्या दिवसांत पोहोचतील.',
+      refundInitiatedAmountMsg: '{{amount}} परत केले जात आहेत — ज्या खात्यातून पेमेंट केले त्यात 5–7 कामाच्या दिवसांत पोहोचतील.',
+      slotTaken: 'या तारखा आत्ताच बुक झाल्या',
+      slotTakenMsg: 'तुम्ही पैसे भरत असताना दुसऱ्याने बुक केले. तुमचे पैसे परत केले जात आहेत — कृपया दुसरी तारीख निवडा.',
+      packGone: 'हे पॅक आता उपलब्ध नाही',
+      creditsAdded: 'क्रेडिट जोडले',
+      creditsAddedMsg: '{{credits}} क्रेडिट जोडले गेले आहेत. तुमचा बॅलन्स आता {{balance}} आहे.',
+      bookingConfirmed: 'बुकिंग निश्चित झाली',
+      bookingConfirmedMsg: 'तुमची बुकिंग निश्चित झाली आहे. तुम्ही ती माझ्या बुकिंगमध्ये पाहू शकता.',
+      takenTitle: 'पेमेंट मिळाले',
+      takenMsg: 'तुमचे पेमेंट झाले पण हे पूर्ण होऊ शकले नाही. आमची टीम संपर्क करेल — कृपया पुन्हा पैसे भरू नका.',
+      expired: 'पेमेंटची वेळ संपली',
+      expiredMsg: 'कोणतेही पैसे कापले गेले नाहीत. कृपया पुन्हा प्रयत्न करा.',
+      cancelled: 'पेमेंट रद्द',
+      cancelledMsg: 'कोणतेही पैसे कापले गेले नाहीत. तुम्ही कधीही पुन्हा प्रयत्न करू शकता.',
+      alreadyCredited: 'आधीच जोडले आहेत',
+      alreadyCreditedMsg: 'हे क्रेडिट तुमच्या बॅलन्समध्ये आधीच जोडले आहेत. तुमच्याकडून दोनदा पैसे घेतले गेले नाहीत.',
+      checkStatus: 'स्थिती पहा',
+      payAmount: '{{amount}} भरा',
+      retry: 'पुन्हा प्रयत्न करा',
+      secureNote: 'पेमेंट सुरक्षितपणे केले जाते. पैसे भरताना अ‍ॅप बंद करू नका.',
+    },
+
     // Checkout
     checkout: {
       securePayment: 'सुरक्षित पेमेंट',
@@ -5536,6 +5710,17 @@ export const translations = {
       groupNamePlaceholder: 'उदा. शेतकरी मजूर संघ', groupSizePlaceholder: 'उदा. 5',
       experiencePlaceholder: 'उदा. 5 वर्षांचा अनुभव', aboutPlaceholder: 'स्वतःबद्दल सांगा...',
       fetchError: 'डेटा लोड करता आला नाही', bookingConfirmed: 'बुकिंग पुष्टी झाली!',
+      // भाडे बुकिंग + पेमेंट
+      bookWorker: 'हा मजूर बुक करा',
+      tapToSeeNumber: 'नंबर पाहण्यासाठी टॅप करा',
+      fewerWorkers: 'कमी मजूर',
+      moreWorkers: 'जास्त मजूर',
+      updateWorkerSub: 'तुमचे मजूर प्रोफाइल अपडेट करा',
+      payAndBook: 'पेमेंट व बुक',
+      advancePaid: '{{amount}} आगाऊ भरले',
+      payCheckPaid: 'पेमेंट मिळाले. या बुकिंगचे पैसे भरले आहेत.',
+      payCheckPaidAmount: 'पेमेंट मिळाले — या बुकिंगसाठी {{amount}} भरले आहेत.',
+      payCheckUnpaid: 'या बुकिंगसाठी अद्याप कोणतेही पेमेंट नोंदवलेले नाही.',
     },
     ai: {
       comingSoon: 'लवकरच येत आहे',
@@ -6471,6 +6656,12 @@ export const translations = {
       used: 'वापरलेले', total: 'एकूण', today: 'आज', monthly: 'मासिक', lifetime: 'लाइफटाइम',
       creditCosts: 'क्रेडिट खर्च', free: 'मोफत', buyCredits: 'क्रेडिट खरेदी करा',
       credits: 'क्रेडिट', recentActivity: 'अलीकडील गतिविधी', noActivity: 'अजून कोणतीही गतिविधी नाही',
+      loadError: 'तुमचा ताजा बॅलन्स लोड करता आला नाही. रिफ्रेश करण्यासाठी खाली ओढा.',
+      balanceLeft: 'शिल्लक क्रेडिट',
+      usedThisMonth: 'या महिन्यात वापरले',
+      monthlyBudget: 'मासिक बजेट',
+      pickPack: 'एक पॅक निवडा. क्रेडिट कधीही संपत नाहीत.',
+      buySoon: 'खरेदी लवकरच उपलब्ध होईल.',
     },
 
     // ── दैनिक नियोजक स्क्रीन ──────────────────────────────────────────────────

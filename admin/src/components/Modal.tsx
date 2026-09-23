@@ -45,10 +45,15 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
 export function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; width?: string;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
+    // Same as Modal: move focus into the panel so the keyboard lands where the
+    // eye does, and so Tab walks the panel rather than the page behind it.
+    ref.current?.focus();
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
@@ -56,7 +61,7 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className={`absolute right-0 top-0 h-full w-full ${width} overflow-y-auto bg-white shadow-xl`}>
+      <div ref={ref} tabIndex={-1} className={`absolute right-0 top-0 h-full w-full ${width} overflow-y-auto bg-white shadow-xl focus:outline-none`}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
           <Button variant="ghost" onClick={onClose} aria-label="Close"><X className="h-5 w-5" /></Button>

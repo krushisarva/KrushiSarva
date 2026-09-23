@@ -1081,6 +1081,29 @@ model Booking {
   updatedAt          DateTime          @updatedAt
   hours              Int?
   workerCount        Int?              @default(1)
+  /// PAY-002 — advance payment at booking time.
+  ///
+  /// The advance the server QUOTED for this booking: `totalAmount` × the
+  /// `rent.advancePct` setting. Nullable because every booking created before
+  /// this column existed — and every one still created through the unpaid
+  /// POST /rent/bookings, which old installed builds use — was never quoted an
+  /// advance at all. NULL means "no advance was asked for", which is a
+  /// different fact from "an advance of zero".
+  advanceAmount      Decimal?          @db.Decimal(12, 2)
+  /// What has actually been collected. 0 for the unpaid path, so it needs no
+  /// backfill and no nullability: nothing was paid, and that is the truth.
+  paidAmount         Decimal           @default(0) @db.Decimal(12, 2)
+  /// The PaymentIntent this booking was created from. UNIQUE, and that is the
+  /// point: it is the database-level guarantee that ONE captured payment can
+  /// produce at most ONE booking, whichever of confirm / webhook / reconcile
+  /// gets there first. The loser gets P2002 and returns the winner's booking.
+  /// Deliberately NOT a relation — the finance block carries no FKs so it stays
+  /// purely additive under `db push`.
+  paymentIntentId    String?           @unique
+  /// UNPAID | PENDING | PAID | REFUND_INITIATED | REFUNDED.
+  /// Default UNPAID so every historical row, and every booking from the legacy
+  /// unpaid endpoint, reads correctly with no backfill.
+  paymentStatus      String            @default("UNPAID")
   labourListing      LabourListing?    @relation(fields: [labourListingId], references: [id])
   machineryListing   MachineryListing? @relation(fields: [machineryListingId], references: [id])
   user               User              @relation(fields: [userId], references: [id])
@@ -2845,6 +2868,23 @@ model PaymentIntent {
   currency        String   @default("INR")
   receipt         String
   status          PaymentIntentStatus @default(CREATED)
+  /// What this payment BUYS. Defaulted so every row written before this column
+  /// existed — all of them AgriStore checkouts — is correct without a backfill.
+  /// The webhook dispatches on it and the reconciler only sweeps purposes that
+  /// have a registered handler, so a new purpose cannot silently inherit
+  /// AgriStore semantics (refund-if-no-order, release stock reservations).
+  purpose         PaymentPurpose @default(SHOP_ORDER)
+  /// What the payment points AT, as a loose (type, id) pair rather than a
+  /// column per product area: "booking" | "creditPack" | "animalListing".
+  /// Deliberately NOT a relation — the finance block stays free of FKs so it
+  /// remains purely additive under `db push`.
+  /// Nullable because a SHOP_ORDER intent is raised BEFORE its order exists.
+  refType         String?
+  refId           String?
+  /// The purpose-specific frozen quote, for purposes that are not AgriStore.
+  /// SHOP_ORDER keeps using quoteSnapshot/cartHash below; this exists so rent,
+  /// credits and tokens do not each add a pair of columns nothing else reads.
+  metadata        Json?
   /// The frozen quote (subtotal / delivery / tax / per-shipment lines) this
   /// payment was raised for. `confirm` rebuilds the quote and refuses if the
   /// payable moved, so the buyer is never charged a stale amount.
@@ -2861,8 +2901,14 @@ model PaymentIntent {
   updatedAt       DateTime @updatedAt
 
   @@index([userId, createdAt(sort: Desc)])
-  // The reconciler sweeps stale non-terminal intents.
+  // The reconciler sweeps stale non-terminal intents. Kept as-is: it still
+  // serves the all-purpose ops queue and the admin status filter.
   @@index([status, createdAt])
+  // The purpose-scoped reconciler sweep, and the admin "rent payments" filter.
+  @@index([purpose, status, createdAt])
+  // "Has this booking / credit pack / listing already been paid for?" — the
+  // lookup every non-AgriStore purpose needs and no column above can answer.
+  @@index([refType, refId])
   @@map("payment_intents")
 }
 
@@ -2876,6 +2922,27 @@ enum PaymentIntentStatus {
   REFUND_INITIATED
   REFUNDED
   EXPIRED
+}
+
+/// What a payment is for. One PaymentIntent lifecycle serves every product
+/// area; this is the discriminator the webhook dispatcher and the reconciler
+/// switch on.
+///
+/// ORDER IS LOAD-BEARING: Postgres enum values are ordered and `db push`
+/// compares them positionally. Append new purposes at the END, never insert.
+enum PaymentPurpose {
+  /// AgriStore checkout — the only purpose that existed before this enum, and
+  /// therefore the default every historical row carries.
+  SHOP_ORDER
+  /// Rent booking advance (PAY-002).
+  RENT_BOOKING
+  /// AI credit pack purchase (PAY-004).
+  AI_CREDITS
+  /// AnimalTrade token — declared, NOT implemented: PAY-005 is a product
+  /// decision (escrow / dispute / refund policy on a live animal) that has not
+  /// been taken. Declared so the enum needs no ALTER later; no handler is
+  /// registered for it, so an intent carrying it is refused, not half-served.
+  ANIMAL_TOKEN
 }
 
 /// Every gateway webhook, stored before it is acted on. `eventId` is unique, so

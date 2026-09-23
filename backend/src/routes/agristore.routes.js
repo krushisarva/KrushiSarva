@@ -103,6 +103,8 @@ import {
 } from '../services/stockReservation.service.js';
 import { recordEvent, SHOP_EVENTS } from '../services/shopMetrics.service.js';
 import { ENV } from '../config/env.js';
+// One implementation, two URLs — see the /payment-config route below.
+import { paymentConfigHandler } from './payments.routes.js';
 import { sendPushToUser } from '../services/push.service.js';
 
 const router = Router();
@@ -808,31 +810,13 @@ router.get('/products/:id/offers', optionalAuth, async (req, res) => {
 /**
  * Can this build actually take an online payment?
  *
- * The app used to render UPI and Card tiles unconditionally, then post the
- * chosen method to POST /orders — which creates an order and never asks for
- * money. A farmer picked UPI, saw "Order Placed!" with a UPI badge, and nothing
- * was ever charged. Offering a payment method the server cannot collect with is
- * the worst kind of broken: it looks like it worked.
- *
- * The app now asks first and only shows what can actually be collected.
- *
- * `keyId` is Razorpay's PUBLISHABLE key — it is designed to sit in a client and
- * identifies the merchant when opening checkout. The SECRET never leaves the
- * server, and the payment signature is verified server-side, so a tampered
- * client cannot manufacture a paid order.
+ * ALIAS. The handler now lives in routes/payments.routes.js and is served at
+ * the purpose-neutral GET /payments/config as well — nothing in this answer was
+ * ever shop-specific, and rent bookings need the same publishable key. This
+ * path stays because app builds already in farmers' hands call it; both URLs
+ * run the SAME function, so they cannot drift apart.
  */
-router.get('/payment-config', authenticate, async (_req, res) => {
-  const mock = isMockPayments();
-  return sendSuccess(res, {
-    // False whenever the gateway is unconfigured (no keys) — in that state the
-    // app must fall back to cash on delivery rather than opening a checkout
-    // sheet that cannot complete.
-    onlineEnabled: !mock,
-    provider: 'razorpay',
-    keyId: mock ? null : ENV.RAZORPAY_KEY_ID,
-    methods: mock ? ['cod'] : ['cod', 'upi', 'card'],
-  });
-});
+router.get('/payment-config', authenticate, paymentConfigHandler);
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
 // The variant's product select carries the four columns the QUOTE needs

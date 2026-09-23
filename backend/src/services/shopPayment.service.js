@@ -1,5 +1,15 @@
 /**
- * Shop payments — intents, webhooks, reconciliation.
+ * Shop payments — the AgriStore half of the payment lifecycle.
+ *
+ * ── Where the line is ────────────────────────────────────────────────────────
+ * The purpose-agnostic core — intent state machine, webhook inbox, event-id
+ * derivation — lives in paymentIntent.service.js and serves every product area.
+ * THIS module is what makes a payment an AgriStore payment: the frozen cart
+ * quote, the order it becomes, the stock hold it consumes, and the refund owed
+ * when a capture produces no order.
+ *
+ * The moved names are re-exported from here, so AgriStore call sites did not
+ * have to learn a new import when the core was split out.
  *
  * ── The hole this closes ─────────────────────────────────────────────────────
  * The old flow was two calls with nothing between them:
@@ -13,7 +23,7 @@
  * Nothing could reconcile it, because nothing knew. The farmer's only recourse
  * was a support ticket with a bank SMS as evidence.
  *
- * Three pieces fix it:
+ * Three pieces fix it (the first two now live in paymentIntent.service.js):
  *
  *   PaymentIntent   written BEFORE the gateway is called, so an interrupted
  *                   payment is a row in a queryable state, not a silence.
@@ -29,11 +39,15 @@
  * `payment_intents.orderId` and `orders.paymentRef` are both UNIQUE, so the
  * loser of any race gets P2002 and returns the winner's order.
  */
-import crypto from 'crypto';
 import prisma from '../config/db.js';
 import logger from '../utils/logger.js';
-import { D, toMinorUnits } from '../utils/money.js';
+import { D } from '../utils/money.js';
 import { fetchPayment, fetchOrderPayments, isMockPayments, processRefund } from './payment.service.js';
+import {
+  PAYMENT_PURPOSE, TERMINAL, REFUNDING, SETTLED,
+  createIntent as createIntentCore, findIntent, markIntentPaid, markIntentFailed,
+  receiptFor, claimWebhookEvent, finishWebhookEvent, webhookEventId,
+} from './paymentIntent.service.js';
 import { releaseReservations } from './stockReservation.service.js';
 import { recordEvent, SHOP_EVENTS } from './shopMetrics.service.js';
 import { auditLog } from './audit.service.js';
@@ -41,100 +55,58 @@ import { auditLog } from './audit.service.js';
 /** Intents older than this that never got paid are treated as abandoned. */
 const INTENT_EXPIRY_MINUTES = 30;
 
-/** Terminal states — the reconciler does not revisit these. */
-const TERMINAL = new Set(['ORDER_CREATED', 'FAILED', 'CANCELLED', 'REFUNDED', 'EXPIRED']);
-
-/** The money is on its way back: no order may be made from this payment. */
-const REFUNDING = ['REFUND_INITIATED', 'REFUNDED'];
-
-/** An intent that produced an order or a refund; a late "paid" must not move it. */
-const SETTLED = ['ORDER_CREATED', ...REFUNDING];
-
 /** Prefix of `failureReason` when the automatic refund's gateway call failed. */
 export const AUTO_REFUND_FAILED = 'AUTO-REFUND FAILED';
 
-export function receiptFor(userId) {
-  // Unique per intent. The old receipt was `cart_${userId}`, identical for every
-  // payment that user ever made, so /confirm's `receipt === cart_${userId}` check
-  // could not tell this payment from one made last week — it proved only that the
-  // gateway order belonged to this user, never that it belonged to THIS checkout.
-  return `cs_${userId.slice(0, 8)}_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-}
-
-/** Record an intent before the gateway call, so a crash after it is recoverable. */
-export async function createIntent({ userId, providerOrderId, amount, receipt, quote }) {
-  return prisma.paymentIntent.create({
-    data: {
-      userId,
-      providerOrderId,
-      amount: D(amount).toFixed(2),
-      amountPaise: toMinorUnits(amount),
-      receipt,
-      status: 'CREATED',
-      quoteSnapshot: quote ? {
-        total: quote.total,
-        subtotal: quote.subtotal,
-        deliveryFee: quote.deliveryFee,
-        taxAmount: quote.taxAmount,
-        fingerprint: quote.fingerprint,
-        pricedAt: quote.pricedAt,
-        shipmentCount: quote.shipmentCount,
-      } : undefined,
-      cartHash: quote?.fingerprint || null,
-    },
-  });
-}
-
-export async function findIntent(providerOrderId) {
-  return prisma.paymentIntent.findUnique({ where: { providerOrderId } });
-}
+/**
+ * Purposes THIS module knows how to settle. The reconciler sweeps only these.
+ *
+ * Its four outcomes are shop outcomes — find an Order by `paymentRef`, release
+ * stock reservations, refund a capture that produced no order. Applied to a
+ * rent booking they are wrong in a way that costs a farmer their slot: a
+ * payment that is merely slow finds no Order, and the money goes back. So the
+ * sweep is opt-in per purpose, and a purpose with no handler is counted and
+ * left alone rather than settled by rules written for something else.
+ */
+const RECONCILED_PURPOSES = [PAYMENT_PURPOSE.SHOP_ORDER];
 
 /**
- * Mark an intent paid. Idempotent: safe to call from the client confirm AND from
- * a webhook for the same payment, in either order.
+ * The names below moved to paymentIntent.service.js, which owns the intent
+ * state machine and the webhook inbox for EVERY purpose. They are re-exported
+ * here so that no call site had to change when they moved — this module stays
+ * the door AgriStore knocks on.
  */
-export async function markIntentPaid({ providerOrderId, providerPaymentId, amountPaise }) {
-  try {
-    // Never regress a state that already produced an order or a refund. This
-    // was an unconditional write, and payment.captured routinely lands AFTER
-    // confirm: PAID over REFUND_INITIATED put a refunded payment back in the
-    // orphan queue, where a late confirm could still turn it into an order.
-    const { count } = await prisma.paymentIntent.updateMany({
-      where: { providerOrderId, status: { notIn: SETTLED } },
-      data: {
-        status: 'PAID',
-        providerPaymentId,
-        ...(amountPaise != null ? { amountPaise } : {}),
-      },
-    });
-    // Settled: still record which payment it was, if that is not yet known.
-    if (!count && providerPaymentId) {
-      await prisma.paymentIntent.updateMany({
-        where: { providerOrderId, providerPaymentId: null },
-        data: { providerPaymentId },
-      });
-    }
-    return await prisma.paymentIntent.findUnique({ where: { providerOrderId } });
-  } catch (err) {
-    if (err?.code === 'P2025') return null; // no such intent
-    // P2002 on providerPaymentId: this payment id is already recorded against a
-    // different intent. Never overwrite — it means duplicate gateway data, and
-    // silently reassigning it would detach a real payment from its real order.
-    if (err?.code === 'P2002') {
-      logger.warn({ providerOrderId, providerPaymentId }, '[ShopPayment] payment id already bound to another intent');
-      return prisma.paymentIntent.findUnique({ where: { providerOrderId } });
-    }
-    throw err;
-  }
-}
+export {
+  receiptFor, findIntent, markIntentPaid, markIntentFailed,
+  claimWebhookEvent, finishWebhookEvent, webhookEventId,
+};
 
-export async function markIntentFailed({ providerOrderId, reason }) {
-  try {
-    return await prisma.paymentIntent.update({
-      where: { providerOrderId },
-      data: { status: 'FAILED', failureReason: String(reason || '').slice(0, 500) },
-    });
-  } catch { return null; }
+/**
+ * Record a SHOP_ORDER intent before the gateway call, so a crash after it is
+ * recoverable.
+ *
+ * The cart quote is frozen here and nowhere else: `confirm` rebuilds it and
+ * refuses if the payable moved, and `cartHash` catches a cart edited in another
+ * tab between initiate and confirm. Everything else is the shared core's.
+ */
+export async function createIntent({ userId, providerOrderId, amount, receipt, quote }) {
+  return createIntentCore({
+    userId,
+    providerOrderId,
+    purpose: PAYMENT_PURPOSE.SHOP_ORDER,
+    amount,
+    receipt,
+    quoteSnapshot: quote ? {
+      total: quote.total,
+      subtotal: quote.subtotal,
+      deliveryFee: quote.deliveryFee,
+      taxAmount: quote.taxAmount,
+      fingerprint: quote.fingerprint,
+      pricedAt: quote.pricedAt,
+      shipmentCount: quote.shipmentCount,
+    } : null,
+    cartHash: quote?.fingerprint || null,
+  });
 }
 
 /** Bind an intent to the order it produced. UNIQUE orderId makes this the gate. */
@@ -263,52 +235,55 @@ export async function refundUnorderedPayment({ providerOrderId, providerPaymentI
   }
 }
 
-// ── Webhooks ──────────────────────────────────────────────────────────────────
+// ── Webhook handlers ──────────────────────────────────────────────────────────
 
 /**
- * Claim a webhook event id. Returns false when it has been seen before.
+ * What an AgriStore payment needs AFTER the shared webhook half has recorded it.
  *
- * Razorpay retries a failed webhook for 24 hours, so this WILL receive the same
- * `payment.captured` many times. Without the claim, each redelivery would be a
- * second attempt at order creation. The unique index does the work; the insert
- * either succeeds (first delivery) or throws P2002 (a redelivery).
+ * Registered against PAYMENT_PURPOSE.SHOP_ORDER by the webhook dispatcher
+ * (routes/paymentWebhooks.routes.js). Each hook is best-effort: the money is
+ * already recorded on the intent by the time any of them runs, so a failure
+ * here loses follow-up work, never the payment itself.
  */
-export async function claimWebhookEvent({ eventId, eventType, providerOrderId, providerPaymentId, payloadDigest }) {
-  try {
-    await prisma.paymentWebhookEvent.create({
-      data: { eventId, eventType, providerOrderId, providerPaymentId, payloadDigest },
+export const shopWebhookHandler = {
+  /**
+   * The client's confirm may already have created the order while the app was
+   * reconnecting. Bind the two together so reconciliation does not later flag a
+   * paid intent with no order and refund a payment that produced one.
+   */
+  async captured({ intent, providerOrderId, providerPaymentId }) {
+    if (!providerPaymentId || intent.orderId) return;
+    const order = await prisma.order.findUnique({
+      where: { paymentRef: providerPaymentId }, select: { id: true },
     });
-    return true;
-  } catch (err) {
-    if (err?.code === 'P2002') return false;
-    throw err;
-  }
-}
+    if (!order) return;
+    await prisma.paymentIntent.update({
+      where: { providerOrderId },
+      data: { status: 'ORDER_CREATED', orderId: order.id },
+    }).catch(() => {});
+  },
 
-export async function finishWebhookEvent(eventId, { status, error } = {}) {
-  try {
-    await prisma.paymentWebhookEvent.update({
-      where: { eventId },
-      data: { status, error: error ? String(error).slice(0, 500) : null, processedAt: new Date() },
-    });
-  } catch { /* the event row is telemetry; never fail the webhook over it */ }
-}
+  /**
+   * The payment is not coming, so the units this buyer was holding go back on
+   * the shelf NOW rather than sitting out the TTL. On a nearly-sold-out product
+   * that is the difference between the next farmer being able to buy it and
+   * being told it is gone.
+   */
+  async failed({ providerOrderId }) {
+    await releaseReservations(providerOrderId, 'payment failed').catch(() => {});
+  },
 
-/**
- * Derive a stable event id.
- *
- * Razorpay's webhook body has no guaranteed unique event id field across every
- * event type, so the id is (eventType, entity id) — which is exactly the
- * granularity idempotency needs: `payment.captured` for payment `pay_X` must be
- * processed once, no matter how many times it is delivered.
- */
-export function webhookEventId(payload) {
-  const type = payload?.event || 'unknown';
-  const paymentId = payload?.payload?.payment?.entity?.id;
-  const orderId = payload?.payload?.order?.entity?.id || payload?.payload?.payment?.entity?.order_id;
-  const refundId = payload?.payload?.refund?.entity?.id;
-  return `${type}:${refundId || paymentId || orderId || crypto.randomUUID()}`;
-}
+  /**
+   * Keep the order's own payment state honest — a refunded order that still
+   * reads "paid" is what turns a refund into a support ticket.
+   */
+  async refunded({ providerPaymentId, eventType }) {
+    await prisma.order.updateMany({
+      where: { paymentRef: providerPaymentId },
+      data: { paymentStatus: eventType === 'refund.processed' ? 'refunded' : 'refund_initiated' },
+    }).catch(() => {});
+  },
+};
 
 // ── Reconciliation ────────────────────────────────────────────────────────────
 
@@ -338,7 +313,14 @@ export async function reconcilePendingPayments({ olderThanMinutes = 10, limit = 
   const expiryCutoff = new Date(Date.now() - INTENT_EXPIRY_MINUTES * 60_000);
 
   const stale = await prisma.paymentIntent.findMany({
-    where: { status: { in: ['CREATED', 'PENDING', 'PAID'] }, createdAt: { lt: cutoff } },
+    // purpose filter: see RECONCILED_PURPOSES. Every row written before that
+    // column existed is SHOP_ORDER by default, so this changes nothing today —
+    // it is what stops the next purpose inheriting shop settlement by accident.
+    where: {
+      purpose: { in: RECONCILED_PURPOSES },
+      status: { in: ['CREATED', 'PENDING', 'PAID'] },
+      createdAt: { lt: cutoff },
+    },
     orderBy: { createdAt: 'asc' },
     take: limit,
   });
