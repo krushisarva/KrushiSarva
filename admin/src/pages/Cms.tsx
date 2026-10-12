@@ -54,7 +54,7 @@ export function SchemesPage() {
     { key: 'type', header: 'Type', render: (s) => <Badge>{s.type}</Badge>, csv: (s) => s.type },
     { key: 'benefitAmount', header: 'Benefit', render: (s) => s.benefitAmount ? formatINR(s.benefitAmount) : s.benefitType, csv: (s) => String(s.benefitAmount ?? s.benefitType) },
     { key: 'isActive', header: 'Active', render: (s) => <BoolBadge value={s.isActive} />, csv: (s) => String(s.isActive) },
-    { key: 'actions', header: '', render: (s) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(s)}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
+    { key: 'actions', header: '', render: (s) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(s)} aria-label={`Edit ${s.schemeName}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(s)} aria-label={`Deactivate ${s.schemeName}`}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
   ];
 
   return (
@@ -132,7 +132,7 @@ export function MspPage() {
     { key: 'season', header: 'Season', render: (m) => m.season, csv: (m) => m.season },
     { key: 'year', header: 'Year', render: (m) => m.year, csv: (m) => m.year },
     { key: 'mspPrice', header: 'MSP', render: (m) => formatINR(m.mspPrice), csv: (m) => String(m.mspPrice) },
-    { key: 'actions', header: '', render: (m) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(m)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(m)}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
+    { key: 'actions', header: '', render: (m) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(m)} aria-label={`Edit MSP for ${m.commodity}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(m)} aria-label={`Delete MSP for ${m.commodity}`}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
   ];
 
   return (
@@ -195,7 +195,7 @@ export function CropMasterPage() {
     { key: 'category', header: 'Category', render: (c) => <Badge>{c.category}</Badge>, csv: (c) => c.category },
     { key: 'maturityDays', header: 'Maturity (d)', render: (c) => c.maturityDays, csv: (c) => String(c.maturityDays) },
     { key: 'seasons', header: 'Seasons', render: (c) => (c.seasons || []).join(', ') || '—', csv: (c) => (c.seasons || []).join('|') },
-    { key: 'actions', header: '', render: (c) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
+    { key: 'actions', header: '', render: (c) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(c)} aria-label={`Edit ${c.name}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(c)} aria-label={`Delete ${c.name}`}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
   ];
 
   return (
@@ -326,11 +326,11 @@ export function MandiSyncPage() {
             <thead className="bg-slate-50"><tr><th className="table-th">Type</th><th className="table-th">State</th><th className="table-th">Commodity</th><th className="table-th">Status</th><th className="table-th">Records</th><th className="table-th">Started</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {(q.data ?? []).map((s) => (
-                <tr key={s.id}><td className="table-td">{s.syncType}</td><td className="table-td">{s.state || '—'}</td><td className="table-td">{s.commodity || '—'}</td><td className="table-td"><StatusBadge value={s.status} /></td><td className="table-td">{s.recordsFetched}</td><td className="table-td text-xs text-slate-400">{formatDateTime(s.startedAt)}</td></tr>
+                <tr key={s.id}><td className="table-td">{s.syncType}</td><td className="table-td">{s.state || '—'}</td><td className="table-td">{s.commodity || '—'}</td><td className="table-td"><StatusBadge value={s.status} /></td><td className="table-td">{s.recordsFetched}</td><td className="table-td text-xs text-slate-500">{formatDateTime(s.startedAt)}</td></tr>
               ))}
             </tbody>
           </table>
-          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">No sync runs yet.</p>}
+          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">No sync runs yet.</p>}
         </Card>
       )}
     </div>

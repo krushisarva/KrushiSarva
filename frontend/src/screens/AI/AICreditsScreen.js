@@ -118,7 +118,7 @@ export default function AICreditsScreen({ navigation }) {
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
         <View style={S.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -184,7 +184,7 @@ export default function AICreditsScreen({ navigation }) {
 
       {/* Header */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -199,7 +199,7 @@ export default function AICreditsScreen({ navigation }) {
       >
 
         {loadError && (
-          <View style={S.errorBanner}>
+          <View style={S.errorBanner} accessibilityLiveRegion="polite">
             <Ionicons name="cloud-offline-outline" size={16} color={COLORS.amberDark || COLORS.amber} />
             <Text style={S.errorBannerText}>
               {t('aiCredits.loadError', "Couldn't load your latest balance. Pull down to refresh.")}
@@ -241,6 +241,9 @@ export default function AICreditsScreen({ navigation }) {
           activeOpacity={0.85}
           onPress={handleBuy}
           disabled={packsLoading || purchase.busy}
+          accessibilityRole="button"
+          accessibilityState={{ busy: packsLoading || purchase.busy }}
+          accessibilityLabel={t('aiCredits.buyCredits', 'Buy Credits')}
         >
           {packsLoading || purchase.busy
             ? <ActivityIndicator size="small" color={COLORS.white} />

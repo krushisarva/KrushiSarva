@@ -68,6 +68,9 @@ function LangCard({ lang, active, onSelect, index }) {
         onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40 }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 5 }).start()}
         onPress={() => onSelect(lang.code)}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: active }}
+        accessibilityLabel={[lang.native, lang.name !== lang.native && lang.name, lang.region].filter(Boolean).join(', ')}
       >
         {/* Flag chip */}
         <View style={[sty.flagWrap, active && sty.flagWrapActive]}>
@@ -138,7 +141,7 @@ export default function OnboardingLanguageScreen({ navigation }) {
             <LanguageIcon size={48} animated />
           </View>
           <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={sty.title}>
+            <Text style={sty.title} accessibilityRole="header">
               {t("onboarding.chooseLanguageTitle")}{"\n"}
               <Text style={sty.titleAccent}>{t("onboarding.chooseLanguageAccent")}</Text>
             </Text>
@@ -166,7 +169,7 @@ export default function OnboardingLanguageScreen({ navigation }) {
           </Text>
         </View>
 
-        <TouchableOpacity onPress={handleNext} activeOpacity={0.9} style={{ borderRadius: 18 }}>
+        <TouchableOpacity onPress={handleNext} activeOpacity={0.9} style={{ borderRadius: 18 }} accessibilityRole="button">
           <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.btnGrad}>
             <Text style={sty.btnTxt}>{t("next")}</Text>
             <View style={sty.btnArrow}>

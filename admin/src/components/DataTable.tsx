@@ -124,11 +124,15 @@ export function DataTable<T>({
                   // rowClassName must keep its own colour when focused, and the
                   // app-wide focus ring is a box-shadow that a collapsed table
                   // row does not paint.
-                  onRowClick ? 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600' : '',
+                  onRowClick ? 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700' : '',
                   rowClassName?.(row) ?? '',
                 ].filter(Boolean).join(' ')}
                 tabIndex={onRowClick ? 0 : undefined}
                 onKeyDown={onRowClick ? (e) => {
+                  // Only the row's own key press. Enter/Space on a button or
+                  // select inside a cell bubbles up here and belongs to that
+                  // control — opening the row would also cancel its action.
+                  if (e.target !== e.currentTarget) return;
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row); }
                 } : undefined}
               >

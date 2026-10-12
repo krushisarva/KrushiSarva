@@ -289,7 +289,7 @@ function HolographicSphere({ state, audioLevel, size, animScale, animShiftY }) {
   }
 
   return (
-    <Animated.View style={wrapper} pointerEvents="none">
+    <Animated.View style={wrapper} pointerEvents="none" importantForAccessibility="no-hide-descendants">
       <WebView
         ref={wvRef}
         source={{ html: SPHERE_HTML }}
@@ -919,6 +919,8 @@ export default function VoiceChatScreen({ navigation }) {
             style={S.backBtn}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.goBack', 'Go back')}
           >
             <ArrowLeft size={22} color="#F0FDF4" strokeWidth={2.2} />
           </TouchableOpacity>
@@ -950,7 +952,7 @@ export default function VoiceChatScreen({ navigation }) {
             <Text style={S.hintText} key={statusText}>{statusText}</Text>
           ) : null}
           {errorMsg ? (
-            <View style={S.errorBanner}>
+            <View style={S.errorBanner} accessibilityLiveRegion="polite">
               <Ionicons name="alert-circle" size={18} color="#FCA5A5" />
               <Text style={S.errorText} numberOfLines={4}>{errorMsg}</Text>
             </View>
@@ -968,6 +970,8 @@ export default function VoiceChatScreen({ navigation }) {
                   navigation.replace('AIChat');
                 }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('aiHome.quickServices.chat', 'AI Chat')}
               >
                 <MessageSquare size={20} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
               </TouchableOpacity>
@@ -982,6 +986,9 @@ export default function VoiceChatScreen({ navigation }) {
                   onPress={onMicTap}
                   disabled={isProcessing || isPlaying}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: isProcessing }}
+                  accessibilityLabel={isRecording ? t('a11y.stopRecording', 'Stop recording') : t('a11y.startRecording', 'Start recording')}
                 >
                   {isRecording
                     ? <SquareIcon size={22} color="#0C2415" strokeWidth={3} fill="#0C2415" />
@@ -997,6 +1004,8 @@ export default function VoiceChatScreen({ navigation }) {
                   navigation.goBack();
                 }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('a11y.endVoiceChat', 'End voice chat')}
               >
                 <PhoneOff size={20} color="#EF4444" strokeWidth={2.4} />
               </TouchableOpacity>

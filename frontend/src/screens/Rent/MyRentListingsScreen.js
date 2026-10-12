@@ -66,11 +66,11 @@ function MachineryCard({ item, onEdit, onDelete, t }) {
 
       {/* Actions */}
       <View style={S.actionRow}>
-        <TouchableOpacity style={S.editBtn} onPress={() => onEdit(item)}>
+        <TouchableOpacity style={S.editBtn} onPress={() => onEdit(item)} accessibilityRole="button" accessibilityLabel={t('a11y.editItem', { name: item.name, defaultValue: 'Edit {{name}}' })}>
           <Ionicons name="pencil-outline" size={15} color={COLORS.primary} />
           <Text style={S.editBtnTxt}>{t('rent.edit')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={S.deleteBtn} onPress={() => onDelete(item, 'machinery')}>
+        <TouchableOpacity style={S.deleteBtn} onPress={() => onDelete(item, 'machinery')} accessibilityRole="button" accessibilityLabel={t('a11y.deleteItem', { name: item.name, defaultValue: 'Delete {{name}}' })}>
           <Ionicons name="trash-outline" size={15} color={RED} />
           <Text style={S.deleteBtnTxt}>{t('rent.delete')}</Text>
         </TouchableOpacity>
@@ -122,11 +122,11 @@ function LabourCard({ item, onEdit, onDelete, t }) {
       </View>
 
       <View style={S.actionRow}>
-        <TouchableOpacity style={S.editBtn} onPress={() => onEdit(item)}>
+        <TouchableOpacity style={S.editBtn} onPress={() => onEdit(item)} accessibilityRole="button" accessibilityLabel={t('a11y.editItem', { name: item.leader || item.name, defaultValue: 'Edit {{name}}' })}>
           <Ionicons name="pencil-outline" size={15} color={COLORS.primary} />
           <Text style={S.editBtnTxt}>{t('rent.edit')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={S.deleteBtn} onPress={() => onDelete(item, 'labour')}>
+        <TouchableOpacity style={S.deleteBtn} onPress={() => onDelete(item, 'labour')} accessibilityRole="button" accessibilityLabel={t('a11y.deleteItem', { name: item.leader || item.name, defaultValue: 'Delete {{name}}' })}>
           <Ionicons name="trash-outline" size={15} color={RED} />
           <Text style={S.deleteBtnTxt}>{t('rent.delete')}</Text>
         </TouchableOpacity>
@@ -213,7 +213,7 @@ export default function MyRentListingsScreen({ navigation }) {
 
       {/* Header */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -223,6 +223,8 @@ export default function MyRentListingsScreen({ navigation }) {
         <TouchableOpacity
           style={S.addBtn}
           onPress={() => openRentForm(tab === 'machinery' ? 'AddMachinery' : 'AddWorker')}
+          accessibilityRole="button"
+          accessibilityLabel={tab === 'machinery' ? t('rent.listMachinery') : t('rent.registerAsWorker')}
         >
           <Ionicons name="add-circle" size={28} color={COLORS.primary} />
         </TouchableOpacity>
@@ -238,6 +240,8 @@ export default function MyRentListingsScreen({ navigation }) {
             key={tb.key}
             style={[S.tabItem, tab === tb.key && S.tabItemActive]}
             onPress={() => setTab(tb.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === tb.key }}
           >
             <Ionicons name={tb.icon} size={15} color={tab === tb.key ? COLORS.primary : COLORS.grayMedium} />
             <Text style={[S.tabTxt, tab === tb.key && S.tabTxtActive]}>{tb.label}</Text>
@@ -257,6 +261,7 @@ export default function MyRentListingsScreen({ navigation }) {
           <TouchableOpacity
             style={S.addFirstBtn}
             onPress={() => openRentForm(tab === 'machinery' ? 'AddMachinery' : 'AddWorker')}
+            accessibilityRole="button"
           >
             <Ionicons name="add" size={16} color={COLORS.primary} />
             <Text style={S.addFirstTxt}>
@@ -320,12 +325,13 @@ export default function MyRentListingsScreen({ navigation }) {
                 </Text>
               </View>
             ) : null}
-            {delError ? <Text style={S.confirmErr}>{delError}</Text> : null}
+            {delError ? <Text style={S.confirmErr} accessibilityLiveRegion="polite">{delError}</Text> : null}
             <View style={S.confirmBtnRow}>
               <TouchableOpacity
                 style={[S.confirmBtn, S.confirmBtnSecondary]}
                 onPress={() => setConfirm(null)}
                 disabled={!!deleting}
+                accessibilityRole="button"
               >
                 <Text style={S.confirmBtnTextSecondary}>{t('rent.cancel')}</Text>
               </TouchableOpacity>
@@ -333,6 +339,9 @@ export default function MyRentListingsScreen({ navigation }) {
                 style={[S.confirmBtn, S.confirmBtnDanger, !!deleting && { opacity: 0.7 }]}
                 onPress={confirmDelete}
                 disabled={!!deleting}
+                accessibilityRole="button"
+                accessibilityState={{ busy: !!deleting }}
+                accessibilityLabel={t('rent.delete')}
               >
                 {deleting
                   ? <ActivityIndicator size="small" color={COLORS.white} />

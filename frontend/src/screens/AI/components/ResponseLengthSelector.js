@@ -27,7 +27,7 @@ const OPTIONS = [
 ];
 
 export default function ResponseLengthSelector({ compact = false }) {
-  const { responseLength, setResponseLength } = useLanguage();
+  const { responseLength, setResponseLength, t } = useLanguage();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
@@ -42,7 +42,7 @@ export default function ResponseLengthSelector({ compact = false }) {
           activeOpacity={0.7}
           style={styles.compactBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Response length: ${current.label}`}
+          accessibilityLabel={t('a11y.responseLength', { value: current.label, defaultValue: 'Response length: {{value}}' })}
         >
           <Gauge size={20} color="#F5B841" strokeWidth={2.2} />
         </TouchableOpacity>
@@ -51,6 +51,8 @@ export default function ResponseLengthSelector({ compact = false }) {
           onPress={() => setOpen(true)}
           activeOpacity={0.75}
           style={styles.triggerWrap}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.responseLength', { value: current.label, defaultValue: 'Response length: {{value}}' })}
         >
           <BlurView intensity={28} tint="dark" style={styles.triggerBlur}>
             <View style={styles.triggerRow}>
@@ -71,11 +73,11 @@ export default function ResponseLengthSelector({ compact = false }) {
         onRequestClose={() => setOpen(false)}
         statusBarTranslucent
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={[styles.sheetWrap, { paddingBottom: insets.bottom + 24 }]} onPress={() => {}}>
+        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
+          <Pressable style={[styles.sheetWrap, { paddingBottom: insets.bottom + 24 }]} onPress={() => {}} importantForAccessibility="no">
             <BlurView intensity={60} tint="dark" style={styles.sheet}>
               <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>RESPONSE LENGTH</Text>
+              <Text style={styles.sheetTitle} accessible accessibilityRole="header">RESPONSE LENGTH</Text>
               <FlatList
                 data={OPTIONS}
                 keyExtractor={(item) => item.code}
@@ -89,6 +91,8 @@ export default function ResponseLengthSelector({ compact = false }) {
                         await setResponseLength(item.code);
                         setOpen(false);
                       }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.name}>{item.label}</Text>

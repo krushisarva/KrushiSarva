@@ -86,6 +86,8 @@ export default function NotificationsScreen({ navigation }) {
       style={[S.row, !item.readAt && S.rowUnread]}
       onPress={() => markRead(item)}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={[!item.readAt ? t('a11y.unread', 'Unread') : null, item.title, item.body, timeAgo(item.createdAt, t)].filter(Boolean).join(', ')}
     >
       <PhotoIcon
         set="notif" name={item.type} size={48} radius={10}
@@ -109,11 +111,11 @@ export default function NotificationsScreen({ navigation }) {
   return (
     <View style={[S.root, { paddingTop: insets.top }]}>
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={S.h1}>{t('notif.title', 'Notifications')}</Text>
-        <TouchableOpacity onPress={markAll} hitSlop={12}>
+        <TouchableOpacity onPress={markAll} hitSlop={12} accessibilityRole="button">
           <Text style={S.allRead}>{t('notif.markAll', 'Mark all')}</Text>
         </TouchableOpacity>
       </View>

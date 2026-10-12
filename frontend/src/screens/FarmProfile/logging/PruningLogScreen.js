@@ -70,7 +70,7 @@ export default function PruningLogScreen({ navigation, route }) {
       <TileGrid items={partItems} value={part} onChange={setPart} columns={2} />
 
       <SectionHeader icon="people-outline" tint={COSMIC.PRUNING} title={t('pruningLog.labourCost')} optional />
-      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.PRUNING} /></Card>
+      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.PRUNING} accessibilityLabel={t('pruningLog.labourCost')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('pruningLog.notes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

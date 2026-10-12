@@ -34,7 +34,7 @@ function StageCard({ stage, index, total, isActive, t, language }) {
   const progressPct = ((index + 1) / total) * 100;
 
   return (
-    <View style={styles.stageWrapper}>
+    <View style={styles.stageWrapper} accessibilityState={{ selected: isActive }} accessible>
       <View style={styles.timelineCol}>
         <View style={[styles.timelineDot, { backgroundColor: color }, isActive && styles.timelineDotActive]}>
           <Text style={[styles.timelineDotNum, { color: onColor }]}>{index + 1}</Text>
@@ -203,7 +203,7 @@ export default function CropDetail({ route }) {
         {/* ── Growth timeline ──────────────────────────────────────────────── */}
         {hasStages && (
           <View style={styles.timelineSection}>
-            <Text style={styles.sectionTitle}>{t('cropDetail.cropGrowthTimeline')}</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{t('cropDetail.cropGrowthTimeline')}</Text>
             <Text style={styles.sectionSub}>{t('cropDetail.stagesSummary', { stages: crop.stages.length, totalDays })}</Text>
 
             <View style={styles.stageSelector}>
@@ -213,6 +213,8 @@ export default function CropDetail({ route }) {
                     key={i}
                     style={[styles.stageSelectorChip, activeStageIndex === i && styles.stageSelectorChipActive]}
                     onPress={() => setActiveStageIndex(i)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: activeStageIndex === i }}
                   >
                     <Text style={[styles.stageSelectorText, activeStageIndex === i && styles.stageSelectorTextActive]}>
                       {i + 1}. {stage.name?.split(' ')[0] || stage.name}
@@ -228,12 +230,12 @@ export default function CropDetail({ route }) {
                 <Text style={styles.activeStageHi}>{crop.stages[activeStageIndex].nameHi}</Text>
               </View>
               <View style={styles.activeStageStats}>
-                <View style={styles.activeStatItem}>
+                <View style={styles.activeStatItem} accessible>
                   <Ionicons name="play" size={16} color={KHET.primary} />
                   <Text style={styles.activeStatLabel}>{t('cropDetail.startsDay')}</Text>
                   <Text style={styles.activeStatValue}>{crop.stages[activeStageIndex].day}</Text>
                 </View>
-                <View style={styles.activeStatItem}>
+                <View style={styles.activeStatItem} accessible>
                   <Ionicons name="time" size={16} color={KHET.gold} />
                   <Text style={styles.activeStatLabel}>{t('cropDetail.totalDuration')}</Text>
                   <Text style={styles.activeStatValue}>{crop.stages[activeStageIndex].duration}d</Text>
@@ -260,7 +262,7 @@ export default function CropDetail({ route }) {
 // ── Sub-components ──────────────────────────────────────────────────────────────
 function SummaryCard({ icon, tint, value, label }) {
   return (
-    <View style={styles.summaryCard}>
+    <View style={styles.summaryCard} accessible>
       <View style={[styles.summaryIcon, { backgroundColor: tint + '18', borderColor: tint + '3A' }]}>
         <Ionicons name={icon} size={18} color={tint} />
       </View>
@@ -277,7 +279,7 @@ function InfoSection({ icon, tint, title, children }) {
         <View style={[styles.gSecIcon, { backgroundColor: tint + '18', borderColor: tint + '40' }]}>
           <Ionicons name={icon} size={16} color={tint} />
         </View>
-        <Text style={styles.gSecTitle}>{title}</Text>
+        <Text style={styles.gSecTitle} accessibilityRole="header">{title}</Text>
       </View>
       {children}
     </View>
@@ -287,7 +289,7 @@ function InfoSection({ icon, tint, title, children }) {
 function Row({ k, v }) {
   if (!v) return null;
   return (
-    <View style={styles.gKv}>
+    <View style={styles.gKv} accessible>
       <Text style={styles.gKvK}>{k}</Text>
       <Text style={styles.gKvV}>{v}</Text>
     </View>

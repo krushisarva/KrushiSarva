@@ -321,7 +321,7 @@ function StatusStrip({ error, cachedAt, onRetry, onSignIn, onWidenRadius, hasRad
         size={16}
         color={COLORS.error}
       />
-      <Text style={[S.bannerTxt, { color: COLORS.error }]} numberOfLines={2}>{error.message}</Text>
+      <Text style={[S.bannerTxt, { color: COLORS.error }]} numberOfLines={2} accessibilityLiveRegion="polite">{error.message}</Text>
       {isAuth ? (
         <TouchableOpacity onPress={onSignIn} hitSlop={8} accessibilityRole="button">
           <Text style={[S.bannerAction, { color: COLORS.error }]}>{t('signIn', 'Sign in')}</Text>
@@ -380,10 +380,8 @@ function EmptyAnimals({ t, hasRadius, hasFilters, hasSearch, onShowAll, onClearF
           <Ionicons name="cash-outline" size={13} color={GREEN} />
           <Text style={S.emptyChipTxt}>{t('animal.freeToPost')}</Text>
         </View>
-        <View style={S.emptyChip}>
-          <Ionicons name="shield-checkmark-outline" size={13} color={GREEN} />
-          <Text style={S.emptyChipTxt}>{t('animal.verifiedBadge')}</Text>
-        </View>
+        {/* No "Verified sellers" chip: any signed-in user can post an animal,
+            and only an admin can mark a single listing verified. */}
       </View>
 
       <TouchableOpacity style={S.emptyCta} onPress={onPost} activeOpacity={0.85} accessibilityRole="button">

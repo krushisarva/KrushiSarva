@@ -112,7 +112,7 @@ function BudgetPanel() {
         <Metric label="Spend today" value={formatUsd(b.today.costUsd)} />
         <Metric label="Lifetime spend" value={formatUsd(b.lifetime.costUsd)} />
       </div>
-      <p className="mt-3 text-xs text-slate-400">
+      <p className="mt-3 text-xs text-slate-500">
         Set the ceiling below via <span className="font-mono">ai.monthlyBudgetUsdCap</span>. Aggregated from per-user daily AI usage.
       </p>
     </Card>
@@ -181,7 +181,7 @@ function SettingRow({ item }: { item: SettingItem }) {
           {item.isDefault && <Badge tone="slate">default</Badge>}
         </div>
         {item.description && <p className="mt-0.5 text-xs text-slate-500">{item.description}</p>}
-        <p className="mt-0.5 font-mono text-[11px] text-slate-400">{item.key}</p>
+        <p className="mt-0.5 font-mono text-[11px] text-slate-500">{item.key}</p>
       </div>
       <div className="flex items-center gap-2">
         {item.type === 'BOOL' ? (
@@ -190,7 +190,7 @@ function SettingRow({ item }: { item: SettingItem }) {
           </Button>
         ) : item.type === 'ENUM' && item.options ? (
           <>
-            <Select value={draft} onChange={(e) => setDraft(e.target.value)} className="w-56">
+            <Select value={draft} onChange={(e) => setDraft(e.target.value)} className="w-56" aria-label={item.label || item.key}>
               {item.options.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -208,6 +208,7 @@ function SettingRow({ item }: { item: SettingItem }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               className="w-44"
+              aria-label={item.label || item.key}
               {...(item.type === 'NUMBER'
                 ? {
                     min: item.min ?? undefined,
@@ -255,12 +256,12 @@ function EnvStatusPanel() {
         <div className="space-y-4">
           {q.data.map((group) => (
             <div key={group.category}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{group.category}</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{group.category}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {group.items.map((env) => (
                   <div key={env.key} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
                     <span className="flex items-center gap-1.5 font-mono text-xs text-slate-700">
-                      {env.secret && <Lock className="h-3 w-3 text-slate-400" />}
+                      {env.secret && <Lock className="h-3 w-3 text-slate-500" />}
                       {env.key}
                     </span>
                     {env.present ? (

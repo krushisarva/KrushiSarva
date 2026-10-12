@@ -83,10 +83,10 @@ export default function ExpenseLogScreen({ navigation, route }) {
       <TileGrid items={categories} value={category} onChange={(v) => setCategory(v || 'other')} columns={3} />
 
       <SectionHeader icon="cash-outline" tint={COSMIC.EXPENSE} title={t('orders.amount')} />
-      <Card><BigNumberInput value={amount} onChange={setAmount} unit="₹" tint={COSMIC.EXPENSE} /></Card>
+      <Card><BigNumberInput value={amount} onChange={setAmount} unit="₹" tint={COSMIC.EXPENSE} accessibilityLabel={t('orders.amount')} /></Card>
 
       <SectionHeader icon="storefront-outline" tint={COSMIC.INFO} title={t('expenseLog.vendor')} optional />
-      <Card><LabeledInput value={vendor} onChangeText={setVendor} placeholder={t('expenseLog.vendorPlaceholder')} /></Card>
+      <Card><LabeledInput value={vendor} onChangeText={setVendor} placeholder={t('expenseLog.vendorPlaceholder')} accessibilityLabel={t('expenseLog.vendor')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('expenseLog.notes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

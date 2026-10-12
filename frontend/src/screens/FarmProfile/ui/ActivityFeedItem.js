@@ -52,6 +52,7 @@ export default function ActivityFeedItem({
         pressed && { backgroundColor: COSMIC.SURFACE_HI },
         style,
       ]}
+      accessibilityRole={onPress ? 'button' : undefined}
     >
       {/* Solid coloured icon circle */}
       <View style={[styles.icon, { backgroundColor: meta.color }]}>
@@ -83,7 +84,7 @@ export default function ActivityFeedItem({
               </View>
             )}
             {hasVoice && (
-              <Pressable onPress={onPlayVoice} style={styles.voicePill}>
+              <Pressable onPress={onPlayVoice} style={styles.voicePill} accessibilityRole="button">
                 <Ionicons name="play" size={11} color={COSMIC.ACCENT} />
                 <Text style={styles.voicePillText}>{t('aiChat.voiceTag')}</Text>
               </Pressable>

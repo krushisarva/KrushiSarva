@@ -114,6 +114,7 @@ export default function SoilFormScreen({ navigation, route }) {
           placeholderTextColor={MUTED}
           value={fieldName}
           onChangeText={setFieldName}
+          accessibilityLabel={t('soilHub.form.fieldNamePlaceholder', 'Field name (optional)')}
         />
 
         <View style={S.sectionRow}>
@@ -137,6 +138,7 @@ export default function SoilFormScreen({ navigation, route }) {
               keyboardType="decimal-pad"
               value={formData[f.key] || ''}
               onChangeText={v => setField(f.key, v)}
+              accessibilityLabel={fieldLabel(f, language)}
             />
             <Text style={S.paramUnit}>{f.unit || '—'}</Text>
           </View>
@@ -149,9 +151,9 @@ export default function SoilFormScreen({ navigation, route }) {
           </Text>
         </View>
 
-        {error ? <Text style={S.errorTxt}>{error}</Text> : null}
+        {error ? <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text> : null}
 
-        <TouchableOpacity style={[S.submitBtn, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading} activeOpacity={0.9}>
+        <TouchableOpacity style={[S.submitBtn, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading} activeOpacity={0.9} accessibilityRole="button" accessibilityState={{ busy: loading }} accessibilityLabel={t('soilHub.form.analyze', 'Analyze my soil')}>
           {loading
             ? <ActivityIndicator color={BG} />
             : <Text style={S.submitTxt}>{t('soilHub.form.analyze', 'Analyze my soil')}</Text>}

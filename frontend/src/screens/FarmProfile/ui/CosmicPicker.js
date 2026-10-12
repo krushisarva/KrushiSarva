@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COSMIC, CR, CS, CT } from '../theme/cosmicTheme';
 import { Haptics } from '@krushisarva/shared/utils/haptics';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 export default function CosmicPicker({
   title,
@@ -26,6 +27,7 @@ export default function CosmicPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
 
   const filtered = useMemo(() => {
     if (!query.trim()) return items;
@@ -49,6 +51,9 @@ export default function CosmicPicker({
           disabled && styles.triggerDisabled,
           pressed && !disabled && { opacity: 0.75 },
         ]}
+        accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        accessibilityLabel={title ? (selected ? `${title}, ${selected}` : title) : undefined}
       >
         {!!prefix && <View style={{ marginRight: 6 }}>{prefix}</View>}
         <Text style={[styles.triggerText, !selected && styles.triggerPlaceholder]} numberOfLines={1}>
@@ -64,7 +69,7 @@ export default function CosmicPicker({
         onRequestClose={() => { setOpen(false); setQuery(''); }}
         statusBarTranslucent
       >
-        <Pressable style={styles.backdrop} onPress={() => { setOpen(false); setQuery(''); }} />
+        <Pressable style={styles.backdrop} onPress={() => { setOpen(false); setQuery(''); }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
           <View style={styles.handle} />
 
@@ -73,6 +78,8 @@ export default function CosmicPicker({
             <Pressable
               onPress={() => { setOpen(false); setQuery(''); }}
               hitSlop={{ top: 10, left: 10, bottom: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('close', 'Close')}
             >
               <Ionicons name="close" size={20} color={COSMIC.TEXT_2} />
             </Pressable>
@@ -87,9 +94,10 @@ export default function CosmicPicker({
               placeholderTextColor={COSMIC.MUTED}
               style={styles.searchInput}
               autoFocus
+              accessibilityLabel={t('search', 'Search')}
             />
             {query.length > 0 && (
-              <Pressable onPress={() => setQuery('')} hitSlop={{ top: 8, left: 8, bottom: 8, right: 8 }}>
+              <Pressable onPress={() => setQuery('')} hitSlop={{ top: 8, left: 8, bottom: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('rent.clearSearch', 'Clear search')}>
                 <Ionicons name="close-circle" size={16} color={COSMIC.MUTED} />
               </Pressable>
             )}
@@ -102,13 +110,15 @@ export default function CosmicPicker({
             ItemSeparatorComponent={() => <View style={styles.sep} />}
             ListEmptyComponent={
               <View style={styles.emptyList}>
-                <Text style={styles.emptyText}>No matches for "{query}"</Text>
+                <Text style={styles.emptyText} accessibilityLiveRegion="polite">No matches for "{query}"</Text>
               </View>
             }
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => handleSelect(item)}
                 style={({ pressed }) => [styles.row, pressed && { backgroundColor: COSMIC.SURFACE_HI }]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: item === selected }}
               >
                 <Text style={styles.rowText} numberOfLines={1}>{item}</Text>
                 {item === selected && <Ionicons name="checkmark-circle" size={18} color={COSMIC.PRIMARY} />}

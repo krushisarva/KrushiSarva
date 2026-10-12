@@ -40,7 +40,7 @@ function getCategoryConfig(category) {
 function CostItem({ item }) {
   const cfg = getCategoryConfig(item.category);
   return (
-    <View style={S.costItem}>
+    <View style={S.costItem} accessible>
       <View style={[S.costIcon, { backgroundColor: cfg.color + '18' }]}>
         {cfg.render()}
       </View>
@@ -113,7 +113,7 @@ export default function InputCalculatorScreen({ navigation }) {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -125,7 +125,7 @@ export default function InputCalculatorScreen({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={S.scroll}>
 
         {/* Crop selector */}
-        <TouchableOpacity style={S.cropSelect} onPress={() => setCropModal(true)}>
+        <TouchableOpacity style={S.cropSelect} onPress={() => setCropModal(true)} accessibilityRole="button">
           <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
           <Text style={[S.cropSelectTxt, crop && { color: COLORS.textDark }]}>
             {crop || (t('inputCalc.selectCrop'))}
@@ -142,24 +142,25 @@ export default function InputCalculatorScreen({ navigation }) {
             keyboardType="decimal-pad"
             value={area}
             onChangeText={setArea}
+            accessibilityLabel={t('inputCalc.areaNumber', 'Area (number)')}
           />
-          <TouchableOpacity style={S.unitBtn} onPress={() => setUnitModal(true)}>
+          <TouchableOpacity style={S.unitBtn} onPress={() => setUnitModal(true)} accessibilityRole="button" accessibilityLabel={`${t('inputCalc.selectUnit', 'Select Unit')}: ${unit}`}>
             <Text style={S.unitBtnTxt}>{unit}</Text>
             <Ionicons name="chevron-down" size={13} color={COLORS.oliveGreen} />
           </TouchableOpacity>
         </View>
 
         {/* Organic toggle */}
-        <TouchableOpacity style={S.organicRow} onPress={() => setOrganic(o => !o)}>
+        <TouchableOpacity style={S.organicRow} onPress={() => setOrganic(o => !o)} accessibilityRole="checkbox" accessibilityState={{ checked: organic }}>
           <View style={[S.toggle, organic && S.toggleActive]}>
             {organic && <Ionicons name="checkmark" size={12} color={COLORS.white} />}
           </View>
           <Text style={S.organicTxt}>{t('inputCalc.organicFarmingMode')}</Text>
         </TouchableOpacity>
 
-        {error ? <Text style={S.errorTxt}>{error}</Text> : null}
+        {error ? <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text> : null}
 
-        <TouchableOpacity style={[S.calcBtn, loading && { opacity: 0.6 }]} onPress={handleCalculate} disabled={loading}>
+        <TouchableOpacity style={[S.calcBtn, loading && { opacity: 0.6 }]} onPress={handleCalculate} disabled={loading} accessibilityRole="button" accessibilityState={{ busy: loading }} accessibilityLabel={t('inputCalc.calculateCost', 'Calculate Cost →')}>
           {loading ? <ActivityIndicator color={COLORS.white} /> : (
             <Text style={S.calcTxt}>{t('inputCalc.calculateCost')}</Text>
           )}
@@ -193,7 +194,7 @@ export default function InputCalculatorScreen({ navigation }) {
                   if (!val) return null;
                   const pct = Math.round((val / result.summary.totalCost) * 100);
                   return (
-                    <View key={key} style={S.breakdownRow}>
+                    <View key={key} style={S.breakdownRow} accessible>
                       <Text style={S.bdLabel}>{label}</Text>
                       <View style={S.bdBarTrack}>
                         <View style={[S.bdBarFill, { width: `${pct}%`, backgroundColor: color }]} />
@@ -226,13 +227,13 @@ export default function InputCalculatorScreen({ navigation }) {
               data={crops}
               keyExtractor={(_, i) => String(i)}
               renderItem={({ item }) => (
-                <TouchableOpacity style={S.modalItem} onPress={() => { setCrop(item.name); setCropModal(false); }}>
+                <TouchableOpacity style={S.modalItem} onPress={() => { setCrop(item.name); setCropModal(false); }} accessibilityRole="button">
                   <Text style={S.modalItemTxt}>{item.name}</Text>
                   {item.nameHi ? <Text style={S.modalItemHi}>{item.nameHi}</Text> : null}
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)}>
+            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)} accessibilityRole="button">
               <Text style={S.modalCloseTxt}>{t('inputCalc.cancel')}</Text>
             </TouchableOpacity>
           </View>
@@ -245,11 +246,11 @@ export default function InputCalculatorScreen({ navigation }) {
           <View style={S.modalSheet}>
             <Text style={S.modalTitle}>{t('inputCalc.selectUnit')}</Text>
             {UNITS.map(u => (
-              <TouchableOpacity key={u} style={S.modalItem} onPress={() => { setUnit(u); setUnitModal(false); }}>
+              <TouchableOpacity key={u} style={S.modalItem} onPress={() => { setUnit(u); setUnitModal(false); }} accessibilityRole="button" accessibilityState={{ selected: u === unit }}>
                 <Text style={[S.modalItemTxt, u === unit && { color: COLORS.primary }]}>{u}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={S.modalClose} onPress={() => setUnitModal(false)}>
+            <TouchableOpacity style={S.modalClose} onPress={() => setUnitModal(false)} accessibilityRole="button">
               <Text style={S.modalCloseTxt}>{t('inputCalc.cancel')}</Text>
             </TouchableOpacity>
           </View>

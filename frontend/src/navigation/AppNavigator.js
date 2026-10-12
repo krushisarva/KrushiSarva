@@ -52,7 +52,9 @@ function TabItem({ route, options, focused, onPress }) {
   const sc = useRef(new Animated.Value(1)).current;
   const pillAnim = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const { count: cartCount } = useCart();
+  const { t } = useLanguage();
   const badgeCount = route.name === 'AgriStore' ? cartCount : 0;
+  const tabLabel = options.tabBarLabel ?? route.name;
 
   useEffect(() => {
     Animated.spring(pillAnim, { toValue: focused ? 1 : 0, useNativeDriver: true, tension: 180, friction: 12 }).start();
@@ -78,6 +80,11 @@ function TabItem({ route, options, focused, onPress }) {
       style={TB.tab}
       activeOpacity={1}
       onPress={handlePress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: focused }}
+      accessibilityLabel={badgeCount > 0
+        ? `${tabLabel}, ${t(badgeCount !== 1 ? 'cart.itemCountPlural' : 'cart.itemCount', { count: badgeCount })}`
+        : undefined}
     >
       <Animated.View style={[TB.tabInner, { transform: [{ scale: sc }] }]}>
         <View style={TB.iconWrap}>
@@ -109,7 +116,7 @@ function TabItem({ route, options, focused, onPress }) {
           // fully. Revisit only if the labels get shorter.
           maxFontSizeMultiplier={1}
         >
-          {options.tabBarLabel ?? route.name}
+          {tabLabel}
         </Text>
       </Animated.View>
     </TouchableOpacity>
@@ -131,7 +138,7 @@ function ImmersiveTabBar({ state, descriptors, navigation }) {
   return (
     <View style={TB.wrap}>
       <View style={TB.shadow}>
-        <View style={[TB.bar, { paddingTop: PT, paddingBottom: PT - 2 + bottomInset }]}>
+        <View style={[TB.bar, { paddingTop: PT, paddingBottom: PT - 2 + bottomInset }]} accessibilityRole="tablist">
           <TabBarScenery />
           {state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
@@ -397,8 +404,8 @@ function AINavigator() {
       <AIStack.Screen name="ActivityCustomLog"      component={CustomActivityLogScreen} options={{ headerShown: false }} />
       {/* Weather screens — accessible from AI tab */}
       <AIStack.Screen name="Weather"           component={WeatherHome}            options={{ headerShown: false }} />
-      <AIStack.Screen name="CropCalendar"      component={CropCalendar}           options={{ title: t('cropCalendar.bannerTitle') }} />
-      <AIStack.Screen name="CropDetail"        component={CropDetail}             options={({ route }) => ({ title: route.params?.cropName || t('nav.cropDetails') })} />
+      <AIStack.Screen name="CropCalendar"      component={CropCalendar}           options={{ title: t('cropCalendar.bannerTitle'), headerBackAccessibilityLabel: t('common.goBack', 'Go back') }} />
+      <AIStack.Screen name="CropDetail"        component={CropDetail}             options={({ route }) => ({ title: route.params?.cropName || t('nav.cropDetails'), headerBackAccessibilityLabel: t('common.goBack', 'Go back') })} />
       <AIStack.Screen name="StateCrops"        component={StateCropsScreen}       options={{ headerShown: false }} />
     </AIStack.Navigator>
   );
@@ -409,8 +416,8 @@ function AnimalTradeNavigator() {
   return (
     <AnimalStack.Navigator screenOptions={defaultScreenOptions}>
       <AnimalStack.Screen name="AnimalTradeHome"  component={AnimalTradeHome}  options={{ headerShown: false }} />
-      <AnimalStack.Screen name="AnimalDetail"     component={AnimalDetail}     options={{ title: t('animalDetail.animalDetails') }} />
-      <AnimalStack.Screen name="AddAnimalListing" component={AddAnimalListing} options={{ title: t('sellYourAnimal') }} />
+      <AnimalStack.Screen name="AnimalDetail"     component={AnimalDetail}     options={{ title: t('animalDetail.animalDetails'), headerBackAccessibilityLabel: t('common.goBack', 'Go back') }} />
+      <AnimalStack.Screen name="AddAnimalListing" component={AddAnimalListing} options={{ title: t('sellYourAnimal'), headerBackAccessibilityLabel: t('common.goBack', 'Go back') }} />
       <AnimalStack.Screen name="MyAnimalChats"    component={MyAnimalChatsScreen} options={{ headerShown: false }} />
       <AnimalStack.Screen name="Chat"             component={ChatScreen}       options={{ headerShown: false }} />
     </AnimalStack.Navigator>

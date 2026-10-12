@@ -48,7 +48,7 @@ export default function GrowthRing({
   const stageLabel = label || SHORT[currentStage] || currentStage;
 
   return (
-    <View style={[{ width: size, height: size }, style]}>
+    <View style={[{ width: size, height: size }, style]} accessible>
       <Svg width={size} height={size}>
         <Defs>
           <LinearGradient id={uid} x1="0" y1="0" x2="1" y2="1">

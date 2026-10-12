@@ -14,7 +14,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search…' }: { va
   return (
     <div className="relative w-full max-w-xs">
       <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-      <input className="input pl-8" value={local} onChange={(e) => setLocal(e.target.value)} placeholder={placeholder} />
+      <input className="input pl-8" value={local} onChange={(e) => setLocal(e.target.value)} placeholder={placeholder} aria-label={placeholder} />
     </div>
   );
 }
@@ -26,7 +26,7 @@ export function FilterSelect({ label, value, onChange, options, allLabel = 'All'
 }) {
   return (
     <label className="flex items-center gap-1.5 text-sm text-slate-500">
-      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:not-sr-only">{label}</span>
       <select className="input w-auto py-1.5" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{allLabel}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -41,7 +41,7 @@ export function DescList({ items }: { items: { label: string; value: ReactNode }
     <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
       {items.map((it, i) => (
         <div key={i}>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">{it.label}</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{it.label}</dt>
           <dd className="mt-0.5 text-sm text-slate-800">{it.value ?? '—'}</dd>
         </div>
       ))}

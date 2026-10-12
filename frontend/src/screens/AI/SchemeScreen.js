@@ -105,7 +105,7 @@ function SchemeCard({ scheme, onExpand, expanded, t }) {
   }, [expanded]);
 
   return (
-    <TouchableOpacity style={SC.card} onPress={onExpand} activeOpacity={0.85}>
+    <TouchableOpacity style={SC.card} onPress={onExpand} activeOpacity={0.85} accessibilityRole="button" accessibilityState={{ expanded }}>
       <View style={SC.cardTop}>
         <View style={[SC.iconWrap, { backgroundColor: `${scheme.color}15` }]}>
           <PhotoIcon
@@ -154,7 +154,7 @@ function SchemeCard({ scheme, onExpand, expanded, t }) {
             <Text style={SC.deadlineText}>{scheme.deadline}</Text>
           </View>
 
-          <TouchableOpacity style={[SC.applyBtn, { backgroundColor: scheme.color }]} activeOpacity={0.85}>
+          <TouchableOpacity style={[SC.applyBtn, { backgroundColor: scheme.color }]} activeOpacity={0.85} accessibilityRole="button">
             <Text style={SC.applyBtnText}>{t('scheme.applyNow')}</Text>
             <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
           </TouchableOpacity>
@@ -184,14 +184,14 @@ export default function SchemeScreen({ navigation }) {
 
       {/* ── Header ── */}
       <View style={[SC.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={SC.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={SC.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View>
           <Text style={SC.headerTitle}>{t('scheme.title')}</Text>
           <Text style={SC.headerSub}>{t('scheme.subtitle')}</Text>
         </View>
-        <View style={SC.eligibleBadge}>
+        <View style={SC.eligibleBadge} accessible>
           <Text style={SC.eligibleCount}>{eligible}</Text>
           <Text style={SC.eligibleLabel}>{t('scheme.eligible')}</Text>
         </View>
@@ -206,22 +206,23 @@ export default function SchemeScreen({ navigation }) {
           placeholderTextColor={COLORS.gray350}
           value={search}
           onChangeText={setSearch}
+          accessibilityLabel={t('scheme.searchPlaceholder', 'Search schemes...')}
         />
       </View>
 
       {/* ── Summary chips ── */}
       <View style={SC.summaryRow}>
-        <View style={SC.summaryChip}>
+        <View style={SC.summaryChip} accessible>
           <Text style={SC.summaryValue}>{SCHEMES.filter(s => s.status === 'eligible').length}</Text>
           <Text style={SC.summaryLabel}>{t('scheme.eligible')}</Text>
         </View>
         <View style={SC.summaryChipDiv} />
-        <View style={SC.summaryChip}>
+        <View style={SC.summaryChip} accessible>
           <Text style={[SC.summaryValue, { color: COLORS.amberDark }]}>₹59,000</Text>
           <Text style={SC.summaryLabel}>{t('scheme.maxAnnualBenefit')}</Text>
         </View>
         <View style={SC.summaryChipDiv} />
-        <View style={SC.summaryChip}>
+        <View style={SC.summaryChip} accessible>
           <Text style={[SC.summaryValue, { color: COLORS.blue }]}>{SCHEMES.length}</Text>
           <Text style={SC.summaryLabel}>{t('scheme.totalSchemes')}</Text>
         </View>
@@ -245,7 +246,7 @@ export default function SchemeScreen({ navigation }) {
           </View>
         )}
 
-        <TouchableOpacity style={SC.askBtn} onPress={() => navigation.navigate('AIChat', { initialMessage: 'Which government schemes am I eligible for?' })} activeOpacity={0.8}>
+        <TouchableOpacity style={SC.askBtn} onPress={() => navigation.navigate('AIChat', { initialMessage: 'Which government schemes am I eligible for?' })} activeOpacity={0.8} accessibilityRole="button">
           <Ionicons name="sparkles-outline" size={16} color={COLORS.white} />
           <Text style={SC.askBtnText}>{t('scheme.askAI')}</Text>
         </TouchableOpacity>

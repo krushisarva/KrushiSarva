@@ -83,10 +83,10 @@ export default function SowingLogScreen({ navigation, route }) {
       <TileGrid items={methodItems} value={method} onChange={setMethod} columns={2}  photoSet="sow" />
 
       <SectionHeader icon="nutrition-outline" tint={COSMIC.SOWING} title={t('sowingLog.sectionSeedUsed')} optional />
-      <Card><BigNumberInput value={seedKg} onChange={setSeedKg} unit="KG" keyboardType="decimal-pad" tint={COSMIC.SOWING} /></Card>
+      <Card><BigNumberInput value={seedKg} onChange={setSeedKg} unit="KG" keyboardType="decimal-pad" tint={COSMIC.SOWING} accessibilityLabel={t('sowingLog.sectionSeedUsed')} /></Card>
 
       <SectionHeader icon="people-outline" tint={COSMIC.EXPENSE} title={t('sowingLog.sectionLabourCost')} optional />
-      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" keyboardType="decimal-pad" tint={COSMIC.EXPENSE} /></Card>
+      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" keyboardType="decimal-pad" tint={COSMIC.EXPENSE} accessibilityLabel={t('sowingLog.sectionLabourCost')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('sowingLog.sectionNotes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

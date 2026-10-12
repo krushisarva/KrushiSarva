@@ -109,7 +109,7 @@ export default function SoilHubScreen({ navigation }) {
         {/* Tile grid */}
         <View style={S.grid}>
           {TILES.map(tile => (
-            <TouchableOpacity key={tile.id} style={S.tile} activeOpacity={0.85} onPress={tile.onPress}>
+            <TouchableOpacity key={tile.id} style={S.tile} activeOpacity={0.85} onPress={tile.onPress} accessibilityRole="button">
               <View style={[S.tileIcon, { backgroundColor: tile.color + '22' }]}>
                 <tile.Icon size={22} color={tile.color} strokeWidth={2.2} />
               </View>
@@ -139,7 +139,7 @@ function SummaryCard({ report, t, language, navigation }) {
           <Text style={S.summaryField} numberOfLines={1}>{report.fieldName || t('soilHub.summary.myField', 'My field')}</Text>
         </View>
         {report.ph != null && (
-          <View style={S.phPill}>
+          <View style={S.phPill} accessible>
             <Text style={S.phPillLabel}>pH</Text>
             <Text style={[S.phPillVal, { color: ratingColor(ratings.ph?.rating) }]}>{report.ph}</Text>
           </View>
@@ -156,10 +156,10 @@ function SummaryCard({ report, t, language, navigation }) {
       </View>
 
       <View style={S.summaryBtns}>
-        <TouchableOpacity style={[S.summaryBtn, S.summaryBtnGhost]} activeOpacity={0.85} onPress={() => navigation.navigate('SoilReport', { report })}>
+        <TouchableOpacity style={[S.summaryBtn, S.summaryBtnGhost]} activeOpacity={0.85} onPress={() => navigation.navigate('SoilReport', { report })} accessibilityRole="button">
           <Text style={S.summaryBtnGhostTxt}>{t('soilHub.summary.view', 'View report')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[S.summaryBtn, S.summaryBtnSolid]} activeOpacity={0.85} onPress={() => askSoilAdvisor(navigation, report, language, t)}>
+        <TouchableOpacity style={[S.summaryBtn, S.summaryBtnSolid]} activeOpacity={0.85} onPress={() => askSoilAdvisor(navigation, report, language, t)} accessibilityRole="button">
           <Sparkles size={14} color={BG} strokeWidth={2.4} />
           <Text style={S.summaryBtnSolidTxt}>{t('soilHub.summary.ask', 'Ask AI')}</Text>
         </TouchableOpacity>
@@ -171,7 +171,7 @@ function SummaryCard({ report, t, language, navigation }) {
 // ── First-time prompt (no test yet) ──────────────────────────────────────────
 function NoReportCard({ t, navigation }) {
   return (
-    <TouchableOpacity style={S.noReport} activeOpacity={0.9} onPress={() => navigation.navigate('SoilGuide')}>
+    <TouchableOpacity style={S.noReport} activeOpacity={0.9} onPress={() => navigation.navigate('SoilGuide')} accessibilityRole="button">
       <View style={S.noReportIcon}>
         <BookOpen size={20} color={P_LIGHT} strokeWidth={2.2} />
       </View>

@@ -3237,12 +3237,25 @@ router.post(
     // user could review any product. A review is now anchored to a delivered
     // order item, which is also what makes it attributable to a SELLER: without
     // that, buy-box weight w2 has no honest source.
+    //
+    // A sale the caller made to THEMSELVES is not a purchase. Nothing at cart or
+    // checkout stops a Kendra ordering its own offer cash on delivery, and
+    // DELIVERED is the seller's own transition — so a seller could manufacture
+    // the delivered line alone and post a "verified" review under their own
+    // sellerId, moving product.rating and their own buy-box weight. Excluded in
+    // the query rather than after it, so a seller who also bought this product
+    // from another Kendra still matches THAT line.
+    //
+    // Two branches, not a bare `sellerId: { not }`: the column is nullable and
+    // SQL `<>` is never true for NULL, so the bare form would also take review
+    // rights from every buyer of a line written before lines carried a seller.
     const purchase = await prisma.orderItem.findFirst({
       where: {
         ...(orderItemId ? { id: orderItemId } : {}),
         productId,
         order: { userId: req.user.id },
         status: 'DELIVERED',
+        OR: [{ sellerId: { not: req.user.id } }, { sellerId: null }],
       },
       select: { id: true, sellerId: true },
       orderBy: { createdAt: 'desc' },

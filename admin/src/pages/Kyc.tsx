@@ -28,7 +28,7 @@ export function KycPage() {
   const columns: Column<KycRow>[] = [
     { key: 'name', header: 'Seller', render: (r) => r.user?.name || '—', csv: (r) => r.user?.name || '' },
     { key: 'phone', header: 'Phone', render: (r) => <span className="font-mono text-xs">{r.user?.phone}</span>, csv: (r) => r.user?.phone || '' },
-    { key: 'type', header: 'Type', render: (r) => (r.isKendra ? <Badge tone="green">Kendra</Badge> : <span className="text-xs text-slate-400">Seller</span>), csv: (r) => (r.isKendra ? 'Kendra' : 'Seller') },
+    { key: 'type', header: 'Type', render: (r) => (r.isKendra ? <Badge tone="green">Kendra</Badge> : <span className="text-xs text-slate-500">Seller</span>), csv: (r) => (r.isKendra ? 'Kendra' : 'Seller') },
     { key: 'kyc', header: 'KYC', render: (r) => <StatusBadge value={r.user?.kycStatus} />, csv: (r) => r.user?.kycStatus || '' },
     { key: 'documentCount', header: 'Docs', render: (r) => r.isKendra ? `${r.documentCount} + ${r.licenceDocCount ?? 0} lic.` : r.documentCount, csv: (r) => String(r.documentCount) },
     { key: 'district', header: 'District', render: (r) => r.user?.district || '—', csv: (r) => r.user?.district || '' },
@@ -152,16 +152,16 @@ export function KycDetailPage() {
 
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-medium text-slate-700">KYC documents ({d.documents.length})</h3>
-          {d.documents.length === 0 ? <p className="text-sm text-slate-400">No documents uploaded.</p> : (
+          {d.documents.length === 0 ? <p className="text-sm text-slate-500">No documents uploaded.</p> : (
             <ul className="space-y-2">
               {d.documents.map((doc) => (
                 <li key={doc.index}>
                   {doc.url ? (
                     <a href={doc.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
-                      <FileText className="h-4 w-4" /> Document {doc.index + 1} <span className="ml-auto text-xs text-slate-400">(signed link, ~5 min)</span>
+                      <FileText className="h-4 w-4" /> Document {doc.index + 1} <span className="ml-auto text-xs text-slate-500">(signed link, ~5 min)</span>
                     </a>
                   ) : (
-                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-400"><FileText className="h-4 w-4" /> Document {doc.index + 1} (link unavailable)</div>
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500"><FileText className="h-4 w-4" /> Document {doc.index + 1} (link unavailable)</div>
                   )}
                 </li>
               ))}
@@ -184,19 +184,19 @@ export function KycDetailPage() {
               { label: 'Expiry', value: d.licence?.expiry ? formatDate(d.licence.expiry) : '—' },
             ]} />
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Licence documents ({d.licence?.documents?.length ?? 0})</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Licence documents ({d.licence?.documents?.length ?? 0})</p>
               {(!d.licence?.documents || d.licence.documents.length === 0) ? (
-                <p className="text-sm text-slate-400">No licence documents uploaded.</p>
+                <p className="text-sm text-slate-500">No licence documents uploaded.</p>
               ) : (
                 <ul className="space-y-2">
                   {d.licence.documents.map((doc) => (
                     <li key={doc.index}>
                       {doc.url ? (
                         <a href={doc.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
-                          <FileText className="h-4 w-4" /> Licence {doc.index + 1} <span className="ml-auto text-xs text-slate-400">(signed link, ~5 min)</span>
+                          <FileText className="h-4 w-4" /> Licence {doc.index + 1} <span className="ml-auto text-xs text-slate-500">(signed link, ~5 min)</span>
                         </a>
                       ) : (
-                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-400"><FileText className="h-4 w-4" /> Licence {doc.index + 1} (link unavailable)</div>
+                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500"><FileText className="h-4 w-4" /> Licence {doc.index + 1} (link unavailable)</div>
                       )}
                     </li>
                   ))}

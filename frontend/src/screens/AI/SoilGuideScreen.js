@@ -76,7 +76,7 @@ export default function SoilGuideScreen({ navigation }) {
         {/* Quick facts */}
         <View style={S.facts}>
           {facts.map((f, i) => (
-            <View key={i} style={S.factCard}>
+            <View key={i} style={S.factCard} accessible>
               <f.Icon size={17} color={f.color} strokeWidth={2.2} />
               <Text style={S.factLabel}>{f.label}</Text>
               <Text style={S.factValue}>{f.value}</Text>
@@ -97,7 +97,7 @@ export default function SoilGuideScreen({ navigation }) {
         ))}
 
         {/* Find a lab CTA */}
-        <TouchableOpacity style={S.labBtn} activeOpacity={0.9} onPress={() => openSoilLabFinder(t)}>
+        <TouchableOpacity style={S.labBtn} activeOpacity={0.9} onPress={() => openSoilLabFinder(t)} accessibilityRole="link">
           <MapPin size={17} color={BG} strokeWidth={2.4} />
           <Text style={S.labBtnTxt}>{t('soilHub.guide.findLab', 'Find a soil testing lab near me')}</Text>
         </TouchableOpacity>
@@ -131,10 +131,10 @@ export default function SoilGuideScreen({ navigation }) {
 
         {/* Next step */}
         <View style={S.nextRow}>
-          <TouchableOpacity style={[S.nextBtn, S.nextGhost]} activeOpacity={0.9} onPress={() => navigation.navigate('SoilScan')}>
+          <TouchableOpacity style={[S.nextBtn, S.nextGhost]} activeOpacity={0.9} onPress={() => navigation.navigate('SoilScan')} accessibilityRole="button">
             <Text style={S.nextGhostTxt}>{t('soilHub.guide.haveCard', 'I have a card →')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[S.nextBtn, S.nextSolid]} activeOpacity={0.9} onPress={() => navigation.navigate('SoilForm')}>
+          <TouchableOpacity style={[S.nextBtn, S.nextSolid]} activeOpacity={0.9} onPress={() => navigation.navigate('SoilForm')} accessibilityRole="button">
             <Text style={S.nextSolidTxt}>{t('soilHub.guide.enterValues', 'Enter values')}</Text>
           </TouchableOpacity>
         </View>

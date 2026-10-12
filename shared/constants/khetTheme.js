@@ -28,7 +28,7 @@ export const KHET = {
 
   // ── Gradient stops (use with expo-linear-gradient) ─────────────────────────
   // --gradient-primary: 135deg
-  gradPrimary:   ['#005f21', '#008935'],
+  gradPrimary:   ['#005f21', '#008030'],
   // --gradient-surface: 160deg
   gradSurface:   ['#f8fef4', '#e1f6dc'],
   // --gradient-hero: 180deg, transparent -> dark -> very dark (overlay on hero img)

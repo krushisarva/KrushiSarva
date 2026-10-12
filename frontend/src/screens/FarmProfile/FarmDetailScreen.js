@@ -200,11 +200,11 @@ export default function FarmDetailScreen({ navigation, route }) {
         <GlassCard variant="plain" style={styles.section}>
           {soil ? (
             <View style={styles.soilRow}>
-              <RadialGauge size={62} strokeWidth={7} label="pH" value={soil.ph}            min={3} max={9}   decimals={1} color={soilColor(soil.phRating)} />
-              <RadialGauge size={62} strokeWidth={7} label="N"  value={soil.nitrogen}      min={0} max={600} color={soilColor(soil.nitrogenRating)} />
-              <RadialGauge size={62} strokeWidth={7} label="P"  value={soil.phosphorus}    min={0} max={60}  color={soilColor(soil.phosphorusRating)} />
-              <RadialGauge size={62} strokeWidth={7} label="K"  value={soil.potassium}     min={0} max={400} color={soilColor(soil.potassiumRating)} />
-              <RadialGauge size={62} strokeWidth={7} label="OC" value={soil.organicCarbon} min={0} max={2}   decimals={1} color={soilColor(soil.organicCarbonRating)} />
+              <RadialGauge size={62} strokeWidth={7} label="pH" value={soil.ph}            min={3} max={9}   decimals={1} color={soilColor(soil.phRating)} accessibilityLabel={[`pH ${soil.ph ?? '—'}`, soil.phRating].filter(Boolean).join(', ')} />
+              <RadialGauge size={62} strokeWidth={7} label="N"  value={soil.nitrogen}      min={0} max={600} color={soilColor(soil.nitrogenRating)} accessibilityLabel={[`N ${soil.nitrogen ?? '—'}`, soil.nitrogenRating].filter(Boolean).join(', ')} />
+              <RadialGauge size={62} strokeWidth={7} label="P"  value={soil.phosphorus}    min={0} max={60}  color={soilColor(soil.phosphorusRating)} accessibilityLabel={[`P ${soil.phosphorus ?? '—'}`, soil.phosphorusRating].filter(Boolean).join(', ')} />
+              <RadialGauge size={62} strokeWidth={7} label="K"  value={soil.potassium}     min={0} max={400} color={soilColor(soil.potassiumRating)} accessibilityLabel={[`K ${soil.potassium ?? '—'}`, soil.potassiumRating].filter(Boolean).join(', ')} />
+              <RadialGauge size={62} strokeWidth={7} label="OC" value={soil.organicCarbon} min={0} max={2}   decimals={1} color={soilColor(soil.organicCarbonRating)} accessibilityLabel={[`OC ${soil.organicCarbon ?? '—'}`, soil.organicCarbonRating].filter(Boolean).join(', ')} />
             </View>
           ) : (
             <View style={styles.emptyCyclesRow}>
@@ -285,7 +285,7 @@ function HeroCard({ farm, isActive, onSetActive, t }) {
             <Text style={styles.activePillText}>{t('farmDetail.activeUsesData', 'Active · Krushi Intelligence uses this data')}</Text>
           </View>
         ) : (
-          <Pressable onPress={onSetActive} style={({ pressed }) => [styles.setActiveBtn, pressed && { opacity: 0.7 }]}>
+          <Pressable onPress={onSetActive} style={({ pressed }) => [styles.setActiveBtn, pressed && { opacity: 0.7 }]} accessibilityRole="button">
             <Ionicons name="star-outline" size={12} color={COSMIC.ACCENT} />
             <Text style={styles.setActiveText}>{t('farmDetail.setActiveFarm', 'Set as active farm')}</Text>
           </Pressable>
@@ -297,7 +297,7 @@ function HeroCard({ farm, isActive, onSetActive, t }) {
 
 function HeroStat({ icon, value, label, capitalize }) {
   return (
-    <View style={styles.heroStatCol}>
+    <View style={styles.heroStatCol} accessible>
       <Ionicons name={icon} size={12} color={COSMIC.PRIMARY} />
       <Text style={[styles.heroStatValue, capitalize && { textTransform: 'capitalize' }]} numberOfLines={1}>
         {value || '—'}
@@ -317,7 +317,7 @@ function CycleRow({ cycle, onPress }) {
     : null;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [{ marginBottom: 10 }, pressed && { opacity: 0.88 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ marginBottom: 10 }, pressed && { opacity: 0.88 }]} accessibilityRole="button">
       <GlassCard variant="bordered">
         <View style={styles.cycleTopRow}>
           <View style={styles.cropIconWrap}>
@@ -368,6 +368,7 @@ function PredCard({ icon, tint, title, sub, onPress }) {
     <Pressable
       onPress={() => { Haptics.light?.(); onPress && onPress(); }}
       style={({ pressed }) => [styles.predCard, { borderColor: tint + '44' }, pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] }]}
+      accessibilityRole="button"
     >
       <View style={[styles.predIcon, { backgroundColor: tint + '22', borderColor: tint + '55' }]}>
         <Ionicons name={icon} size={20} color={tint} />
@@ -385,7 +386,7 @@ function SectionLabel({ title, action, badge }) {
   return (
     <View style={styles.sectionLabel}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
         {!!badge && (
           <View style={styles.sectionBadge}>
             <Text style={styles.sectionBadgeText}>{badge}</Text>
@@ -393,7 +394,7 @@ function SectionLabel({ title, action, badge }) {
         )}
       </View>
       {action && (
-        <Pressable onPress={action.onPress}>
+        <Pressable onPress={action.onPress} accessibilityRole="button">
           <Text style={styles.sectionAction}>{action.label} →</Text>
         </Pressable>
       )}

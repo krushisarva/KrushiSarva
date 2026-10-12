@@ -39,7 +39,7 @@ function TaskCard({ task, onDone, onSkip, language, t }) {
   const cropName = task.calendar?.crop || task.cropName || null;
   return (
     <View style={[S.taskCard, isDone && S.taskCardDone]}>
-      <View style={[S.taskStatus, { backgroundColor: cfg.color + '20' }]}>
+      <View style={[S.taskStatus, { backgroundColor: cfg.color + '20' }]} accessible={isDone} accessibilityLabel={isDone ? (task.status === 'skipped' ? t('irrigation.skipped', 'Skipped') : t('rent.statusCompleted', 'Completed')) : undefined}>
         <Ionicons name={cfg.icon} size={18} color={cfg.color} />
       </View>
       <View style={{ flex: 1 }}>
@@ -55,10 +55,10 @@ function TaskCard({ task, onDone, onSkip, language, t }) {
       </View>
       {!isDone && (
         <View style={S.taskActions}>
-          <TouchableOpacity style={S.doneBtn} onPress={() => onDone(task.id)}>
+          <TouchableOpacity style={S.doneBtn} onPress={() => onDone(task.id)} accessibilityRole="button" accessibilityLabel={t('a11y.markDone', { name: task.title || task.task, defaultValue: 'Mark {{name}} as done' })}>
             <Ionicons name="checkmark" size={16} color={COLORS.white} />
           </TouchableOpacity>
-          <TouchableOpacity style={S.skipBtn} onPress={() => onSkip(task.id)}>
+          <TouchableOpacity style={S.skipBtn} onPress={() => onSkip(task.id)} accessibilityRole="button" accessibilityLabel={t('a11y.skipItem', { name: task.title || task.task, defaultValue: 'Skip {{name}}' })}>
             <Ionicons name="close" size={16} color={COLORS.gray550} />
           </TouchableOpacity>
         </View>
@@ -103,7 +103,7 @@ function CreateCalendar({ language, t, onCreated, onCancel, crops }) {
     <View style={S.createForm}>
       <Text style={S.createTitle}>{t('farmCalendar.newCropCalendar')}</Text>
 
-      <TouchableOpacity style={S.cropSelect} onPress={() => setCropModal(true)}>
+      <TouchableOpacity style={S.cropSelect} onPress={() => setCropModal(true)} accessibilityRole="button">
         <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
         <Text style={[S.cropSelectTxt, cropName && { color: COLORS.textDark }]}>
           {cropName || t('farmCalendar.selectCrop')}
@@ -117,6 +117,8 @@ function CreateCalendar({ language, t, onCreated, onCancel, crops }) {
             key={s}
             style={[S.seasonChip, season === s && S.seasonChipActive]}
             onPress={() => setSeason(s)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: season === s }}
           >
             <Text style={[S.seasonChipTxt, season === s && S.seasonChipTxtActive]}>
               {t(`farmCalendar.season_${s}`)}
@@ -133,16 +135,17 @@ function CreateCalendar({ language, t, onCreated, onCancel, crops }) {
           placeholderTextColor={COLORS.textLight}
           value={sowingDate}
           onChangeText={setSowingDate}
+          accessibilityLabel={`${t('farmCalendar.sowingDate', 'Sowing Date')} (YYYY-MM-DD)`}
         />
       </View>
 
-      {error ? <Text style={S.errorTxt}>{error}</Text> : null}
+      {error ? <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text> : null}
 
       <View style={S.createBtns}>
-        <TouchableOpacity style={S.cancelBtn} onPress={onCancel}>
+        <TouchableOpacity style={S.cancelBtn} onPress={onCancel} accessibilityRole="button">
           <Text style={S.cancelTxt}>{t('farmCalendar.cancel')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[S.calcBtn, { flex: 1 }, loading && { opacity: 0.6 }]} onPress={handleCreate} disabled={loading}>
+        <TouchableOpacity style={[S.calcBtn, { flex: 1 }, loading && { opacity: 0.6 }]} onPress={handleCreate} disabled={loading} accessibilityRole="button" accessibilityState={{ busy: loading }} accessibilityLabel={t('farmCalendar.create', 'Create →')}>
           {loading ? <ActivityIndicator color={COLORS.white} size="small" /> : (
             <Text style={S.calcTxt}>{t('farmCalendar.create')}</Text>
           )}
@@ -160,13 +163,13 @@ function CreateCalendar({ language, t, onCreated, onCancel, crops }) {
               data={crops}
               keyExtractor={(_, i) => String(i)}
               renderItem={({ item }) => (
-                <TouchableOpacity style={S.modalItem} onPress={() => { setCropName(item.name); setCropModal(false); }}>
+                <TouchableOpacity style={S.modalItem} onPress={() => { setCropName(item.name); setCropModal(false); }} accessibilityRole="button">
                   <Text style={S.modalItemTxt}>{item.name}</Text>
                   {item.nameHi ? <Text style={S.modalItemHi}>{item.nameHi}</Text> : null}
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)}>
+            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)} accessibilityRole="button">
               <Text style={S.modalCloseTxt}>{t('farmCalendar.cancel')}</Text>
             </TouchableOpacity>
           </View>
@@ -238,7 +241,7 @@ export default function FarmCalendarScreen({ navigation }) {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -249,7 +252,7 @@ export default function FarmCalendarScreen({ navigation }) {
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={S.tabScroll} contentContainerStyle={S.tabContent}>
         {TABS.map(t => (
-          <TouchableOpacity key={t.key} style={[S.tabBtn, tab === t.key && S.tabBtnActive]} onPress={() => setTab(t.key)}>
+          <TouchableOpacity key={t.key} style={[S.tabBtn, tab === t.key && S.tabBtnActive]} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }}>
             <Text style={[S.tabTxt, tab === t.key && S.tabTxtActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
@@ -266,7 +269,7 @@ export default function FarmCalendarScreen({ navigation }) {
             data={todayTasks}
             keyExtractor={(_, i) => String(i)}
             renderItem={({ item }) => (
-              <TaskCard task={item} language={language} onDone={handleDone} onSkip={handleSkip} />
+              <TaskCard task={item} language={language} onDone={handleDone} onSkip={handleSkip} t={t} />
             )}
             contentContainerStyle={S.listContent}
             ListEmptyComponent={
@@ -303,7 +306,7 @@ export default function FarmCalendarScreen({ navigation }) {
                     {item.sowingDate ? ` · Sown ${new Date(item.sowingDate).toLocaleDateString()}` : ''}
                   </Text>
                 </View>
-                <View style={S.calStats}>
+                <View style={S.calStats} accessible>
                   <Text style={[S.calStat, { color: COLORS.primary }]}>{item.stats?.total || 0}</Text>
                   <Text style={S.calStatLabel}>{t('farmCalendar.tasks')}</Text>
                 </View>
@@ -313,7 +316,7 @@ export default function FarmCalendarScreen({ navigation }) {
               <View style={S.centered}>
                 <ActivityIcon type="OTHER" size={48} animated={false} />
                 <Text style={S.emptyTxt}>{t('farmCalendar.noCalendarsYet')}</Text>
-                <TouchableOpacity style={S.createBtnSmall} onPress={() => setTab('create')}>
+                <TouchableOpacity style={S.createBtnSmall} onPress={() => setTab('create')} accessibilityRole="button">
                   <Text style={S.createBtnSmallTxt}>{t('farmCalendar.createNew')}</Text>
                 </TouchableOpacity>
               </View>
@@ -326,6 +329,7 @@ export default function FarmCalendarScreen({ navigation }) {
         <ScrollView contentContainerStyle={{ padding: 18 }}>
           <CreateCalendar
             language={language}
+            t={t}
             crops={crops}
             onCreated={(result) => {
               setTab('calendars');

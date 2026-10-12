@@ -14,6 +14,14 @@ import prisma from '../src/config/db.js';
 import { normalizedColumns } from '../src/utils/animalNormalize.js';
 import { listingExpiry } from '../src/services/animalListing.service.js';
 
+// Demo data only — never production. The listings are invented, some carry
+// `verified: true`, and with no phone given they attach to whichever real user
+// was active last. First statement that runs, ahead of the first query.
+if (process.env.NODE_ENV === 'production') {
+  console.error('seed-animals.js: refusing to run with NODE_ENV=production — this is DEMO data (invented livestock listings, "verified" flags) and must not be loaded into production.');
+  process.exit(1);
+}
+
 const ARG_PHONE = process.argv[2]?.trim() || null;
 const ENV_PHONE = process.env.SEED_SELLER_PHONE?.trim() || null;
 const REQUESTED_PHONE = ARG_PHONE || ENV_PHONE;

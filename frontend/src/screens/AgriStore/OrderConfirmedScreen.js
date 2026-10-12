@@ -60,6 +60,7 @@ function PressScale({ onPress, style, down = 0.96, children }) {
         onPressIn={() => Animated.spring(sc, { toValue: down, useNativeDriver: true, friction: 8, tension: 200 }).start()}
         onPressOut={() => Animated.spring(sc, { toValue: 1, useNativeDriver: true, friction: 5, tension: 80 }).start()}
         activeOpacity={1}
+        accessibilityRole="button"
       >
         {children}
       </TouchableOpacity>

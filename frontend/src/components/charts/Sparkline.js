@@ -22,6 +22,7 @@ export default function Sparkline({
   showLastDot = true,
   strokeWidth = 2.5,
   style,
+  accessibilityLabel,
 }) {
   const uid = useRef(`spark${++_uid}`).current;
   const { d, area, coords } = buildLinePath(points, width, height, strokeWidth + 1);
@@ -38,7 +39,7 @@ export default function Sparkline({
   if (!d) return <View style={[{ width, height }, style]} />;
 
   return (
-    <View style={[{ width, height }, style]}>
+    <View style={[{ width, height }, style]} accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel}>
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id={uid} x1="0" y1="0" x2="0" y2="1">

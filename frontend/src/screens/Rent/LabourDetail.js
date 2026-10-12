@@ -19,7 +19,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Image, ActivityIndicator, Dimensions, StatusBar, Alert, Modal,
+  Image, ActivityIndicator, Dimensions, StatusBar, Alert, Modal, Linking,
 } from 'react-native';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import useContactReveal from '../../hooks/useContactReveal';
@@ -39,6 +39,7 @@ import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import { invalidateFocusData } from '../../hooks/useFocusRefresh';
 import useRentBooking from './components/useRentBooking';
 import { noticeText } from './components/rentBookingFlow';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { inr } from '../AgriStore/shopUtils';
 
 const { width: W } = Dimensions.get('window');
@@ -72,7 +73,7 @@ function DetailRow({ icon, label, value, color = COLORS.primary }) {
 // Gallery image slide with a graceful fallback. A valid-but-unreachable URL
 // makes RN's <Image> render a blank box with no recovery — onError swaps in a
 // gradient + worker initials so the slide is never a silent white screen.
-function GalleryImage({ uri, initials }) {
+function GalleryImage({ uri, initials, label }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
@@ -93,6 +94,9 @@ function GalleryImage({ uri, initials }) {
       style={[D.galImg, { height: 280 }]}
       resizeMode="cover"
       onError={() => setFailed(true)}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={label}
     />
   );
 }
@@ -313,7 +317,7 @@ export default function LabourDetail({ route, navigation }) {
                           shouldPlay={false}
                           isLooping={false}
                         />
-                      : <GalleryImage uri={uri} initials={initials} />
+                      : <GalleryImage uri={uri} initials={initials} label={t('a11y.photoOf', { name: l.leader || l.name, defaultValue: 'Photo of {{name}}' })} />
                     }
                   </View>
                 );
@@ -330,7 +334,7 @@ export default function LabourDetail({ route, navigation }) {
                 at scroll-top — so a third call button here was redundant and sat
                 a thumb's width from Back. */}
             <View style={[D.galleryNav, { paddingTop: insets.top + 8 }]}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
                 <Ionicons name="arrow-back" size={22} color={COLORS.white} />
               </TouchableOpacity>
             </View>
@@ -352,7 +356,7 @@ export default function LabourDetail({ route, navigation }) {
           >
             {/* Back button for no-media path */}
             <View style={[D.galleryNav, { paddingTop: insets.top + 8 }]}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
                 <Ionicons name="arrow-back" size={22} color={COLORS.white} />
               </TouchableOpacity>
             </View>
@@ -395,7 +399,7 @@ export default function LabourDetail({ route, navigation }) {
               </View>
             ) : null}
             {l.rating > 0 && (
-              <View style={D.ratingCard}>
+              <View style={D.ratingCard} accessible accessibilityLabel={`${t('a11y.rated', { rating: l.rating.toFixed(1), defaultValue: 'Rated {{rating}} out of 5' })}, ${l.ratingCount ?? 0} ${t('rent.reviewsCount')}`}>
                 <View style={{ flexDirection: 'row', gap: 2 }}>
                   {[1,2,3,4,5].map(s => (
                     <Ionicons key={s} name={s <= Math.round(l.rating) ? 'star' : 'star-outline'} size={12} color={COLORS.yellowDark2} />
@@ -420,6 +424,7 @@ export default function LabourDetail({ route, navigation }) {
               onPress={handleCall}
               disabled={revealing}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <View style={D.callCardIcon}>
                 <Ionicons name="call" size={26} color={COLORS.white} />
@@ -465,7 +470,7 @@ export default function LabourDetail({ route, navigation }) {
                     >
                       <Ionicons name="remove" size={18} color={COLORS.primary} />
                     </TouchableOpacity>
-                    <Text style={D.wcValue}>{workerCount}</Text>
+                    <Text style={D.wcValue} accessibilityLiveRegion="polite" accessibilityLabel={`${t('rent.workersNeeded', 'Workers needed')}: ${workerCount}`}>{workerCount}</Text>
                     <TouchableOpacity
                       style={[D.wcBtn, workerCount >= maxWorkers && { opacity: 0.35 }]}
                       onPress={() => setWorkerCount((n) => Math.min(maxWorkers, n + 1))}
@@ -496,6 +501,7 @@ export default function LabourDetail({ route, navigation }) {
                     onChangeText={setNotes}
                     multiline
                     numberOfLines={2}
+                    accessibilityLabel={t('rent.notesPlaceholder')}
                   />
                 </>
               ) : null}
@@ -525,6 +531,16 @@ export default function LabourDetail({ route, navigation }) {
                     </>
                 }
               </TouchableOpacity>
+              {rentBooking.payOnline ? (
+                <TouchableOpacity
+                  style={D.policyLink}
+                  onPress={() => Linking.openURL(LEGAL_URLS.refunds).catch(() => {})}
+                  hitSlop={{ top: 8, bottom: 8 }}
+                  accessibilityRole="link"
+                >
+                  <Text style={D.policyLinkTxt}>{t('a11y.refundPolicyLink', 'Refund, Cancellation & Return Policy')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
 
@@ -639,12 +655,12 @@ export default function LabourDetail({ route, navigation }) {
             </View>
             <Text style={D.ovTitle}>
               {bookingDone?.paid
-                ? t('payments.bookingConfirmed', 'Booking confirmed')
+                ? t('payments.bookingConfirmed', 'Payment received')
                 : t('rent.bookingSentTitle', 'Booking request sent!')}
             </Text>
             <Text style={D.ovBody}>
               {bookingDone?.paid
-                ? t('payments.bookingConfirmedMsg', 'Your booking is confirmed. You can see it under My Bookings.')
+                ? t('payments.bookingConfirmedMsg', 'Your payment is received and your request has been sent to the owner. The booking is confirmed once the owner accepts. You can see it under My Bookings.')
                 : t('rent.bookingSentMsg', 'The owner will review your request and confirm it shortly. You’ll be notified once it’s approved.')}
             </Text>
             {bookingDone?.start && bookingDone?.end ? (
@@ -658,7 +674,7 @@ export default function LabourDetail({ route, navigation }) {
                 {t('rent.advancePaid', { amount: inr(bookingDone.paidAmount), defaultValue: '{{amount}} advance paid' })}
               </Text>
             ) : null}
-            <TouchableOpacity style={D.ovBtn} onPress={() => setBookingDone(null)} activeOpacity={0.85}>
+            <TouchableOpacity style={D.ovBtn} onPress={() => setBookingDone(null)} activeOpacity={0.85} accessibilityRole="button">
               <Text style={D.ovBtnTxt}>{t('rent.done')}</Text>
             </TouchableOpacity>
           </View>
@@ -794,6 +810,8 @@ const D = StyleSheet.create({
   bookNotes:    { borderWidth: 1, borderColor: COLORS.lightGray2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: fs(13), color: COLORS.textDark, minHeight: 44, textAlignVertical: 'top' },
   bookBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13 },
   bookBtnTxt:   { fontSize: fs(14), fontWeight: '800', color: COLORS.white, flexShrink: 1 },
+  policyLink:    { alignSelf: 'center', paddingVertical: 2 },
+  policyLinkTxt: { fontSize: fs(12), color: COLORS.textBody, textAlign: 'center', textDecorationLine: 'underline' },
 
   // Shared overlay card (booking done / verifying a payment)
   ovBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 },

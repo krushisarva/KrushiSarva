@@ -305,7 +305,7 @@ export default function PastReportScreen({ navigation, route }) {
     return (
       <View style={S.safe}>
         <View style={[S.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="chevron-back" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={S.headerTitle}>{t('pastReport.title', 'Past Report')}</Text>
@@ -320,14 +320,14 @@ export default function PastReportScreen({ navigation, route }) {
     return (
       <View style={S.safe}>
         <View style={[S.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="chevron-back" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={S.headerTitle}>{t('pastReport.title', 'Past Report')}</Text>
         </View>
         <View style={S.errorBox}>
           <Ionicons name="cloud-offline-outline" size={48} color={COLORS.gray175} />
-          <Text style={S.errorTxt}>{error || t('pastReport.notFound', 'Report not found.')}</Text>
+          <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error || t('pastReport.notFound', 'Report not found.')}</Text>
         </View>
       </View>
     );
@@ -340,7 +340,7 @@ export default function PastReportScreen({ navigation, route }) {
     <View style={S.safe}>
       {/* Header */}
       <View style={[S.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -360,7 +360,7 @@ export default function PastReportScreen({ navigation, route }) {
             contentContainerStyle={S.imageStrip}
           >
             {row.imageUrls.map((url, i) => (
-              <Image key={url + i} source={{ uri: url }} style={S.imageThumb} resizeMode="cover" />
+              <Image key={url + i} source={{ uri: url }} style={S.imageThumb} resizeMode="cover" accessible accessibilityRole="image" accessibilityLabel={row.imageUrls.length > 1 ? t('a11y.photoNumber', { n: i + 1, total: row.imageUrls.length, defaultValue: 'Photo {{n}} of {{total}}' }) : t('diagReport.submittedCropPhotoAlt', 'Submitted crop photo')} />
             ))}
           </ScrollView>
         )}
@@ -388,7 +388,7 @@ export default function PastReportScreen({ navigation, route }) {
 
         {/* Crop metadata */}
         <View style={S.metaCard}>
-          <Text style={S.sectionTitle}>{t('pastReport.context', 'Crop context')}</Text>
+          <Text style={S.sectionTitle} accessibilityRole="header">{t('pastReport.context', 'Crop context')}</Text>
           <View style={S.metaGrid}>
             <MetaItem label={t('pastReport.crop', 'Crop')} value={row.cropType} />
             <MetaItem label={t('pastReport.stage', 'Stage')} value={row.growthStage} />
@@ -401,7 +401,7 @@ export default function PastReportScreen({ navigation, route }) {
         {/* Summary */}
         {fields.summary ? (
           <View style={S.section}>
-            <Text style={S.sectionTitle}>{t('pastReport.summary', 'Summary')}</Text>
+            <Text style={S.sectionTitle} accessibilityRole="header">{t('pastReport.summary', 'Summary')}</Text>
             <Text style={S.bodyTxt}>{fields.summary}</Text>
           </View>
         ) : null}
@@ -458,7 +458,7 @@ export default function PastReportScreen({ navigation, route }) {
 
       {/* Sticky action bar */}
       <View style={[S.actionBar, { paddingBottom: insets.bottom + 10 }]}>
-        <TouchableOpacity style={S.actionBtnSecondary} onPress={handleShare} activeOpacity={0.85}>
+        <TouchableOpacity style={S.actionBtnSecondary} onPress={handleShare} activeOpacity={0.85} accessibilityRole="button">
           <Ionicons name="share-social-outline" size={18} color={COLORS.primary} />
           <Text style={S.actionBtnSecondaryTxt}>{t('pastReport.share', 'Share')}</Text>
         </TouchableOpacity>
@@ -467,6 +467,7 @@ export default function PastReportScreen({ navigation, route }) {
           onPress={handleDownload}
           activeOpacity={0.85}
           disabled={downloading}
+          accessibilityRole="button"
         >
           {downloading
             ? <ActivityIndicator size="small" color={COLORS.white} />
@@ -482,7 +483,7 @@ export default function PastReportScreen({ navigation, route }) {
 
 function MetaItem({ label, value }) {
   return (
-    <View style={S.metaItem}>
+    <View style={S.metaItem} accessible>
       <Text style={S.metaLabel}>{label}</Text>
       <Text style={S.metaValue}>{value || '—'}</Text>
     </View>
@@ -494,7 +495,7 @@ function BulletList({ title, items, accent }) {
     <View style={S.section}>
       <View style={S.sectionTitleRow}>
         <View style={[S.sectionDot, { backgroundColor: accent }]} />
-        <Text style={S.sectionTitle}>{title}</Text>
+        <Text style={S.sectionTitle} accessibilityRole="header">{title}</Text>
       </View>
       {items.map((it, i) => (
         <View key={i} style={S.bullet}>

@@ -49,6 +49,25 @@ export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL
 export const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL
   || (__DEV__ ? `http://${DEV_HOST}:3001` : PROD_SOCKET);
 
+// ── Legal pages ────────────────────────────────────────────────────────────
+// Privacy policy, terms, refund policy and business details are served by the
+// backend itself at <api origin>/legal/* (backend/src/routes/legal.routes.js),
+// so these links work wherever the API does and need no separate website. Every
+// screen must take its URLs from here: the apps used to hardcode a domain that
+// was never registered, so every legal link opened nothing.
+// EXPO_PUBLIC_LEGAL_BASE_URL overrides the base if the documents move to a
+// public site.
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v\d+\/?$/, '');
+export const LEGAL_BASE_URL =
+  (process.env.EXPO_PUBLIC_LEGAL_BASE_URL || `${API_ORIGIN}/legal`).replace(/\/+$/, '');
+export const LEGAL_URLS = {
+  index:   LEGAL_BASE_URL,
+  privacy: `${LEGAL_BASE_URL}/privacy`,
+  terms:   `${LEGAL_BASE_URL}/terms`,
+  refunds: `${LEGAL_BASE_URL}/refunds`,
+  cookies: `${LEGAL_BASE_URL}/cookies`,
+};
+
 // ── OTP / auth limits ──────────────────────────────────────────────────────
 /**
  * Cloudinary cloud that serves the UI image sets (IMAGE_PROCESS.md §4).

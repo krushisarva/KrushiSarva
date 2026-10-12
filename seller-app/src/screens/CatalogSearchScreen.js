@@ -59,7 +59,7 @@ function CatalogHit({ product, onAttach, onEditMine, t }) {
             </Text>
           ) : null}
 
-          <Text style={s.hitStat} numberOfLines={1}>
+          <Text style={s.hitStat} numberOfLines={2}>
             {product.offerCount > 0
               ? t('catalogSearch.offerSummary', {
                   count: product.offerCount,
@@ -385,13 +385,13 @@ const s = StyleSheet.create({
 
   hit: { padding: 0, overflow: 'hidden' },
   hitTop: { flexDirection: 'row', gap: SP.md, padding: SP.md },
-  hitImg: { width: 56, height: 56, borderRadius: R.sm, backgroundColor: C.surfaceAlt },
+  hitImg: { width: 56, height: 56, borderRadius: R.sm, backgroundColor: C.surfaceSunken },
   hitImgEmpty: { alignItems: 'center', justifyContent: 'center' },
   hitMeta: { flex: 1, gap: 2 },
-  hitName: { ...T.bodyStrong, color: C.text },
+  hitName: { ...T.bodyBold, color: C.text },
   hitBrand: { ...T.caption, color: C.textMuted },
-  hitStat: { ...T.caption, color: C.brand, marginTop: 2 },
-  hitPending: { ...T.caption, color: C.warningBold ?? C.textMuted, marginTop: 2 },
+  hitStat: { ...T.caption, color: C.brandInk, marginTop: 2 },
+  hitPending: { ...T.caption, color: C.warning, marginTop: 2 },
 
   packs: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border },
   pack: {
@@ -400,12 +400,12 @@ const s = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border,
   },
   packLeft: { flex: 1, gap: 1 },
-  packSize: { ...T.bodyStrong, color: C.text },
+  packSize: { ...T.bodyBold, color: C.text },
   packSub: { ...T.caption, color: C.textMuted },
   packCta: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  packCtaTxt: { ...T.labelStrong, color: C.brand },
+  packCtaTxt: { ...T.labelBold, color: C.brandInk },
   packMine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  packMineTxt: { ...T.label, color: C.brand },
+  packMineTxt: { ...T.label, color: C.brandInk },
 
   escape: { gap: SP.xs, marginTop: SP.md, alignItems: 'stretch' },
   escapeHint: { ...T.caption, color: C.textMuted, textAlign: 'center' },

@@ -27,6 +27,7 @@ export default function RadialGauge({
   decimals = 0,
   color: colorProp,
   style,
+  accessibilityLabel,
 }) {
   const has = value != null && !isNaN(Number(value));
   const v = has ? Number(value) : min;
@@ -51,7 +52,7 @@ export default function RadialGauge({
   const dashoffset = draw.interpolate({ inputRange: [0, 1], outputRange: [arcLen, 0] });
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View style={[styles.wrap, style]} accessible accessibilityLabel={accessibilityLabel}>
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size}>
           <Path d={trackD} stroke={COSMIC.SURFACE_LO} strokeWidth={strokeWidth} strokeLinecap="round" fill="none" />

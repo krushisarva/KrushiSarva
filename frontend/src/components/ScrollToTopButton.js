@@ -6,11 +6,13 @@ import React from 'react';
 import { TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 export default function ScrollToTopButton({ visible, onPress }) {
+  const { t } = useLanguage();
   if (!visible) return null;
   return (
-    <TouchableOpacity style={styles.btn} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.btn} onPress={onPress} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('a11y.scrollToTop', 'Scroll to top')}>
       <Ionicons name="arrow-up" size={18} color="#FFF" />
     </TouchableOpacity>
   );

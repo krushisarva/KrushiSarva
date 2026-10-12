@@ -114,8 +114,8 @@ function TaskItem({ task, onToggle, t }) {
 
   return (
     <View style={[T.item, { backgroundColor: task.doneAt ? COLORS.nearBlack2 : p.bg, borderColor: task.doneAt ? 'rgba(255,255,255,0.04)' : `${p.color}25` }]}>
-      <TouchableOpacity style={T.itemTop} onPress={toggle} activeOpacity={0.8}>
-        <TouchableOpacity style={[T.checkbox, task.doneAt && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]} onPress={() => onToggle(task.id)}>
+      <TouchableOpacity style={T.itemTop} onPress={toggle} activeOpacity={0.8} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <TouchableOpacity style={[T.checkbox, task.doneAt && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]} onPress={() => onToggle(task.id)} accessibilityRole="checkbox" accessibilityState={{ checked: !!task.doneAt }} accessibilityLabel={task.title}>
           {task.doneAt && <Ionicons name="checkmark" size={14} color={COLORS.white} />}
         </TouchableOpacity>
         <View style={[T.taskIcon, { backgroundColor: `${task.color}18` }, task.doneAt && { opacity: 0.45 }]}>
@@ -240,14 +240,14 @@ export default function DailyPlannerScreen({ navigation }) {
 
       {/* ── Header ── */}
       <View style={[T.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={T.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={T.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={T.headerTitle}>{t('planner.title')}</Text>
           <Text style={T.headerSub}>{today}</Text>
         </View>
-        <TouchableOpacity style={T.aiGenBtn} onPress={() => handleGenerate(true)} activeOpacity={0.8} disabled={generating}>
+        <TouchableOpacity style={T.aiGenBtn} onPress={() => handleGenerate(true)} activeOpacity={0.8} disabled={generating} accessibilityRole="button">
           {generating
             ? <ActivityIndicator size="small" color={COLORS.amberDark} />
             : <Ionicons name="sparkles-outline" size={14} color={COLORS.amberDark} />}
@@ -281,7 +281,7 @@ export default function DailyPlannerScreen({ navigation }) {
           <View style={{ alignItems: 'center', paddingVertical: 40 }}>
             <Ionicons name="checkmark-done-circle-outline" size={48} color={COLORS.textDark} />
             <Text style={{ color: COLORS.textBody, marginTop: 10, fontSize: 14 }}>{t('planner.noTasks')}</Text>
-            <TouchableOpacity onPress={() => handleGenerate(true)} style={{ marginTop: 14, backgroundColor: 'rgba(46,204,113,0.12)', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10 }}>
+            <TouchableOpacity onPress={() => handleGenerate(true)} style={{ marginTop: 14, backgroundColor: 'rgba(46,204,113,0.12)', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10 }} accessibilityRole="button">
               <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{t('planner.generateWithAI')}</Text>
             </TouchableOpacity>
           </View>

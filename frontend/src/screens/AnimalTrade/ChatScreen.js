@@ -583,7 +583,7 @@ export default function ChatScreen({ route, navigation }) {
           onPress={() => navigation?.goBack?.()}
           style={styles.backBtn}
           accessibilityRole="button"
-          accessibilityLabel={t('common.back', 'Back')}
+          accessibilityLabel={t('common.goBack', 'Go back')}
         >
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>

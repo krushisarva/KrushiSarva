@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, Star, StarOff, Power, Download, Upload, AlertTriangle, X } from 'lucide-react';
 import { apiDelete, apiDownload, apiGet, apiPatch, apiPost, apiUpload, errorMessage } from '../lib/api';
@@ -55,14 +55,14 @@ export function CategoriesPage() {
                   <td className="table-td">{c.sortOrder}</td>
                   <td className="table-td"><BoolBadge value={c.isActive} trueLabel="Active" falseLabel="Hidden" /></td>
                   <td className="table-td text-right">
-                    <Button variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    <Button variant="ghost" onClick={() => setEditing(c)} aria-label={`Edit ${c.name}`}><Pencil className="h-4 w-4" /></Button>
+                    <Button variant="ghost" onClick={() => onDelete(c)} aria-label={`Delete ${c.name}`}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {(list.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">No categories yet.</p>}
+          {(list.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">No categories yet.</p>}
         </Card>
       )}
 
@@ -179,12 +179,12 @@ export function ProductsPage() {
       <Drawer open={!!selected} onClose={() => setSelected(null)} title={selected?.name || 'Product'}>
         {selected && (
           <div className="space-y-4">
-            {selected.images?.[0] && <img src={selected.images[0]} alt="" className="h-40 w-full rounded-lg object-cover" />}
+            {selected.images?.[0] && <img src={selected.images[0]} alt={`${selected.name} — product image`} className="h-40 w-full rounded-lg object-cover" />}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-slate-400">Price</span><div>{formatINR(selected.price)}</div></div>
-              <div><span className="text-slate-400">Stock</span><div>{selected.stock}</div></div>
-              <div><span className="text-slate-400">Seller</span><div>{selected.seller?.name || '—'}</div></div>
-              <div><span className="text-slate-400">Added</span><div>{formatDate(selected.createdAt)}</div></div>
+              <div><span className="text-slate-500">Price</span><div>{formatINR(selected.price)}</div></div>
+              <div><span className="text-slate-500">Stock</span><div>{selected.stock}</div></div>
+              <div><span className="text-slate-500">Seller</span><div>{selected.seller?.name || '—'}</div></div>
+              <div><span className="text-slate-500">Added</span><div>{formatDate(selected.createdAt)}</div></div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => patch.mutate({ id: selected.id, data: { isActive: !selected.isActive } })}><Power className="h-4 w-4" /> {selected.isActive ? 'Deactivate' : 'Activate'}</Button>
@@ -245,6 +245,7 @@ function CreateProductForm({ onClose, onCreated }: { onClose: () => void; onCrea
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const imagesId = useId();
   const set = <K extends keyof ProductForm>(k: K, v: ProductForm[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   // Categories for the dropdown (products require a valid categoryId).
@@ -338,14 +339,16 @@ function CreateProductForm({ onClose, onCreated }: { onClose: () => void; onCrea
     >
       <div className="space-y-4">
         {/* Images */}
-        <Field label="Images" hint="Upload one or more product photos (JPEG/PNG, up to 10).">
+        {/* The label points at the file input, which sits below the thumbnails —
+            so the id and the hint are wired by hand (see Field). */}
+        <Field label="Images" htmlFor={imagesId} hint="Upload one or more product photos (JPEG/PNG, up to 10).">
           <div className="space-y-2">
             {images.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {images.map((url, i) => (
                   <div key={url + i} className="relative">
-                    <img src={url} alt="" className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
-                    <button type="button" onClick={() => removeImage(i)} className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white shadow" aria-label="Remove image">
+                    <img src={url} alt={`Product image ${i + 1}`} className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+                    <button type="button" onClick={() => removeImage(i)} className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white shadow" aria-label={`Remove image ${i + 1}`}>
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -353,6 +356,8 @@ function CreateProductForm({ onClose, onCreated }: { onClose: () => void; onCrea
               </div>
             )}
             <input
+              id={imagesId}
+              aria-describedby={`${imagesId}-desc`}
               ref={fileRef}
               type="file"
               accept="image/*"
@@ -563,7 +568,7 @@ export function LowStockPage() {
           <Input type="number" min={0} value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="default" className="w-32" />
         </Field>
         {list.items.length > 0 && (
-          <span className="inline-flex items-center gap-1 self-end text-sm text-amber-600">
+          <span className="inline-flex items-center gap-1 self-end text-sm text-amber-700">
             <AlertTriangle className="h-4 w-4" /> {list.items.length}{list.canNext ? '+' : ''} low-stock on this page
           </span>
         )}
@@ -599,7 +604,7 @@ export function ReviewsPage() {
     { key: 'rating', header: 'Rating', render: (r) => <Badge tone={r.rating >= 3 ? 'green' : 'red'}>{r.rating}★</Badge>, csv: (r) => String(r.rating) },
     { key: 'comment', header: 'Comment', render: (r) => <span className="line-clamp-2 max-w-md">{r.comment || '—'}</span>, csv: (r) => r.comment || '' },
     { key: 'createdAt', header: 'Posted', render: (r) => formatDate(r.createdAt), csv: (r) => r.createdAt },
-    { key: 'actions', header: '', render: (r) => <Button variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete(r); }}><Trash2 className="h-4 w-4 text-red-500" /></Button> },
+    { key: 'actions', header: '', render: (r) => <Button variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete(r); }} aria-label={`Delete review by ${r.user?.name || 'unknown author'}`}><Trash2 className="h-4 w-4 text-red-500" /></Button> },
   ];
 
   return (

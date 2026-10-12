@@ -68,6 +68,8 @@ export default function LocationPicker({
         style={[s.btn, triggerStyle, disabled && s.btnDisabled]}
         onPress={() => !disabled && setOpen(true)}
         activeOpacity={disabled ? 1 : 0.75}
+        accessibilityRole="button"
+        accessibilityState={{ disabled }}
       >
         <Text style={[s.btnTxt, triggerTextStyle, !selected && s.btnPlaceholder]} numberOfLines={1}>
           {selected || placeholderText}
@@ -77,7 +79,7 @@ export default function LocationPicker({
 
       {/* Modal Sheet */}
       <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
-        <TouchableWithoutFeedback onPress={close}>
+        <TouchableWithoutFeedback onPress={close} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
           <View style={s.backdrop} />
         </TouchableWithoutFeedback>
 
@@ -97,9 +99,10 @@ export default function LocationPicker({
               onFocus={() => setSearching(true)}
               onBlur={() => setSearching(false)}
               autoFocus={false}
+              accessibilityLabel={t('search', 'Search')}
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery('')}>
+              <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('rent.clearSearch', 'Clear search')}>
                 <Ionicons name="close-circle" size={16} color={COLORS.gray350} />
               </TouchableOpacity>
             )}
@@ -121,6 +124,8 @@ export default function LocationPicker({
                   style={[s.item, item === selected && s.itemActive]}
                   onPress={() => handleSelect(item)}
                   activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: item === selected }}
                 >
                   <Text style={[s.itemTxt, item === selected && s.itemTxtActive]}>{item}</Text>
                   {item === selected && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
@@ -133,7 +138,7 @@ export default function LocationPicker({
           {/* Hidden while searching: it would sit under the keyboard, and the
               backdrop and the back button still close the sheet. */}
           {searching ? null : (
-            <TouchableOpacity style={s.cancelBtn} onPress={close}>
+            <TouchableOpacity style={s.cancelBtn} onPress={close} accessibilityRole="button">
               <Text style={s.cancelTxt}>{t('cancel')}</Text>
             </TouchableOpacity>
           )}

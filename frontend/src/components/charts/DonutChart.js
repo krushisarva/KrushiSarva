@@ -59,7 +59,7 @@ export default function DonutChart({
   }) : [];
 
   return (
-    <Animated.View style={[{ width: size, height: size }, reveal, style]}>
+    <Animated.View style={[{ width: size, height: size }, reveal, style]} accessible={centerValue != null || centerLabel != null}>
       <View style={[styles.shadow, { width: size, height: size, borderRadius: size / 2 }]}>
         <Svg width={size} height={size}>
           <Defs>

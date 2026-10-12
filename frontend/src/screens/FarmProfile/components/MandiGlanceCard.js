@@ -108,7 +108,7 @@ export default function MandiGlanceCard({ cropName, district, state, salePricePe
           </Text>
         </View>
         {points.length > 1 && (
-          <Sparkline points={points} width={96} height={40} color={COSMIC.PRIMARY} fill />
+          <Sparkline points={points} width={96} height={40} color={COSMIC.PRIMARY} fill accessibilityLabel={t('a11y.trendFromTo', { from: `₹${Math.round(points[0])}`, to: `₹${Math.round(points[points.length - 1])}`, defaultValue: 'Trend: {{from}} to {{to}}' })} />
         )}
       </View>
 
@@ -132,7 +132,7 @@ export default function MandiGlanceCard({ cropName, district, state, salePricePe
       {others.length > 0 && (
         <View style={styles.others}>
           {others.map((m, i) => (
-            <View key={`${m.market}-${i}`} style={styles.otherRow}>
+            <View key={`${m.market}-${i}`} style={styles.otherRow} accessible>
               <Text style={styles.otherMarket} numberOfLines={1}>{m.market}</Text>
               <Text style={styles.otherPrice}>₹{(Number(m.modalPrice) || 0).toLocaleString('en-IN')}</Text>
             </View>

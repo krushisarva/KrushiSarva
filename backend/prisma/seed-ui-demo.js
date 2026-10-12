@@ -33,6 +33,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import prisma from '../src/config/db.js';
 
+// ── Demo data only — never production ────────────────────────────────────────
+// Everything below is invented: ~50 accounts on generated mobile numbers, all
+// marked KYC-VERIFIED, with made-up GSTINs, ratings, review counts and
+// "verified" flags. This is the first statement that runs, ahead of the first
+// query (Prisma connects lazily), and the import above has already loaded .env
+// — so a NODE_ENV set there counts as well as one set in the shell.
+if (process.env.NODE_ENV === 'production') {
+  console.error('seed-ui-demo.js: refusing to run with NODE_ENV=production — this is DEMO data (invented accounts, KYC status, ratings) and must not be loaded into production.');
+  process.exit(1);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const content = JSON.parse(
   readFileSync(join(__dirname, 'data', 'ui-demo-content.json'), 'utf8')

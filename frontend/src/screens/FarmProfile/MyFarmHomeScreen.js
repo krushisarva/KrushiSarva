@@ -189,7 +189,7 @@ export default function MyFarmHomeScreen({ navigation }) {
             style={{ marginRight: 8 }}
           />
         ))}
-        <Pressable onPress={() => goActivityPicker(null)} style={styles.seeMoreChip}>
+        <Pressable onPress={() => goActivityPicker(null)} style={styles.seeMoreChip} accessibilityRole="button">
           <Ionicons name="grid-outline" size={14} color={COSMIC.TEXT_2} />
           <Text style={styles.seeMoreText}>{t('myFarm.more', 'More')}</Text>
         </Pressable>
@@ -286,7 +286,7 @@ export default function MyFarmHomeScreen({ navigation }) {
 
       {/* Footer */}
       {farms.length > 1 && (
-        <Pressable onPress={goFarmList} style={({ pressed }) => [styles.footer, pressed && { opacity: 0.75 }]}>
+        <Pressable onPress={goFarmList} style={({ pressed }) => [styles.footer, pressed && { opacity: 0.75 }]} accessibilityRole="button">
           <Ionicons name="layers-outline" size={16} color={COSMIC.PRIMARY} />
           <Text style={styles.footerText}>{t('myFarm.viewAllFarms', { count: farms.length })}</Text>
           <Ionicons name="chevron-forward" size={16} color={COSMIC.PRIMARY} />
@@ -312,7 +312,7 @@ function SectionLabel({ title, action, badge }) {
   return (
     <View style={styles.sectionLabel}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
         {!!badge && (
           <View style={styles.sectionBadge}>
             <Text style={styles.sectionBadgeText}>{badge}</Text>
@@ -320,7 +320,7 @@ function SectionLabel({ title, action, badge }) {
         )}
       </View>
       {action && (
-        <Pressable onPress={action.onPress}>
+        <Pressable onPress={action.onPress} accessibilityRole="button">
           <Text style={styles.sectionAction}>{action.label} →</Text>
         </Pressable>
       )}
@@ -332,12 +332,12 @@ function HeroCard({ farmName, farmLocation, farms, cycles, activeFarm, streakDay
   const acres = Number(activeFarm?.landSizeAcres || 0);
 
   return (
-    <Pressable onPress={onOpenFarm} style={styles.heroOuter}>
+    <Pressable onPress={onOpenFarm} style={styles.heroOuter} accessibilityRole="button">
       <GlassCard variant="bordered" style={{ padding: CS.lg }}>
         <View style={styles.heroTopRow}>
           <Text style={styles.heroLabel}>{t('myFarm.activeFarm', 'ACTIVE FARM')}</Text>
           {farms.length > 1 && (
-            <Pressable onPress={onSwitch} style={styles.switchPill}>
+            <Pressable onPress={onSwitch} style={styles.switchPill} accessibilityRole="button">
               <Ionicons name="swap-horizontal" size={12} color={COSMIC.PRIMARY} />
               <Text style={styles.switchText}>{t('myFarm.switch', 'Switch')}</Text>
             </Pressable>
@@ -391,7 +391,7 @@ function CycleCard({ cycle, onPress }) {
     : null;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [{ marginBottom: 8 }, pressed && { opacity: 0.88 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ marginBottom: 8 }, pressed && { opacity: 0.88 }]} accessibilityRole="button">
       <GlassCard>
         <View style={styles.cycleRow}>
           <View style={styles.cropIconWrap}>
@@ -436,6 +436,7 @@ function MoneyPill({ icon, tone, amount, label }) {
 }
 
 function InsightCard({ insight, navigation }) {
+  const { t } = useLanguage();
   const severityColor = {
     low: COSMIC.SEV_LOW, moderate: COSMIC.SEV_MODERATE, high: COSMIC.SEV_HIGH, critical: COSMIC.SEV_CRITICAL,
   }[insight.severity] || COSMIC.PRIMARY;
@@ -443,7 +444,7 @@ function InsightCard({ insight, navigation }) {
   return (
     <GlassCard style={styles.section}>
       <View style={styles.insightHeader}>
-        <View style={[styles.sevDot, { backgroundColor: severityColor }]} />
+        <View style={[styles.sevDot, { backgroundColor: severityColor }]} accessible={!!insight.severity} accessibilityLabel={insight.severity ? `${t('scoutLog.sectionSeverity', 'Severity')}: ${t(`scoutLog.sev_${insight.severity}`, insight.severity)}` : undefined} />
         <Text style={styles.insightTitle} numberOfLines={2}>
           {insight.title || insight.summary}
         </Text>
@@ -452,7 +453,7 @@ function InsightCard({ insight, navigation }) {
       <View style={styles.insightFooter}>
         <WhyThisButton compact onPress={() => navigation.navigate('AIAssistant', { screen: 'AIChat', params: { seed: insight.title } })} />
         {!!insight.actionLabel && (
-          <Pressable onPress={() => navigation.navigate('AIAssistant', { screen: 'AIChat' })}>
+          <Pressable onPress={() => navigation.navigate('AIAssistant', { screen: 'AIChat' })} accessibilityRole="button">
             <Text style={styles.insightAction}>{insight.actionLabel} →</Text>
           </Pressable>
         )}

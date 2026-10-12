@@ -49,6 +49,7 @@ function FieldInput({ label, value, onChangeText, placeholder, keyboardType, mul
         keyboardType={keyboardType || 'default'}
         multiline={multiline}
         numberOfLines={multiline ? 3 : 1}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -248,7 +249,7 @@ export default function AddWorkerScreen({ navigation, route }) {
 
       {/* ── Header ── */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
         </TouchableOpacity>
         <View>
@@ -271,6 +272,8 @@ export default function AddWorkerScreen({ navigation, route }) {
                 key={wt.key}
                 style={[S.typeCard, workerType === wt.key && S.typeCardActive]}
                 onPress={() => setWorkerType(wt.key)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: workerType === wt.key }}
               >
                 <Ionicons name={wt.icon} size={22} color={workerType === wt.key ? COLORS.primary : COLORS.grayMedium} />
                 <Text style={[S.typeLabel, workerType === wt.key && { color: COLORS.primary }]}>{t('rent.' + wt.labelKey)}</Text>
@@ -303,6 +306,8 @@ export default function AddWorkerScreen({ navigation, route }) {
                   key={sk}
                   style={[S.chip, active && S.chipActive]}
                   onPress={() => toggleSkill(sk)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
                 >
                   {active && <Ionicons name="checkmark" size={12} color={COLORS.white} />}
                   <Text style={[S.chipTxt, active && { color: COLORS.white }]}>{t('skills.' + sk)}</Text>
@@ -321,6 +326,8 @@ export default function AddWorkerScreen({ navigation, route }) {
                   key={lang}
                   style={[S.chip, active && S.chipActive]}
                   onPress={() => toggleLanguage(lang)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
                 >
                   <Text style={[S.chipTxt, active && { color: COLORS.white }]}>{t('languages.' + lang)}</Text>
                 </TouchableOpacity>
@@ -382,6 +389,7 @@ export default function AddWorkerScreen({ navigation, route }) {
             style={[S.gpsBtnRow, lat != null && S.gpsBtnRowDone]}
             onPress={fetchGPS}
             disabled={gpsLoading}
+            accessibilityRole="button"
           >
             {gpsLoading
               ? <ActivityIndicator size="small" color={COLORS.primary} />
@@ -403,17 +411,17 @@ export default function AddWorkerScreen({ navigation, route }) {
               ? (
                 <View style={S.photoPreviewWrap}>
                   <Image source={{ uri: photo.uri }} style={S.photoPreview} />
-                  <TouchableOpacity style={S.removePhotoBtn} onPress={() => setPhoto(null)}>
+                  <TouchableOpacity style={S.removePhotoBtn} onPress={() => setPhoto(null)} accessibilityRole="button" accessibilityLabel={t('cropScan.removePhoto', 'Remove photo')}>
                     <Ionicons name="close-circle" size={22} color={COLORS.error} />
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View style={S.photoPickers}>
-                  <TouchableOpacity style={S.photoPickBtn} onPress={() => pickPhoto(false)}>
+                  <TouchableOpacity style={S.photoPickBtn} onPress={() => pickPhoto(false)} accessibilityRole="button">
                     <Ionicons name="images-outline" size={22} color={COLORS.primary} />
                     <Text style={S.photoPickTxt}>{t('rent.gallery')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={S.photoPickBtn} onPress={() => pickPhoto(true)}>
+                  <TouchableOpacity style={S.photoPickBtn} onPress={() => pickPhoto(true)} accessibilityRole="button">
                     <Ionicons name="camera-outline" size={22} color={COLORS.primary} />
                     <Text style={S.photoPickTxt}>{t('rent.camera')}</Text>
                   </TouchableOpacity>
@@ -428,13 +436,13 @@ export default function AddWorkerScreen({ navigation, route }) {
             {images.map((img, i) => (
               <View key={i} style={S.mediaThumb}>
                 <Image source={{ uri: img.uri }} style={S.thumbImg} />
-                <TouchableOpacity style={S.removeBtn} onPress={() => setImages(arr => arr.filter((_, j) => j !== i))}>
+                <TouchableOpacity style={S.removeBtn} onPress={() => setImages(arr => arr.filter((_, j) => j !== i))} accessibilityRole="button" accessibilityLabel={t('cropScan.removePhoto', 'Remove photo')}>
                   <Ionicons name="close-circle" size={20} color={COLORS.error} />
                 </TouchableOpacity>
               </View>
             ))}
             {images.length < 4 && (
-              <TouchableOpacity style={S.addMediaBtn} onPress={pickAdditionalImages}>
+              <TouchableOpacity style={S.addMediaBtn} onPress={pickAdditionalImages} accessibilityRole="button" accessibilityLabel={t('addAnimal.addPhoto', 'Add Photo')}>
                 <Ionicons name="add" size={24} color={COLORS.primary} />
               </TouchableOpacity>
             )}
@@ -446,12 +454,12 @@ export default function AddWorkerScreen({ navigation, route }) {
             <View style={S.videoWrap}>
               <Ionicons name="videocam" size={26} color={COLORS.primary} />
               <Text style={S.videoName} numberOfLines={1}>{video.uri.split('/').pop()}</Text>
-              <TouchableOpacity onPress={() => setVideo(null)} style={{ padding: 6 }}>
+              <TouchableOpacity onPress={() => setVideo(null)} style={{ padding: 6 }} accessibilityRole="button" accessibilityLabel={t('a11y.removeVideo', 'Remove video')}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.error} />
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={S.videoPickBtn} onPress={pickVideo}>
+            <TouchableOpacity style={S.videoPickBtn} onPress={pickVideo} accessibilityRole="button">
               <Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />
               <Text style={S.videoPickTxt}>{t('rent.chooseWorkVideo')}</Text>
             </TouchableOpacity>
@@ -464,6 +472,9 @@ export default function AddWorkerScreen({ navigation, route }) {
             style={[S.submitBtn, loading && { opacity: 0.6 }]}
             onPress={handleSubmit}
             disabled={loading}
+            accessibilityRole="button"
+            accessibilityState={{ busy: loading }}
+            accessibilityLabel={uploading ? t('rent.uploadingMedia') : editMode ? t('rent.saveChanges') : t('rent.registerGoLive')}
           >
             {loading
               ? <ActivityIndicator color={COLORS.white} />
@@ -504,12 +515,14 @@ export default function AddWorkerScreen({ navigation, route }) {
               <TouchableOpacity
                 style={[S.successBtn, S.successBtnSecondary]}
                 onPress={() => { setSuccess(null); navigation.goBack(); }}
+                accessibilityRole="button"
               >
                 <Text style={S.successBtnTextSecondary}>{t('rent.done')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[S.successBtn, S.successBtnPrimary]}
                 onPress={() => { setSuccess(null); navigation.navigate('RentHome'); }}
+                accessibilityRole="button"
               >
                 <Text style={S.successBtnTextPrimary}>{t('rent.viewListings')}</Text>
               </TouchableOpacity>

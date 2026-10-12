@@ -572,6 +572,34 @@ export const ENV = {
     ? process.env.PAYMENT_TAMPER_ALARM_ENABLED === 'true'
     : process.env.NODE_ENV !== 'test',
 
+  // ── Legal pages & platform identity ─────────────────────────────────────────
+  // Facts shown on the public /legal pages and returned by GET /api/v1/legal:
+  // who operates the platform and whom to contact (Consumer Protection
+  // (E-Commerce) Rules 2020 r.4-5, IT Rules 2021 r.3(2), DPDP Act §8(9)).
+  // They are facts about the business, so they come from the environment and are
+  // never guessed: anything left empty is simply omitted from the published page.
+  LEGAL: {
+    entityName:          (process.env.LEGAL_ENTITY_NAME || '').trim(),
+    registeredAddress:   (process.env.LEGAL_REGISTERED_ADDRESS || '').trim(),
+    cin:                 (process.env.LEGAL_CIN || '').trim(),
+    gstin:               (process.env.LEGAL_GSTIN || '').trim(),
+    supportEmail:        (process.env.LEGAL_SUPPORT_EMAIL || '').trim(),
+    supportPhone:        (process.env.LEGAL_SUPPORT_PHONE || '').trim(),
+    supportHours:        (process.env.LEGAL_SUPPORT_HOURS || '').trim(),
+    grievanceName:       (process.env.LEGAL_GRIEVANCE_OFFICER_NAME || '').trim(),
+    grievanceDesignation:(process.env.LEGAL_GRIEVANCE_OFFICER_DESIGNATION || '').trim(),
+    grievanceEmail:      (process.env.LEGAL_GRIEVANCE_OFFICER_EMAIL || '').trim(),
+    grievancePhone:      (process.env.LEGAL_GRIEVANCE_OFFICER_PHONE || '').trim(),
+    // Date the published documents take effect, as it should read on the page
+    // (e.g. "1 November 2026").
+    effectiveDate:       (process.env.LEGAL_EFFECTIVE_DATE || '').trim(),
+    // The policy documents in backend/legal/ ship as DRAFTS. Until the owner has
+    // had them reviewed and sets this, production serves a "being finalised"
+    // notice instead of unreviewed legal text. Drafts are always visible outside
+    // production so they can be read and edited.
+    docsApproved:        process.env.LEGAL_DOCS_APPROVED === 'true',
+  },
+
   IS_DEV: process.env.NODE_ENV !== 'production',
 };
 

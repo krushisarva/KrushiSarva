@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiPost, apiPatch, errorMessage } from '../lib/api';
 import { useKeyset } from '../lib/useKeyset';
@@ -45,6 +45,7 @@ function InviteModal({ open, onClose, allScopes, onDone }: { open: boolean; onCl
   const toast = useToast();
   const [phone, setPhone] = useState('');
   const [scopes, setScopes] = useState<string[]>([]);
+  const scopesHintId = useId();
   const toggle = (s: string) => setScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
   const save = useMutation({
     mutationFn: () => apiPost('/admin/team/invite', { phone: phone.trim(), scopes }),
@@ -67,9 +68,12 @@ function InviteModal({ open, onClose, allScopes, onDone }: { open: boolean; onCl
         <Field label="Phone" hint="The user must already have a KrushiSarva account.">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9876543210" />
         </Field>
-        <Field label="Scopes" hint="Leave everything unchecked for full SUPER_ADMIN access.">
+        {/* A group of checkboxes, not one control — fieldset/legend, not Field. */}
+        <fieldset className="min-w-0" aria-describedby={scopesHintId}>
+          <legend className="label">Scopes</legend>
           <ScopeChecklist all={allScopes} selected={scopes} onToggle={toggle} />
-        </Field>
+          <p id={scopesHintId} className="mt-1 text-xs text-slate-500">Leave everything unchecked for full SUPER_ADMIN access.</p>
+        </fieldset>
       </div>
     </Modal>
   );

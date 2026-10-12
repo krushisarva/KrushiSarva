@@ -242,20 +242,17 @@ export default function DashboardScreen({ navigation }) {
   // Revenue leads; the other two are the supporting columns of the ledger.
   const ledgerCells = [
     {
-      key: 'revenue',
       label: t('dash.totalRevenue', 'Total revenue'),
       value: stats.data?.totalRevenue ?? 0,
       isCurrency: true,
       primary: true,
     },
     {
-      key: 'sold',
       label: t('dash.totalOrders', 'Total orders'),
       value: stats.data?.totalSold ?? 0,
       sub: t('dash.unitsSold', 'units sold'),
     },
     {
-      key: 'products',
       label: t('dash.totalProducts', 'Listings'),
       value: stats.data?.totalProducts ?? 0,
       sub: t('dash.activeProducts', { count: stats.data?.activeProducts ?? 0 }),
@@ -316,7 +313,7 @@ export default function DashboardScreen({ navigation }) {
                   <Animated.View style={[d.liveDotHalo, { transform: [{ scale: livePulse }] }]} />
                   <View style={d.liveDot} />
                 </View>
-                <Text style={d.liveTxt} numberOfLines={1}>{t('dash.liveBanner', 'Your shop is live')}</Text>
+                <Text style={d.liveTxt} numberOfLines={2}>{t('dash.liveBanner', 'Your shop is live')}</Text>
               </View>
               {user?.phone ? <Text style={d.sellerPhone} numberOfLines={1}>+91 {user.phone}</Text> : null}
             </View>
@@ -370,7 +367,7 @@ export default function DashboardScreen({ navigation }) {
               <Ionicons name="leaf" size={20} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={d.inboxTitle} numberOfLines={1}>
+              <Text style={d.inboxTitle} numberOfLines={2}>
                 {t('inbox.dashTitle', 'Received Crop Reports')}
               </Text>
               <Text style={d.inboxSub} numberOfLines={2}>

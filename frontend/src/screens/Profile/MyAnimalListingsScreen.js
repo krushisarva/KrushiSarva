@@ -63,10 +63,10 @@ const ListingCard = memo(function ListingCard({ item, onDelete, onEdit }) {
           <Text style={styles.footerTxt}>{t('myAnimalListingsScreen.views', { count: item.viewCount ?? 0 })}</Text>
           <Text style={[styles.footerTxt, { marginLeft: 10 }]}>{date}</Text>
         </View>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(item)}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(item)} accessibilityRole="button" accessibilityLabel={t('a11y.editItem', { name: `${item.animal} ${item.breed}`, defaultValue: 'Edit {{name}}' })}>
           <Ionicons name="create-outline" size={18} color={COLORS.primary} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onDelete(item)}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => onDelete(item)} accessibilityRole="button" accessibilityLabel={t('a11y.deleteItem', { name: `${item.animal} ${item.breed}`, defaultValue: 'Delete {{name}}' })}>
           <Ionicons name="trash-outline" size={18} color={COLORS.error} />
         </TouchableOpacity>
       </View>
@@ -176,7 +176,7 @@ export default function MyAnimalListingsScreen({ navigation }) {
       // the listings arrive.
       <SafeAreaView style={styles.root} edges={['bottom']}>
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('myAnimalListingsScreen.title')}</Text>
@@ -200,13 +200,15 @@ export default function MyAnimalListingsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('myAnimalListingsScreen.title')}</Text>
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => navigation.navigate('AnimalTrade', { screen: 'AddAnimalListing' })}
+          accessibilityRole="button"
+          accessibilityLabel={t('myAnimalListingsScreen.addListing')}
         >
           <Ionicons name="add" size={24} color={COLORS.primary} />
         </TouchableOpacity>
@@ -216,7 +218,7 @@ export default function MyAnimalListingsScreen({ navigation }) {
         <View style={styles.center}>
           <Ionicons name="alert-circle-outline" size={48} color={COLORS.error} />
           <Text style={styles.errorTxt}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); fetchListings(1); }}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); fetchListings(1); }} accessibilityRole="button">
             <Text style={styles.retryTxt}>{t('myAnimalListingsScreen.retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -242,6 +244,7 @@ export default function MyAnimalListingsScreen({ navigation }) {
               <TouchableOpacity
                 style={[styles.retryBtn, { marginTop: 12 }]}
                 onPress={() => navigation.navigate('AnimalTrade', { screen: 'AddAnimalListing' })}
+                accessibilityRole="button"
               >
                 <Text style={styles.retryTxt}>{t('myAnimalListingsScreen.addListing')}</Text>
               </TouchableOpacity>
@@ -276,6 +279,7 @@ export default function MyAnimalListingsScreen({ navigation }) {
                 disabled={deleting}
                 style={[styles.confirmBtn, styles.confirmBtnSecondary]}
                 onPress={() => setPendingDelete(null)}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmBtnTextSecondary}>{t('myAnimalListingsScreen.cancel')}</Text>
               </TouchableOpacity>
@@ -283,6 +287,9 @@ export default function MyAnimalListingsScreen({ navigation }) {
                 disabled={deleting}
                 style={[styles.confirmBtn, styles.confirmBtnDanger, deleting && { opacity: 0.6 }]}
                 onPress={confirmDelete}
+                accessibilityRole="button"
+                accessibilityState={{ busy: deleting }}
+                accessibilityLabel={t('myAnimalListingsScreen.delete')}
               >
                 {deleting
                   ? <ActivityIndicator color={COLORS.white} />

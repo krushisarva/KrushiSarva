@@ -47,7 +47,7 @@ export default function IncomeLogScreen({ navigation, route }) {
       <SectionHeader icon="pricetags-outline" tint={COSMIC.INCOME} title={t('incomeLog.sourceSection')} />
       <TileGrid items={SOURCES} value={source} onChange={(v)=>setSource(v||'other')} columns={3} />
       <SectionHeader icon="cash-outline" tint={COSMIC.INCOME} title={t('orders.amount')} />
-      <Card><BigNumberInput value={amount} onChange={setAmount} unit="₹" tint={COSMIC.INCOME} /></Card>
+      <Card><BigNumberInput value={amount} onChange={setAmount} unit="₹" tint={COSMIC.INCOME} accessibilityLabel={t('orders.amount')} /></Card>
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('incomeLog.notes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>
     </LoggerScaffold>

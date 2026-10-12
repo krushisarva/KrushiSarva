@@ -92,7 +92,7 @@ function InputField({
       {error ? (
         <View style={styles.errorRow}>
           <Ionicons name="alert-circle" size={13} color={COLORS.error} />
-          <Text style={styles.errorTxt}>{error}</Text>
+          <Text style={styles.errorTxt} accessibilityLiveRegion="polite">{error}</Text>
         </View>
       ) : hint ? (
         <Text style={styles.hintTxt}>{hint}</Text>
@@ -490,7 +490,7 @@ export default function AddAnimalListing({ navigation, route }) {
           {errors.photos ? (
             <View style={styles.errorRow}>
               <Ionicons name="alert-circle" size={13} color={COLORS.error} />
-              <Text style={styles.errorTxt}>{errors.photos}</Text>
+              <Text style={styles.errorTxt} accessibilityLiveRegion="polite">{errors.photos}</Text>
             </View>
           ) : null}
         </View>
@@ -511,7 +511,7 @@ export default function AddAnimalListing({ navigation, route }) {
           {errors.animal ? (
             <View style={styles.errorRow}>
               <Ionicons name="alert-circle" size={13} color={COLORS.error} />
-              <Text style={styles.errorTxt}>{errors.animal}</Text>
+              <Text style={styles.errorTxt} accessibilityLiveRegion="polite">{errors.animal}</Text>
             </View>
           ) : null}
         </View>
@@ -686,7 +686,7 @@ export default function AddAnimalListing({ navigation, route }) {
           onPress={openPreview}
           disabled={loading}
           accessibilityRole="button"
-          accessibilityState={{ disabled: loading, busy: loading }}
+          accessibilityState={{ disabled: loading }}
         >
           <View style={[styles.submitInner, { backgroundColor: COLORS.primary }]}>
             {loading

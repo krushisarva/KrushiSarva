@@ -39,7 +39,7 @@ function FarmingTypeChip({ item }) {
 
 function CropCard({ crop, onPress, t, language }) {
   return (
-    <TouchableOpacity style={styles.cropCard} onPress={() => onPress(crop)} activeOpacity={0.88}>
+    <TouchableOpacity style={styles.cropCard} onPress={() => onPress(crop)} activeOpacity={0.88} accessibilityRole="button">
       {/* Season badge */}
       <View style={[styles.seasonBadge, { backgroundColor: crop.season === 'Kharif' ? COLORS.primaryPale : crop.season === 'Rabi' ? COLORS.yellowWarm : crop.season === 'Perennial' ? COLORS.indigoPale2 : COLORS.tealPale }]}>
         <Text style={[styles.seasonText, { color: crop.season === 'Kharif' ? COLORS.primary : crop.season === 'Rabi' ? COLORS.cta : crop.season === 'Perennial' ? COLORS.indigoMid : COLORS.tealDeep }]}>
@@ -96,8 +96,8 @@ function StatePicker({ visible, selectedState, onSelect, onClose, t }) {
           {/* Handle */}
           <View style={styles.pickerHandle} />
           <View style={styles.pickerHeader}>
-            <Text style={styles.pickerTitle}>{t ? t('stateCrops.selectState') : 'Select State'}</Text>
-            <TouchableOpacity onPress={onClose}>
+            <Text style={styles.pickerTitle} accessibilityRole="header">{t ? t('stateCrops.selectState') : 'Select State'}</Text>
+            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel={t ? t('close', 'Close') : 'Close'}>
               <Ionicons name="close" size={24} color={COLORS.textDark} />
             </TouchableOpacity>
           </View>
@@ -127,6 +127,8 @@ function StatePicker({ visible, selectedState, onSelect, onClose, t }) {
                   style={[styles.pickerItem, isSelected && styles.pickerItemActive]}
                   onPress={() => { onSelect(item); onClose(); setQuery(''); }}
                   activeOpacity={0.75}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isSelected }}
                 >
                   <Text style={styles.pickerItemIcon}>{data?.icon || '🌾'}</Text>
                   <View style={{ flex: 1 }}>
@@ -155,6 +157,7 @@ function SearchInput({ value, onChangeText, placeholder }) {
       placeholder={placeholder}
       placeholderTextColor={COLORS.textLight}
       autoCorrect={false}
+      accessibilityLabel={placeholder}
     />
   );
 }
@@ -227,21 +230,21 @@ export default function StateCropsScreen({ navigation, route }) {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>{t('stateCrops.title')}</Text>
+          <Text style={styles.headerTitle} accessibilityRole="header">{t('stateCrops.title')}</Text>
           <Text style={styles.headerSub}>{t('stateCrops.subTitle')}</Text>
         </View>
         {detecting && <ActivityIndicator color={COLORS.white} size="small" style={{ marginRight: 8 }} />}
-        <TouchableOpacity style={styles.locationBtn} onPress={detectLocation}>
+        <TouchableOpacity style={styles.locationBtn} onPress={detectLocation} accessibilityRole="button" accessibilityState={{ busy: detecting }} accessibilityLabel={t('animal.useMyLocation', 'Use my current location')}>
           <Ionicons name="location-outline" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
 
       {/* State selector chip */}
-      <TouchableOpacity style={styles.stateSelectorBar} onPress={() => setPickerVisible(true)} activeOpacity={0.8}>
+      <TouchableOpacity style={styles.stateSelectorBar} onPress={() => setPickerVisible(true)} activeOpacity={0.8} accessibilityRole="button">
         <Text style={styles.stateSelectorIcon}>{stateData.icon}</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.stateSelectorName}>{stateSplitName(selectedState)}</Text>
@@ -258,13 +261,13 @@ export default function StateCropsScreen({ navigation, route }) {
         {/* State Overview Card */}
         <View style={styles.overviewCard}>
           <View style={styles.overviewRow}>
-            <View style={styles.overviewItem}>
+            <View style={styles.overviewItem} accessible>
               <Ionicons name="partly-sunny-outline" size={18} color={SKY} />
               <Text style={styles.overviewLabel}>{t('stateCrops.climate')}</Text>
               <Text style={styles.overviewVal}>{tc(stateData.climate, language)}</Text>
             </View>
             <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
+            <View style={styles.overviewItem} accessible>
               <Ionicons name="star-outline" size={18} color={COLORS.gold} />
               <Text style={styles.overviewLabel}>{t('stateCrops.specialty')}</Text>
               <Text style={styles.overviewVal}>{stateData.specialty}</Text>
@@ -272,14 +275,14 @@ export default function StateCropsScreen({ navigation, route }) {
           </View>
 
           {/* Soil types */}
-          <View style={styles.overviewChipRow}>
+          <View style={styles.overviewChipRow} accessible>
             <Ionicons name="layers-outline" size={14} color={EARTH} style={{ marginRight: 6 }} />
             <Text style={styles.overviewChipHead}>{t('stateCrops.soilLabel')}</Text>
             <Text style={styles.overviewChipBody}>{stateData.soilTypes.join(' · ')}</Text>
           </View>
 
           {/* Water sources */}
-          <View style={styles.overviewChipRow}>
+          <View style={styles.overviewChipRow} accessible>
             <Ionicons name="water-outline" size={14} color={SKY} style={{ marginRight: 6 }} />
             <Text style={styles.overviewChipHead}>{t('stateCrops.waterLabel')}</Text>
             <Text style={styles.overviewChipBody}>{stateData.waterSources.join(' · ')}</Text>
@@ -288,7 +291,7 @@ export default function StateCropsScreen({ navigation, route }) {
 
         {/* Farming Types */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('stateCrops.farmingTypes')}</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{t('stateCrops.farmingTypes')}</Text>
           <View style={styles.ftRow}>
             {stateData.farmingTypes.map((ft) => (
               <FarmingTypeChip key={ft.id} item={ft} />
@@ -298,7 +301,7 @@ export default function StateCropsScreen({ navigation, route }) {
 
         {/* Crops */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
             {stateData.crops.length} {t('stateCrops.keyCrops')}
           </Text>
           {stateData.crops.map((crop) => (
@@ -308,7 +311,7 @@ export default function StateCropsScreen({ navigation, route }) {
 
         {/* Quick state switcher chips (horizontal scroll) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('stateCrops.otherStates')}</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{t('stateCrops.otherStates')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
             {STATE_LIST.filter((s) => s !== selectedState).map((s) => (
               <TouchableOpacity
@@ -316,6 +319,7 @@ export default function StateCropsScreen({ navigation, route }) {
                 style={styles.quickStateChip}
                 onPress={() => switchState(s)}
                 activeOpacity={0.8}
+                accessibilityRole="button"
               >
                 <Text style={styles.quickStateIcon}>{STATE_CROPS[s]?.icon || '🌾'}</Text>
                 <Text style={styles.quickStateName}>{stateSplitName(s)}</Text>

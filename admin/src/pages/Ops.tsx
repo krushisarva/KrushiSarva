@@ -47,13 +47,13 @@ export function FlagsPage() {
                   <td className="table-td font-mono text-xs">{f.featureKey}</td>
                   <td className="table-td"><Badge tone={f.isEnabled ? 'green' : 'red'}>{f.isEnabled ? 'Enabled' : 'Disabled'}</Badge></td>
                   <td className="table-td text-slate-500">{f.disabledReason || '—'}</td>
-                  <td className="table-td text-xs text-slate-400">{formatDateTime(f.updatedAt)}</td>
+                  <td className="table-td text-xs text-slate-500">{formatDateTime(f.updatedAt)}</td>
                   <td className="table-td text-right"><Button variant={f.isEnabled ? 'secondary' : 'primary'} onClick={() => onToggle(f)}>{f.isEnabled ? 'Disable' : 'Enable'}</Button></td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">No feature flags defined.</p>}
+          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">No feature flags defined.</p>}
         </Card>
       )}
     </div>
@@ -75,11 +75,11 @@ export function HealthPage() {
             {Object.entries(d.summary).map(([source, s]) => (
               <Card key={source} className="p-4">
                 <div className="truncate text-xs font-medium text-slate-500">{source}</div>
-                <div className={`mt-1 text-2xl font-semibold ${s.successRate >= 95 ? 'text-green-600' : s.successRate >= 80 ? 'text-amber-600' : 'text-red-600'}`}>{s.successRate}%</div>
-                <div className="text-xs text-slate-400">{s.avgMs}ms · {s.total} calls</div>
+                <div className={`mt-1 text-2xl font-semibold ${s.successRate >= 95 ? 'text-green-700' : s.successRate >= 80 ? 'text-amber-700' : 'text-red-600'}`}>{s.successRate}%</div>
+                <div className="text-xs text-slate-500">{s.avgMs}ms · {s.total} calls</div>
               </Card>
             ))}
-            {Object.keys(d.summary).length === 0 && <span className="text-sm text-slate-400">No health data in window.</span>}
+            {Object.keys(d.summary).length === 0 && <span className="text-sm text-slate-500">No health data in window.</span>}
           </div>
           <Card className="overflow-hidden">
             <h3 className="border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700">Recent calls</h3>
@@ -92,12 +92,12 @@ export function HealthPage() {
                     <td className="table-td font-mono text-xs text-slate-500">{l.endpoint}</td>
                     <td className="table-td"><Badge tone={l.status === 'success' ? 'green' : 'red'}>{l.status}</Badge></td>
                     <td className="table-td">{l.responseTimeMs != null ? `${l.responseTimeMs}ms` : '—'}</td>
-                    <td className="table-td text-xs text-slate-400">{formatDateTime(l.timestamp)}</td>
+                    <td className="table-td text-xs text-slate-500">{formatDateTime(l.timestamp)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {d.recentLogs.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No recent calls.</p>}
+            {d.recentLogs.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No recent calls.</p>}
           </Card>
         </div>
       )}
@@ -126,11 +126,11 @@ export function QueuesPage() {
                   {(['waiting', 'active', 'completed', 'failed', 'delayed', 'paused'] as const).map((k) => (
                     <div key={k} className="rounded-lg bg-slate-50 px-2 py-2">
                       <div className={`text-lg font-semibold ${k === 'failed' && (s[k] ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{s[k] ?? 0}</div>
-                      <div className="text-[11px] capitalize text-slate-400">{k}</div>
+                      <div className="text-[11px] capitalize text-slate-500">{k}</div>
                     </div>
                   ))}
                 </div>
-              ) : <p className="text-sm text-slate-400">Queue layer unavailable — jobs run inline.</p>}
+              ) : <p className="text-sm text-slate-500">Queue layer unavailable — jobs run inline.</p>}
             </Card>
           ))}
         </div>
@@ -181,7 +181,7 @@ export function JobsPage() {
       </Toolbar>
       {q.isLoading ? <div className="flex justify-center py-10"><Spinner /></div> : q.error ? <ErrorState message="Failed to load jobs." /> : d && (
         d.available === false ? (
-          <Card className="p-6 text-sm text-slate-400">Queue layer unavailable — jobs run inline; nothing to inspect.</Card>
+          <Card className="p-6 text-sm text-slate-500">Queue layer unavailable — jobs run inline; nothing to inspect.</Card>
         ) : (
           <Card className="overflow-hidden">
             <table className="min-w-full divide-y divide-slate-100">
@@ -194,13 +194,13 @@ export function JobsPage() {
                     <td className="table-td"><StatusBadge value={j.state} /></td>
                     <td className="table-td">{j.attemptsMade}</td>
                     <td className="table-td max-w-xs truncate text-xs text-slate-500" title={j.failedReason || ''}>{j.failedReason || '—'}</td>
-                    <td className="table-td text-xs text-slate-400">{fmtTs(j.timestamp)}</td>
+                    <td className="table-td text-xs text-slate-500">{fmtTs(j.timestamp)}</td>
                     <td className="table-td text-right">{j.state === 'failed' && <Button variant="primary" loading={retry.isPending} onClick={() => onRetry(j)}>Retry</Button>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {d.jobs.length === 0 && <p className="py-10 text-center text-sm text-slate-400">No recent jobs in this queue.</p>}
+            {d.jobs.length === 0 && <p className="py-10 text-center text-sm text-slate-500">No recent jobs in this queue.</p>}
           </Card>
         )
       )}

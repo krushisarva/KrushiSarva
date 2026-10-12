@@ -83,6 +83,7 @@ const URGENCY_CONFIG = {
 };
 
 function ConfidenceRing({ value, color, size = 80, confidenceLabel }) {
+  const { t } = useLanguage();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: value / 100, duration: 900, delay: 300, useNativeDriver: false }).start();
@@ -92,7 +93,7 @@ function ConfidenceRing({ value, color, size = 80, confidenceLabel }) {
   // as soon as a user scales up. The ring is absolutely positioned, so it keeps
   // its exact geometry while the box grows.
   return (
-    <View style={{ minWidth: size, minHeight: size, justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{ minWidth: size, minHeight: size, justifyContent: 'center', alignItems: 'center' }} accessible accessibilityLabel={`${t('myFarm.insights.confidence', { pct: value, defaultValue: '{{pct}}% confidence' })}, ${String(confidenceLabel || '').replace(/_/g, ' ')}`}>
       <View style={{
         ...circle(size),
         borderWidth: size * 0.1, borderColor: withAlpha(color, '25'), position: 'absolute',
@@ -109,7 +110,7 @@ function SectionHeader({ color, title }) {
   return (
     <View style={D.sectionHeader}>
       <View style={[D.sectionDot, { backgroundColor: color }]} />
-      <Text style={D.sectionTitle}>{title}</Text>
+      <Text style={D.sectionTitle} accessibilityRole="header">{title}</Text>
     </View>
   );
 }
@@ -1250,7 +1251,7 @@ ${(() => {
 
       {/* ── Green Header Bar ── */}
       <View style={[D.headerBar, { paddingTop: insets.top + KSPACE.s8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={D.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={D.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={KICON.xl} color={KHET.white} />
         </TouchableOpacity>
         <View style={D.headerBarTitleWrap}>
@@ -1261,13 +1262,15 @@ ${(() => {
               {t('aiBrand.drishti', 'Krushi Drishti')}
             </Text>
           </View>
-          <Text style={D.headerBarTitle}>{t('diagnosis.headerTitle', 'Crop Disease Report')}</Text>
+          <Text style={D.headerBarTitle} accessibilityRole="header">{t('diagnosis.headerTitle', 'Crop Disease Report')}</Text>
         </View>
         <TouchableOpacity
           style={D.chatHeaderBtn}
           onPress={() => navigation.navigate('AIChat', {
             initialMessage: `I have ${disease} in my ${crop} at ${farmCtx.cropAge || '?'} days. Severity: ${severity}. What should I do?`
           })}
+          accessibilityRole="button"
+          accessibilityLabel={t('diagnosis.askFarmMind', 'Ask Krushi Intelligence')}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={KICON.md} color={KHET.white} />
         </TouchableOpacity>
@@ -1320,24 +1323,24 @@ ${(() => {
 
             {/* Crop meta row */}
             <View style={D.cropMetaRow}>
-              <View style={D.cropMetaItem}>
+              <View style={D.cropMetaItem} accessible>
                 <Text style={D.cropMetaValue}>{localizedCrop}</Text>
                 <Text style={D.cropMetaLabel}>{t('diagnosis.cropLabel', 'CROP')}</Text>
               </View>
               {stage ? (
-                <View style={D.cropMetaItem}>
+                <View style={D.cropMetaItem} accessible>
                   <Text style={D.cropMetaValue}>{stage}</Text>
                   <Text style={D.cropMetaLabel}>{t('diagnosis.stageLabel', 'STAGE')}</Text>
                 </View>
               ) : null}
               {farmCtx.landSize ? (
-                <View style={D.cropMetaItem}>
+                <View style={D.cropMetaItem} accessible>
                   <Text style={D.cropMetaValue}>{farmCtx.landSize} ac</Text>
                   <Text style={D.cropMetaLabel}>{t('diagnosis.farmSizeLabel', 'FARM SIZE')}</Text>
                 </View>
               ) : null}
               {affectedArea ? (
-                <View style={D.cropMetaItem}>
+                <View style={D.cropMetaItem} accessible>
                   <Text style={D.cropMetaValue}>{affectedArea}</Text>
                   <Text style={D.cropMetaLabel}>{t('diagnosis.affectedLabel', 'AFFECTED')}</Text>
                 </View>
@@ -1404,7 +1407,7 @@ ${(() => {
                         : t('diagnosis.photosSubmitted', { count: scannedImageUris.length, defaultValue: '{{count}} Photos Submitted' })}
                     </Text>
                   </View>
-                  <Image source={{ uri: scannedImageUris[0] }} style={D.scannedImage} resizeMode="cover" />
+                  <Image source={{ uri: scannedImageUris[0] }} style={D.scannedImage} resizeMode="cover" accessible accessibilityRole="image" accessibilityLabel={t('diagReport.submittedCropPhotoAlt', 'Submitted crop photo')} />
                   {scannedImageUris.length > 1 && (
                     <ScrollView
                       horizontal
@@ -1417,6 +1420,9 @@ ${(() => {
                           source={{ uri }}
                           style={D.scannedThumb}
                           resizeMode="cover"
+                          accessible
+                          accessibilityRole="image"
+                          accessibilityLabel={t('a11y.photoNumber', { n: i + 2, total: scannedImageUris.length, defaultValue: 'Photo {{n}} of {{total}}' })}
                         />
                       ))}
                     </ScrollView>
@@ -1477,7 +1483,7 @@ ${(() => {
             <View style={D.section}>
               <View style={D.sectionHeaderAccent}>
                 <Ionicons name="flash" size={KICON.base} color={KHET.warningInk} />
-                <Text style={D.sectionHeaderAccentText}>{t('diagnosis.weeklyActions', 'What to Do This Week')}</Text>
+                <Text style={D.sectionHeaderAccentText} accessibilityRole="header">{t('diagnosis.weeklyActions', 'What to Do This Week')}</Text>
               </View>
               <View style={D.checklistCard}>
                 {immediateAction && nextStepsFull.length === 0 && (
@@ -1505,7 +1511,7 @@ ${(() => {
             <View style={D.section}>
               <View style={D.sectionHeaderAccent}>
                 <Ionicons name="calendar-outline" size={KICON.base} color={KHET.primary} />
-                <Text style={D.sectionHeaderAccentText}>{t('diagnosis.spraySchedule', 'Spray Schedule')}</Text>
+                <Text style={D.sectionHeaderAccentText} accessibilityRole="header">{t('diagnosis.spraySchedule', 'Spray Schedule')}</Text>
               </View>
               <View style={D.sprayCard}>
                 {/* Table header */}
@@ -1617,13 +1623,13 @@ ${(() => {
               <SectionHeader color={KHET.primary} title={t('diagnosis.safetyChecklist', 'Safety Checklist')} />
               <View style={D.safetyCard}>
                 {safetyDo.map((item, i) => (
-                  <View key={`do-${i}`} style={D.safetyRow}>
+                  <View key={`do-${i}`} style={D.safetyRow} accessible accessibilityLabel={`${t('diagReport.do', 'Do')}: ${item}`}>
                     <Ionicons name="checkmark-circle" size={KICON.base} color={KHET.successInk} />
                     <Text style={D.safetyText}>{item}</Text>
                   </View>
                 ))}
                 {safetyDont.map((item, i) => (
-                  <View key={`dont-${i}`} style={D.safetyRow}>
+                  <View key={`dont-${i}`} style={D.safetyRow} accessible accessibilityLabel={`${t('diagReport.dont', "Don't")}: ${item}`}>
                     <Ionicons name="close-circle" size={KICON.base} color={KHET.destructiveInk} />
                     <Text style={[D.safetyText, { color: KHET.destructiveInk }]}>{item}</Text>
                   </View>
@@ -1721,7 +1727,7 @@ ${(() => {
               {productsAreObjects ? (
                 <View style={D.productsCard}>
                   {rawProducts.map((p, i) => (
-                    <TouchableOpacity key={i} style={D.productRow} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.8}>
+                    <TouchableOpacity key={i} style={D.productRow} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.8} accessibilityRole="button">
                       <View style={D.productIconWrap}>
                         <Ionicons name="flask-outline" size={KICON.base} color={KHET.warningInk} />
                       </View>
@@ -1736,7 +1742,7 @@ ${(() => {
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={D.productsRow}>
                   {rawProducts.map((p, i) => (
-                    <TouchableOpacity key={i} style={D.productChip} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.8}>
+                    <TouchableOpacity key={i} style={D.productChip} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.8} accessibilityRole="button">
                       <Ionicons name="flask-outline" size={KICON.sm} color={KHET.warningInk} />
                       <Text style={D.productChipText}>{typeof p === 'object' ? p.name : p}</Text>
                     </TouchableOpacity>
@@ -1769,11 +1775,12 @@ ${(() => {
                 initialMessage: `I have ${disease} in my ${crop} crop (${farmCtx.cropAge || '?'} days). Severity: ${severity}. ${immediateAction ? `AI suggests: ${immediateAction}` : ''} What additional advice can you give?`
               })}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <Ionicons name="chatbubble-outline" size={KICON.base} color={KHET.primary} />
               <Text style={D.actionOutlineText}>{t('diagnosis.askFarmMind')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={D.actionFill} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.85}>
+            <TouchableOpacity style={D.actionFill} onPress={() => navigation.navigate('AgriStore')} activeOpacity={0.85} accessibilityRole="button">
               <Ionicons name="cart-outline" size={KICON.base} color={KHET.white} />
               <Text style={D.actionFillText}>{t('diagnosis.buyProducts')}</Text>
             </TouchableOpacity>
@@ -1785,6 +1792,7 @@ ${(() => {
             onPress={handleDownload}
             activeOpacity={0.85}
             disabled={downloading}
+            accessibilityRole="button"
           >
             <Ionicons name={downloading ? 'hourglass-outline' : 'download-outline'} size={KICON.base} color={KHET.white} />
             <Text style={D.downloadBtnText}>
@@ -1798,6 +1806,7 @@ ${(() => {
               style={D.kkShareBtn}
               onPress={() => { Haptics.light(); setShareSheetVisible(true); }}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <Ionicons name="leaf-outline" size={KICON.base} color={KHET.white} />
               <Text style={D.kkShareBtnText}>{t('share.cta', 'Send to Krushi Kendra')}</Text>
@@ -1887,6 +1896,7 @@ ${(() => {
                                     onPress={() => addRecommendedToCart(p)}
                                     disabled={p.stock <= 0}
                                     activeOpacity={0.85}
+                                    accessibilityRole="button"
                                   >
                                     <Ionicons name="cart-outline" size={KICON.sm} color={KHET.white} />
                                     <Text style={D.productBtnTextWhite}>{t('share.addToCart', 'Add to cart')}</Text>
@@ -1895,6 +1905,7 @@ ${(() => {
                                     style={[D.productBtn, D.productBtnOutline]}
                                     onPress={() => setVisitShop(s.seller)}
                                     activeOpacity={0.85}
+                                    accessibilityRole="button"
                                   >
                                     <Ionicons name="storefront-outline" size={KICON.sm} color={KHET.primary} />
                                     <Text style={D.productBtnTextOutline}>{t('share.visitShop', 'Visit shop')}</Text>
@@ -1943,12 +1954,13 @@ ${(() => {
                 style={D.visitCallBtn}
                 onPress={() => safeOpenURL(`tel:+91${sanitizePhone(visitShop.phone)}`)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
               >
                 <Ionicons name="call" size={KICON.base} color={KHET.white} />
                 <Text style={D.visitCallTxt}>{t('share.callShop', { phone: visitShop.phone, defaultValue: 'Call +91 {{phone}}' })}</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity style={D.visitCloseBtn} onPress={() => setVisitShop(null)}>
+            <TouchableOpacity style={D.visitCloseBtn} onPress={() => setVisitShop(null)} accessibilityRole="button">
               <Text style={D.visitCloseTxt}>{t('close', 'Close')}</Text>
             </TouchableOpacity>
           </View>

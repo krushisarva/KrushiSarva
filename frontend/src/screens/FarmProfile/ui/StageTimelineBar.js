@@ -13,6 +13,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { COSMIC, CR, CT, GLOW } from '../theme/cosmicTheme';
 import { ActivityIcon } from '../../../components/ActivityIcons';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 // Stages that have a clean, recognisable activity illustration. Stages without
 // a matching ActivityIcon (Plan/Prep/Fruit/Mature) keep the plain dot.
@@ -33,14 +34,23 @@ const STAGES = [
 ];
 
 export default function StageTimelineBar({ currentStage = 'PLANNING', das = null, style }) {
+  const { t } = useLanguage();
   const currentIdx = Math.max(0, STAGES.findIndex((s) => s.key === currentStage));
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View
+      style={[styles.wrap, style]}
+      accessible
+      accessibilityLabel={[
+        `${t('farmProfile.sectionGrowthStage', 'Growth stage')}: ${STAGES[currentIdx].label}`,
+        t('a11y.nOfTotal', { n: currentIdx + 1, total: STAGES.length, defaultValue: '{{n}} of {{total}}' }),
+        das != null && t('growthStory.dayCount', { das, defaultValue: 'Day {{das}}' }),
+      ].filter(Boolean).join(', ')}
+    >
       {das != null && (
         <Text style={styles.das}>Day {das} after sowing</Text>
       )}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} importantForAccessibility="no-hide-descendants">
         {STAGES.map((s, i) => {
           const isPast    = i < currentIdx;
           const isCurrent = i === currentIdx;

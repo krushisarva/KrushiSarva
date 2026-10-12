@@ -75,7 +75,7 @@ export default function VoiceHistoryScreen({ navigation }) {
   return (
     <View style={S.safe}>
       <View style={[S.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -103,8 +103,8 @@ export default function VoiceHistoryScreen({ navigation }) {
       ) : error ? (
         <View style={S.empty}>
           <Ionicons name="cloud-offline-outline" size={48} color={COLORS.gray175} />
-          <Text style={S.emptyTitle}>{error}</Text>
-          <TouchableOpacity style={S.retryBtn} onPress={() => { setLoading(true); load().finally(() => setLoading(false)); }}>
+          <Text style={S.emptyTitle} accessibilityLiveRegion="polite">{error}</Text>
+          <TouchableOpacity style={S.retryBtn} onPress={() => { setLoading(true); load().finally(() => setLoading(false)); }} accessibilityRole="button">
             <Text style={S.retryTxt}>{t('retry', 'Retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -125,6 +125,7 @@ export default function VoiceHistoryScreen({ navigation }) {
               style={S.card}
               onPress={() => openConversation(item)}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <View style={S.iconCircle}>
                 <Ionicons name="mic" size={20} color={COLORS.primary} />
@@ -140,7 +141,7 @@ export default function VoiceHistoryScreen({ navigation }) {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => onDelete(item.id)} hitSlop={12} style={S.delBtn}>
+              <TouchableOpacity onPress={() => onDelete(item.id)} hitSlop={12} style={S.delBtn} accessibilityRole="button" accessibilityLabel={t('a11y.deleteItem', { name: item.title || t('voiceHistory.untitled', 'Voice chat'), defaultValue: 'Delete {{name}}' })}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.textLight} />
               </TouchableOpacity>
             </TouchableOpacity>

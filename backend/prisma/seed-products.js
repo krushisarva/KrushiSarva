@@ -8,6 +8,13 @@
  */
 import prisma from '../src/config/db.js';
 
+// Demo data only — never production: sample products under real brand names
+// with invented prices and stock. Runs ahead of the first query.
+if (process.env.NODE_ENV === 'production') {
+  console.error('seed-products.js: refusing to run with NODE_ENV=production — this is DEMO data (sample products, invented prices and stock) and must not be loaded into production.');
+  process.exit(1);
+}
+
 const PRODUCTS = [
   // ── Seeds & Planting Material ──
   { category: 'Seeds & Planting Material',

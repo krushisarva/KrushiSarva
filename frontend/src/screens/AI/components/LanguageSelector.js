@@ -50,6 +50,8 @@ export default function LanguageSelector({ compact = false, iconOnly = false }) 
           onPress={() => setOpen(true)}
           activeOpacity={0.75}
           style={styles.triggerWrap}
+          accessibilityRole="button"
+          accessibilityLabel={`${t('language', 'Language')}: ${label}`}
         >
           <BlurView intensity={28} tint="dark" style={styles.triggerBlur}>
             <View style={styles.triggerRow}>
@@ -70,11 +72,11 @@ export default function LanguageSelector({ compact = false, iconOnly = false }) 
         onRequestClose={() => setOpen(false)}
         statusBarTranslucent
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheetWrap} onPress={() => {}}>
+        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
+          <Pressable style={styles.sheetWrap} onPress={() => {}} importantForAccessibility="no">
             <BlurView intensity={60} tint="dark" style={styles.sheet}>
               <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>{t('language')}</Text>
+              <Text style={styles.sheetTitle} accessible accessibilityRole="header">{t('language')}</Text>
               <FlatList
                 data={[AUTO, ...LANGUAGES]}
                 keyExtractor={(item) => item.code}
@@ -99,6 +101,8 @@ export default function LanguageSelector({ compact = false, iconOnly = false }) 
                         await setLanguage(item.code);
                         setOpen(false);
                       }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
                     >
                       <Text style={styles.flag}>{item.flag || '🌐'}</Text>
                       <View style={{ flex: 1 }}>

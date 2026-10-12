@@ -56,8 +56,13 @@ const LABELS: Record<string, string> = {
   flags: 'Feature flags',
 };
 
+/** The dot is colour only, so the state is also there as (visually hidden) text. */
 function Light({ ok }: { ok: boolean }) {
-  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+  return (
+    <span className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}>
+      <span className="sr-only">{ok ? 'OK' : 'Failing'}</span>
+    </span>
+  );
 }
 
 /** Seconds since the last successful poll — makes a frozen tab obvious. */
@@ -147,7 +152,7 @@ export function SystemStatusPage() {
         </Card>
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-500">Disabled features</div>
-          <div className={`mt-1 text-2xl font-semibold tabular-nums ${disabled.length ? 'text-amber-600' : ''}`}>
+          <div className={`mt-1 text-2xl font-semibold tabular-nums ${disabled.length ? 'text-amber-700' : ''}`}>
             {disabled.length}
           </div>
           <div className="mt-1 text-xs text-slate-500">{disabled.length ? 'kill switches active' : 'all features live'}</div>

@@ -40,6 +40,7 @@ export default function SpeakerButton({ text, size = 18, tint = COSMIC.PRIMARY, 
         pressed && { opacity: 0.7 },
         style,
       ]}
+      accessibilityRole="button"
     >
       <Ionicons name={on ? 'volume-high' : 'volume-medium-outline'} size={size} color={tint} />
     </Pressable>

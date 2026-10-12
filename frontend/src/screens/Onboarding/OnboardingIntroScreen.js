@@ -56,7 +56,7 @@ export default function OnboardingIntroScreen({ navigation }) {
   return (
     <View style={[S.root, { paddingTop: insets.top }]}>
       <View style={S.skipRow}>
-        <TouchableOpacity onPress={() => navigation.replace('OnboardingLanguage')} hitSlop={12}>
+        <TouchableOpacity onPress={() => navigation.replace('OnboardingLanguage')} hitSlop={12} accessibilityRole="button">
           <Text style={S.skip}>{t('intro.skip', 'Skip')}</Text>
         </TouchableOpacity>
       </View>
@@ -73,19 +73,19 @@ export default function OnboardingIntroScreen({ navigation }) {
         renderItem={({ item }) => (
           <View style={[S.slide, { width }]}>
             <Image source={item.img} style={S.img} resizeMode="contain" />
-            <Text style={S.title}>{t(item.titleKey, item.title)}</Text>
+            <Text style={S.title} accessibilityRole="header">{t(item.titleKey, item.title)}</Text>
             <Text style={S.body}>{t(item.bodyKey, item.body)}</Text>
           </View>
         )}
       />
 
       <View style={[S.footer, { paddingBottom: insets.bottom + KSPACE.s16 }]}>
-        <View style={S.dots}>
+        <View style={S.dots} accessible accessibilityLabel={t('a11y.nOfTotal', { n: index + 1, total: SLIDES.length, defaultValue: '{{n}} of {{total}}' })} accessibilityLiveRegion="polite">
           {SLIDES.map((s, i) => (
             <View key={s.key} style={[S.dot, i === index && S.dotActive]} />
           ))}
         </View>
-        <TouchableOpacity style={S.cta} onPress={go} activeOpacity={0.85}>
+        <TouchableOpacity style={S.cta} onPress={go} activeOpacity={0.85} accessibilityRole="button">
           <Text style={S.ctaTxt}>{last ? t('intro.start', 'Get started') : t('next', 'Next')}</Text>
           <Ionicons name="arrow-forward" size={18} color={KHET.white} />
         </TouchableOpacity>

@@ -32,6 +32,16 @@ export function AppShell() {
 
   return (
     <div className="flex h-full">
+      {/* Skip link — first tab stop, on screen only while focused. Focus is moved
+          by hand so the router never sees a #main hash. */}
+      <a
+        href="#main"
+        onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-brand-800 focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 transform border-r border-slate-200 bg-white transition-transform md:static md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
@@ -43,7 +53,7 @@ export function AppShell() {
         <nav className="h-[calc(100%-3.5rem)] overflow-y-auto px-3 py-3" aria-label="Main">
           {groups.map((group) => (
             <div key={group.title} className="mb-4">
-              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{group.title}</p>
+              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.title}</p>
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
@@ -93,22 +103,24 @@ export function AppShell() {
             <button className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
             <button
               onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-              className="hidden items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-400 hover:bg-slate-50 sm:flex"
+              className="hidden items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 sm:flex"
             >
-              <Search className="h-3.5 w-3.5" /> Jump to… <kbd className="rounded bg-slate-100 px-1 text-[10px]">⌘K</kbd>
+              <Search className="h-3.5 w-3.5" /> Jump to… <kbd className="rounded bg-slate-100 px-1 text-[10px] text-slate-600">⌘K</kbd>
             </button>
           </div>
           <div className="flex items-center gap-3">
             <Badge tone={ENV_TONE}>{ENV_NAME}</Badge>
             <div className="text-right text-sm">
               <div className="font-medium text-slate-800">{user?.name || 'Administrator'}</div>
-              <div className="text-xs text-slate-400">{user?.phone || 'ADMIN'}</div>
+              <div className="text-xs text-slate-500">{user?.phone || 'ADMIN'}</div>
             </div>
             <button onClick={onLogout} className="btn-ghost" title="Log out" aria-label="Log out"><LogOut className="h-4 w-4" /></button>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+        {/* tabIndex -1: the skip link's target. It is a landing spot, not a control,
+            so it does not draw the app-wide focus ring. */}
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto p-4 focus-visible:ring-0 focus-visible:ring-offset-0 md:p-6">
           <Outlet />
         </main>
       </div>

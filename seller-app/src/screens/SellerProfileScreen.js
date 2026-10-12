@@ -42,31 +42,42 @@
  *     now wait for the full profile (useProfileSync) instead of guessing.
  *   - Completion is the same ten-field figure the business profile form and
  *     the API compute; this screen counted eight, so the two screens disagreed.
+ *   - A seller could not delete their account from this app at all. The entry
+ *     above Log out opens the same shared DeleteAccountModal the farmer app
+ *     uses (`DELETE /users/me`, behind a fresh SMS verification).
+ *   - A seller could not turn device alerts off: the farmer app has the switch,
+ *     this one did not. Account → Notifications writes the same
+ *     `User.notificationsEnabled` the server checks before every push.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 import { BUSINESS_TYPES } from '@krushisarva/shared/constants/locations';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
+import DeleteAccountModal from '@krushisarva/shared/components/DeleteAccountModal';
 
 import { C, E, HIT, R, SP, T, alpha, kycStatusMeta, useResponsive } from '../theme';
 import { useNetwork } from '../hooks/useNetwork';
 import useProfileSync, { noteProfileWrite } from '../hooks/useProfileSync';
 import { NAME_MAX, NAME_MIN, completionFromUser, kycState } from '../utils/businessProfile';
 import {
-  Screen, Button, IconButton, PressableRow, TextField, Rule,
+  Screen, AppHeader, Button, IconButton, PressableRow, TextField, Rule,
   Card, Avatar, Badge, ProgressBar, Skeleton, InlineNotice, useConfirm, useToast,
 } from '../components/ui';
 
-const TERMS_URL = 'https://cropsetu.app/terms';
-const PRIVACY_URL = 'https://cropsetu.app/privacy';
+const TERMS_URL = LEGAL_URLS.terms;
+const PRIVACY_URL = LEGAL_URLS.privacy;
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 
-/** `loading` holds the row's place while the full profile is still arriving. */
-function Row({ icon, label, value, onPress, badge, hint, last, loading }) {
+/**
+ * `loading` holds the row's place while the full profile is still arriving.
+ * `danger` re-inks the icon tile and label for a destructive entry.
+ */
+function Row({ icon, label, value, onPress, badge, hint, last, loading, danger }) {
   return (
     <PressableRow
       onPress={loading ? undefined : onPress}
@@ -74,11 +85,11 @@ function Row({ icon, label, value, onPress, badge, hint, last, loading }) {
       accessibilityHint={hint}
       style={[r.row, !last && r.rowRuled]}
     >
-      <View style={r.rowIcon}>
-        <Ionicons name={icon} size={18} color={C.brandInk} />
+      <View style={[r.rowIcon, danger && r.rowIconDanger]}>
+        <Ionicons name={icon} size={18} color={danger ? C.danger : C.brandInk} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={r.rowLabel} numberOfLines={1}>{label}</Text>
+        <Text style={[r.rowLabel, danger && r.rowLabelDanger]} numberOfLines={1}>{label}</Text>
         {loading ? (
           <Skeleton width="55%" height={12} style={{ marginTop: SP.xs }} />
         ) : value ? (
@@ -91,6 +102,34 @@ function Row({ icon, label, value, onPress, badge, hint, last, loading }) {
         <Ionicons name="chevron-forward" size={18} color={C.textFaint} />
       ) : null}
     </PressableRow>
+  );
+}
+
+/**
+ * A row whose control is a switch. `value` states the position in words: a
+ * switch position alone is a colour cue, and this app is read in sunlight.
+ */
+function SwitchRow({ icon, label, value, checked, onChange, disabled, last }) {
+  return (
+    <View style={[r.row, !last && r.rowRuled]}>
+      <View style={r.rowIcon}>
+        <Ionicons name={icon} size={18} color={C.brandInk} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={r.rowLabel} numberOfLines={1}>{label}</Text>
+        <Text style={r.rowValue} numberOfLines={3}>{value}</Text>
+      </View>
+      <Switch
+        value={checked}
+        onValueChange={onChange}
+        disabled={disabled}
+        trackColor={{ false: C.surfaceSunken, true: alpha(C.brand, 0.45) }}
+        thumbColor={checked ? C.brand : C.surface}
+        ios_backgroundColor={C.surfaceSunken}
+        accessibilityLabel={label}
+        accessibilityHint={value}
+      />
+    </View>
   );
 }
 
@@ -119,6 +158,16 @@ export default function SellerProfileScreen({ navigation }) {
   const [name, setName] = useState(user?.name || '');
   const [nameError, setNameError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+
+  // Mirrors User.notificationsEnabled. The login response does not carry it, so
+  // the switch stays disabled until the full profile arrives rather than
+  // showing "on" to a seller who had turned alerts off.
+  const [pushOn, setPushOn] = useState(user?.notificationsEnabled !== false);
+  const [savingPush, setSavingPush] = useState(false);
+  useEffect(() => {
+    if (typeof user?.notificationsEnabled === 'boolean') setPushOn(user.notificationsEnabled);
+  }, [user?.notificationsEnabled]);
 
   // Tapping "edit" should put the cursor in the box, not make the seller tap
   // a second time to find it.
@@ -197,6 +246,30 @@ export default function SellerProfileScreen({ navigation }) {
     }
   }, [name, user?.name, isOffline, recheck, toast, t, updateUser]);
 
+  // Optimistic, and it snaps back if the write does not land: a switch left in
+  // a position the server never heard about keeps buzzing a seller who believes
+  // they turned alerts off.
+  const handlePushToggle = useCallback(async (next) => {
+    if (savingPush) return;
+    setPushOn(next);
+    setSavingPush(true);
+    try {
+      if (isOffline && !(await recheck())) {
+        setPushOn(!next);
+        toast.warning(t('common.offlineAction', 'You are offline. Reconnect to save this.'));
+        return;
+      }
+      await api.put('/users/me', { notificationsEnabled: next });
+      noteProfileWrite();
+      updateUser({ notificationsEnabled: next });
+    } catch (e) {
+      setPushOn(!next);
+      toast.error(safeErrorMessage(e, t('profile.notifSaveFailedMsg', 'Your notification setting was not saved. Please try again.')));
+    } finally {
+      setSavingPush(false);
+    }
+  }, [savingPush, isOffline, recheck, toast, t, updateUser]);
+
   const handleLogout = useCallback(async () => {
     const ok = await confirm({
       title: t('logout', 'Log out'),
@@ -235,6 +308,12 @@ export default function SellerProfileScreen({ navigation }) {
 
   return (
     <Screen edges={['top', 'left', 'right']} background={C.bgAlt}>
+      {/* This screen turns the stack header off, so it must draw its own back
+          control — without it the only way out was the system back gesture. */}
+      <AppHeader
+        title={t('dash.profile', 'Profile')}
+        onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+      />
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -382,6 +461,16 @@ export default function SellerProfileScreen({ navigation }) {
               value={locationStr || t('sellerProfile.notSetTap')}
               onPress={() => navigation.navigate('BusinessProfile')}
               loading={loading}
+            />
+            <SwitchRow
+              icon="notifications-outline"
+              label={t('sellerProfile.pushLabel', 'Notifications')}
+              value={pushOn
+                ? t('sellerProfile.pushOn', 'On — alerts are sent to this phone')
+                : t('sellerProfile.pushOff', 'Off — only sign-in security alerts are sent')}
+              checked={pushOn}
+              onChange={handlePushToggle}
+              disabled={loading || savingPush}
               last
             />
           </SectionCard>
@@ -496,6 +585,22 @@ export default function SellerProfileScreen({ navigation }) {
             />
           </SectionCard>
 
+          {/* Delete account — DPDP §8 right to erasure. A card of its own rather
+              than a fifth row under "More" or a second button beside Log out:
+              it is irreversible, so it should not sit where a thumb aiming for
+              something else lands on it. The confirmation and the SMS
+              re-verification live in the modal; this is only the way in. */}
+          <Card padded={false} style={sp.deleteCard}>
+            <Row
+              danger
+              icon="trash-outline"
+              label={t('deleteAccount.entry', 'Delete my account')}
+              value={t('deleteAccount.entrySub', 'Permanently erase your data')}
+              onPress={() => setShowDeleteAccount(true)}
+              last
+            />
+          </Card>
+
           <Button
             label={t('logout', 'Log out')}
             icon="log-out-outline"
@@ -508,6 +613,15 @@ export default function SellerProfileScreen({ navigation }) {
           />
         </View>
       </ScrollView>
+
+      {/* Wired as the farmer ProfileScreen wires it. There is no success
+          callback: once the server has erased the account the modal signs out
+          through the same shared logout() this screen uses, and the root
+          navigator swaps to Login. */}
+      <DeleteAccountModal
+        visible={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+      />
     </Screen>
   );
 }
@@ -538,6 +652,8 @@ const sp = StyleSheet.create({
   completionTitle: { ...T.bodyBold, color: C.text },
   completionSub: { ...T.caption, color: C.textMuted, marginTop: 2 },
   completionPct: { ...T.figureMd },
+
+  deleteCard: { marginTop: SP.xxl },
 });
 
 const r = StyleSheet.create({
@@ -568,4 +684,7 @@ const r = StyleSheet.create({
   },
   rowLabel: { ...T.bodyBold, color: C.text },
   rowValue: { ...T.caption, color: C.textMuted, marginTop: 2 },
+  // Same pale fill and border the `dangerSoft` button uses.
+  rowIconDanger: { backgroundColor: C.dangerPale, borderColor: alpha(C.danger, 0.3) },
+  rowLabelDanger: { color: C.danger },
 });

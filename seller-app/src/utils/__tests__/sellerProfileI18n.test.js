@@ -58,6 +58,9 @@ describe('keys added for the KYC edge cases', () => {
     'sellerBizProfile.kycVerifiedBody', 'sellerBizProfile.kycPendingBody',
     'sellerBizProfile.kycRejectedBody', 'sellerBizProfile.kycRejectedNoReason',
     'sellerBizProfile.kycNotStartedBody',
+    // The seller-consent box: what the tick means has to be readable.
+    'sellerBizProfile.consentLabel', 'sellerBizProfile.consentHint', 'sellerBizProfile.consentRequired',
+    'sellerProfile.terms', 'sellerProfile.privacy',
     'sellerProfile.nameTooShort', 'sellerProfile.kycRejected', 'sellerProfile.kycNotSubmitted',
     'sellerProfile.kycRejectedValue', 'sellerProfile.kycRejectedNoReason',
     'sellerProfile.kycNotSubmittedValue', 'sellerProfile.loadError', 'sellerProfile.loadErrorOffline',

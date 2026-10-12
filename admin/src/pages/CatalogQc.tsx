@@ -120,8 +120,8 @@ function QcQueue() {
           <Card key={p.id} className="p-4">
             <div className="flex gap-4">
               {p.images?.[0]
-                ? <img src={p.images[0]} alt="" className="h-20 w-20 rounded-lg object-cover" />
-                : <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">No image</div>}
+                ? <img src={p.images[0]} alt={`Photo submitted for ${p.name}`} className="h-20 w-20 rounded-lg object-cover" />
+                : <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-600">No image</div>}
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -151,19 +151,19 @@ function QcQueue() {
                       {v._count?.listings ? ` · ${v._count.listings} offer(s)` : ''}
                     </span>
                   )) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                    <span className="inline-flex items-center gap-1 text-xs text-amber-700">
                       <AlertTriangle className="h-3 w-3" /> No pack size — nothing can be sold against this
                     </span>
                   )}
                 </div>
 
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-xs text-slate-500">
                   Proposed by {p.proposedBy?.name || p.proposedBy?.phone || 'unknown'}
                   {p.proposedBy?.district ? ` · ${p.proposedBy.district}` : ''}
                   {p.proposedBy?.kycStatus ? ` · KYC ${p.proposedBy.kycStatus}` : ''}
                   {' · '}{formatDate(p.createdAt)}
                 </p>
-                <p className="mt-1 truncate font-mono text-[11px] text-slate-300" title={p.normalizedKey}>
+                <p className="mt-1 truncate font-mono text-[11px] text-slate-500" title={p.normalizedKey}>
                   key: {p.normalizedKey}
                 </p>
               </div>
@@ -329,13 +329,13 @@ function DuplicateTools() {
                         <td className="table-td"><Badge tone={KIND_TONE[r.kind] ?? 'default'}>{r.kind}</Badge></td>
                         <td className="table-td">
                           <div className="max-w-[220px] truncate">{r.leftLabel || '—'}</div>
-                          <button className="font-mono text-[11px] text-slate-400 hover:text-slate-600"
+                          <button className="font-mono text-[11px] text-slate-500 hover:text-slate-700"
                             onClick={() => setFromId(r.leftId)} title="Use as merge source">{r.leftId.slice(0, 8)}…</button>
                         </td>
                         <td className="table-td">
                           <div className="max-w-[220px] truncate">{r.rightLabel || '—'}</div>
                           {r.rightId ? (
-                            <button className="font-mono text-[11px] text-slate-400 hover:text-slate-600"
+                            <button className="font-mono text-[11px] text-slate-500 hover:text-slate-700"
                               onClick={() => setIntoId(r.rightId!)} title="Use as merge target">{r.rightId.slice(0, 8)}…</button>
                           ) : null}
                         </td>
@@ -379,11 +379,11 @@ function DuplicateTools() {
                         <td className="table-td font-medium">{d.similarity.toFixed(2)}</td>
                         <td className="table-td">
                           <div className="max-w-[240px] truncate">{d.leftLabel}</div>
-                          <div className="text-xs text-slate-400">{d.leftBrand || 'no brand'}</div>
+                          <div className="text-xs text-slate-500">{d.leftBrand || 'no brand'}</div>
                         </td>
                         <td className="table-td">
                           <div className="max-w-[240px] truncate">{d.rightLabel}</div>
-                          <div className="text-xs text-slate-400">{d.rightBrand || 'no brand'}</div>
+                          <div className="text-xs text-slate-500">{d.rightBrand || 'no brand'}</div>
                         </td>
                         <td className="table-td text-right">
                           <Button variant="ghost" onClick={() => { setFromId(d.leftId); setIntoId(d.rightId); }}>

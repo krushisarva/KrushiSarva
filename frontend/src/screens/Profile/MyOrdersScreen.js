@@ -464,7 +464,7 @@ export default function MyOrdersScreen({ navigation }) {
           style={styles.backBtn}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t('profile.back', { defaultValue: 'Back' })}
+          accessibilityLabel={t('common.goBack', 'Go back')}
         >
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>

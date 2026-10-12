@@ -111,7 +111,7 @@ function LocationSheet({ visible, gpsStatus, manualLocation, onUseGps, onManual,
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={S.backdrop}>
-        <Pressable style={S.backdropTap} onPress={onClose} accessibilityLabel={t('common.close', 'Close')} />
+        <Pressable style={S.backdropTap} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
         <View style={[S.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={S.grabber} />
           <ScrollView contentContainerStyle={S.body} keyboardShouldPersistTaps="handled">

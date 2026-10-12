@@ -59,7 +59,7 @@ export default function CelebrationSheet({
   return (
     <Modal visible transparent animationType="none" onRequestClose={close} statusBarTranslucent>
       <Animated.View style={[styles.backdrop, { opacity: fade }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
           <View style={styles.handle} />
 
@@ -67,7 +67,7 @@ export default function CelebrationSheet({
             <FarmerIllo size={72} />
           </Animated.View>
 
-          <Text style={styles.title} numberOfLines={2}>{title || t('celebrationSheet.loggedTitle')}</Text>
+          <Text style={styles.title} numberOfLines={2} accessibilityRole="header">{title || t('celebrationSheet.loggedTitle')}</Text>
           {!!subtitle && <Text style={styles.subtitle} numberOfLines={3}>{subtitle}</Text>}
 
           {typeof streakDays === 'number' && streakDays > 0 && (

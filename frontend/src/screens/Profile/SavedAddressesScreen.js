@@ -106,6 +106,7 @@ function Field({ label, value, onChangeText, keyboardType, maxLength, autoCapita
         maxLength={maxLength}
         autoCapitalize={autoCapitalize}
         placeholderTextColor={COLORS.textMedium}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -253,7 +254,7 @@ export default function SavedAddressesScreen({ navigation }) {
   return (
     <SafeAreaView style={S.root} edges={['bottom']}>
       <View style={[S.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.iconBtn} hitSlop={8} accessibilityRole="button">
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.iconBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={S.headerTitle}>{t('savedAddresses.title')}</Text>
@@ -271,7 +272,7 @@ export default function SavedAddressesScreen({ navigation }) {
         <View style={S.center}>
           <Ionicons name="alert-circle-outline" size={48} color={COLORS.error} />
           <Text style={S.errorTxt}>{error}</Text>
-          <TouchableOpacity style={S.primaryBtn} onPress={() => { setLoading(true); load(); }}>
+          <TouchableOpacity style={S.primaryBtn} onPress={() => { setLoading(true); load(); }} accessibilityRole="button">
             <Text style={S.primaryBtnTxt}>{t('savedAddresses.retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -296,7 +297,7 @@ export default function SavedAddressesScreen({ navigation }) {
               <Ionicons name="location-outline" size={64} color={COLORS.gray175} />
               <Text style={S.emptyTitle}>{t('savedAddresses.empty')}</Text>
               <Text style={S.emptySub}>{t('savedAddresses.emptyHint')}</Text>
-              <TouchableOpacity style={[S.primaryBtn, { marginTop: 12 }]} onPress={openAdd}>
+              <TouchableOpacity style={[S.primaryBtn, { marginTop: 12 }]} onPress={openAdd} accessibilityRole="button">
                 <Text style={S.primaryBtnTxt}>{t('savedAddresses.add')}</Text>
               </TouchableOpacity>
             </View>
@@ -320,6 +321,8 @@ export default function SavedAddressesScreen({ navigation }) {
                     key={ty}
                     style={[S.typeOpt, form?.type === ty && S.typeOptOn]}
                     onPress={() => set('type')(ty)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: form?.type === ty }}
                   >
                     <Ionicons name={TYPE_ICON[ty]} size={15}
                       color={form?.type === ty ? COLORS.white : COLORS.textMedium} />
@@ -346,6 +349,7 @@ export default function SavedAddressesScreen({ navigation }) {
                   maxLength={PINCODE_INPUT_MAX_LENGTH}
                   placeholder={t('pincode.placeholder')}
                   placeholderTextColor={COLORS.textMedium}
+                  accessibilityLabel={t('savedAddresses.fPincode')}
                 />
                 {pin.status === 'idle'
                   ? <Text style={S.pinHint}>{t('pincode.autofillHint')}</Text>
@@ -364,13 +368,13 @@ export default function SavedAddressesScreen({ navigation }) {
                 />
               </View>
 
-              {formError ? <Text style={S.formError}>{formError}</Text> : null}
+              {formError ? <Text style={S.formError} accessibilityLiveRegion="polite">{formError}</Text> : null}
 
               <View style={S.sheetBtns}>
-                <TouchableOpacity style={[S.secondaryBtn]} disabled={saving} onPress={() => setForm(null)}>
+                <TouchableOpacity style={[S.secondaryBtn]} disabled={saving} onPress={() => setForm(null)} accessibilityRole="button">
                   <Text style={S.secondaryBtnTxt}>{t('savedAddresses.cancel')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[S.primaryBtn, { flex: 1 }, saving && { opacity: 0.6 }]} disabled={saving} onPress={save}>
+                <TouchableOpacity style={[S.primaryBtn, { flex: 1 }, saving && { opacity: 0.6 }]} disabled={saving} onPress={save} accessibilityRole="button" accessibilityState={{ busy: saving }} accessibilityLabel={t('savedAddresses.save')}>
                   {saving ? <ActivityIndicator color={COLORS.white} />
                           : <Text style={S.primaryBtnTxt}>{t('savedAddresses.save')}</Text>}
                 </TouchableOpacity>
@@ -390,10 +394,10 @@ export default function SavedAddressesScreen({ navigation }) {
             <Text style={S.confirmTitle}>{t('savedAddresses.deleteTitle')}</Text>
             <Text style={S.confirmBody}>{t('savedAddresses.deleteBody')}</Text>
             <View style={S.confirmBtns}>
-              <TouchableOpacity style={S.secondaryBtn} disabled={busy} onPress={() => setPendingDelete(null)}>
+              <TouchableOpacity style={S.secondaryBtn} disabled={busy} onPress={() => setPendingDelete(null)} accessibilityRole="button">
                 <Text style={S.secondaryBtnTxt}>{t('savedAddresses.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[S.dangerBtn, busy && { opacity: 0.6 }]} disabled={busy} onPress={confirmDelete}>
+              <TouchableOpacity style={[S.dangerBtn, busy && { opacity: 0.6 }]} disabled={busy} onPress={confirmDelete} accessibilityRole="button" accessibilityState={{ busy }} accessibilityLabel={t('savedAddresses.delete')}>
                 {busy ? <ActivityIndicator color={COLORS.white} />
                       : <Text style={S.primaryBtnTxt}>{t('savedAddresses.delete')}</Text>}
               </TouchableOpacity>

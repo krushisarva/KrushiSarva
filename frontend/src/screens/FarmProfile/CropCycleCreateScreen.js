@@ -157,9 +157,10 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                 value={query}
                 onChangeText={setQuery}
                 style={styles.searchInput}
+                accessibilityLabel={t('search', 'Search')}
               />
               {query.length > 0 && (
-                <Pressable onPress={() => setQuery('')} hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}>
+                <Pressable onPress={() => setQuery('')} hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }} accessibilityRole="button" accessibilityLabel={t('rent.clearSearch', 'Clear search')}>
                   <Ionicons name="close-circle" size={18} color={COSMIC.MUTED} />
                 </Pressable>
               )}
@@ -178,6 +179,8 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                       sel && styles.cropCardSel,
                       pressed && { transform: [{ scale: 0.96 }] },
                     ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: sel }}
                   >
                     <View style={styles.cropIconWrap}>
                       <PhotoIcon set="crop" name={k.charAt(0).toUpperCase() + k.slice(1)} size={48} radius={9}
@@ -199,7 +202,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
               })}
               {filteredCrops.length === 0 && (
                 <View style={styles.cropEmpty}>
-                  <Text style={styles.mutedText}>{t('cropCycle.noCropsMatch', { query })}</Text>
+                  <Text style={styles.mutedText} accessibilityLiveRegion="polite">{t('cropCycle.noCropsMatch', { query })}</Text>
                 </View>
               )}
             </View>
@@ -219,6 +222,8 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                     { borderColor: sel ? s.color : COSMIC.BORDER, backgroundColor: sel ? s.color + '22' : COSMIC.SURFACE },
                     pressed && { transform: [{ scale: 0.97 }] },
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: sel }}
                 >
                   <View style={[styles.seasonIcon, { backgroundColor: s.color + '28', borderColor: s.color + '55' }]}>
                     <Ionicons name={s.icon} size={22} color={s.color} />
@@ -243,6 +248,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                 placeholderTextColor={COSMIC.MUTED}
                 keyboardType="decimal-pad"
                 style={styles.areaInput}
+                accessibilityLabel={t('cropCycle.areaAllocated', 'Area allocated')}
               />
               <View style={styles.areaUnitPill}>
                 <Text style={styles.areaUnitText}>{t('cropCycle.acres', 'ACRES')}</Text>
@@ -261,6 +267,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
               placeholderTextColor={COSMIC.MUTED}
               style={styles.input}
               autoCapitalize="words"
+              accessibilityLabel={t('cropCycle.variety', 'Variety')}
             />
           </GlassCard>
 
@@ -273,6 +280,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
               placeholder={t('farmProfile.seedBrandPlaceholder') || 'Seed brand / source'}
               placeholderTextColor={COSMIC.MUTED}
               style={[styles.input, { marginBottom: 10 }]}
+              accessibilityLabel={t('farmProfile.seedBrandPlaceholder') || 'Seed brand / source'}
             />
             <View style={styles.row2}>
               <TextInput
@@ -282,6 +290,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                 placeholderTextColor={COSMIC.MUTED}
                 keyboardType="decimal-pad"
                 style={[styles.input, { flex: 1 }]}
+                accessibilityLabel={t('farmProfile.fieldQuantityKg', 'Quantity (kg)')}
               />
               <TextInput
                 value={seedCost}
@@ -290,6 +299,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
                 placeholderTextColor={COSMIC.MUTED}
                 keyboardType="numeric"
                 style={[styles.input, { flex: 1 }]}
+                accessibilityLabel={t('farmProfile.seedCostPlaceholder') || 'Cost (₹)'}
               />
             </View>
           </GlassCard>
@@ -322,7 +332,7 @@ function SectionHeader({ icon, tint, title, optional, t }) {
       <View style={[styles.secIcon, { backgroundColor: tint + '28', borderColor: tint + '55' }]}>
         <Ionicons name={icon} size={16} color={tint} />
       </View>
-      <Text style={styles.secTitle}>{title}</Text>
+      <Text style={styles.secTitle} accessibilityRole="header">{title}</Text>
       {optional && <Text style={styles.optional}>{t ? t('cropCycle.optional', 'Optional') : 'Optional'}</Text>}
     </View>
   );

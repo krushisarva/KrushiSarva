@@ -51,7 +51,8 @@ export function CommandPalette() {
               else if (e.key === 'Enter' && results[active]) { go(results[active].to); }
             }}
             placeholder="Jump to…"
-            className="w-full bg-transparent py-3 text-sm outline-none"
+            aria-label="Jump to a page"
+            className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-slate-500"
           />
         </div>
         <ul className="max-h-80 overflow-y-auto py-1">
@@ -69,7 +70,7 @@ export function CommandPalette() {
               </li>
             );
           })}
-          {results.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-400">No matches</li>}
+          {results.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-500">No matches</li>}
         </ul>
       </div>
     </div>

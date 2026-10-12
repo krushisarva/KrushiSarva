@@ -57,6 +57,7 @@ function FieldInput({ label, value, onChangeText, placeholder, keyboardType, mul
         keyboardType={keyboardType || 'default'}
         multiline={multiline}
         numberOfLines={multiline ? 3 : 1}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -72,6 +73,8 @@ function ChipGroup({ options, selected, onToggle, singleSelect }) {
             key={opt.key}
             style={[S.chip, active && { backgroundColor: opt.color || COLORS.primary, borderColor: opt.color || COLORS.primary }]}
             onPress={() => onToggle(opt.key)}
+            accessibilityRole={singleSelect ? 'radio' : 'checkbox'}
+            accessibilityState={{ checked: active }}
           >
             {opt.icon && <Ionicons name={opt.icon} size={13} color={active ? COLORS.white : (opt.color || COLORS.grayMid2)} />}
             <Text style={[S.chipTxt, active && { color: COLORS.white }]}>{opt.label}</Text>
@@ -294,7 +297,7 @@ export default function AddMachineryScreen({ navigation, route }) {
 
       {/* ── Header ── */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
         </TouchableOpacity>
         <View>
@@ -403,6 +406,7 @@ export default function AddMachineryScreen({ navigation, route }) {
             style={[S.gpsBtnRow, lat != null && S.gpsBtnRowDone]}
             onPress={fetchGPS}
             disabled={gpsLoading}
+            accessibilityRole="button"
           >
             {gpsLoading
               ? <ActivityIndicator size="small" color={COLORS.primary} />
@@ -435,18 +439,18 @@ export default function AddMachineryScreen({ navigation, route }) {
             {images.map((img, i) => (
               <View key={i} style={S.mediaThumb}>
                 <Image source={{ uri: img.uri }} style={S.thumbImg} />
-                <TouchableOpacity style={S.removeBtn} onPress={() => setImages(arr => arr.filter((_, j) => j !== i))}>
+                <TouchableOpacity style={S.removeBtn} onPress={() => setImages(arr => arr.filter((_, j) => j !== i))} accessibilityRole="button" accessibilityLabel={t('cropScan.removePhoto', 'Remove photo')}>
                   <Ionicons name="close-circle" size={20} color={COLORS.error} />
                 </TouchableOpacity>
               </View>
             ))}
             {images.length < 5 && (
               <View style={S.addMediaGroup}>
-                <TouchableOpacity style={S.addMediaBtn} onPress={pickImages}>
+                <TouchableOpacity style={S.addMediaBtn} onPress={pickImages} accessibilityRole="button">
                   <Ionicons name="images-outline" size={22} color={COLORS.primary} />
                   <Text style={S.addMediaTxt}>{t('rent.gallery')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={S.addMediaBtn} onPress={pickFromCamera}>
+                <TouchableOpacity style={S.addMediaBtn} onPress={pickFromCamera} accessibilityRole="button">
                   <Ionicons name="camera-outline" size={22} color={COLORS.primary} />
                   <Text style={S.addMediaTxt}>{t('rent.camera')}</Text>
                 </TouchableOpacity>
@@ -460,12 +464,12 @@ export default function AddMachineryScreen({ navigation, route }) {
             <View style={S.videoWrap}>
               <Ionicons name="videocam" size={28} color={COLORS.primary} />
               <Text style={S.videoName} numberOfLines={1}>{video.uri.split('/').pop()}</Text>
-              <TouchableOpacity onPress={() => setVideo(null)} style={S.removeVideoBtn}>
+              <TouchableOpacity onPress={() => setVideo(null)} style={S.removeVideoBtn} accessibilityRole="button" accessibilityLabel={t('a11y.removeVideo', 'Remove video')}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.error} />
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={S.videoPickBtn} onPress={pickVideo}>
+            <TouchableOpacity style={S.videoPickBtn} onPress={pickVideo} accessibilityRole="button">
               <Ionicons name="cloud-upload-outline" size={24} color={COLORS.primary} />
               <Text style={S.videoPickTxt}>{t('rent.chooseVideo')}</Text>
             </TouchableOpacity>
@@ -478,6 +482,9 @@ export default function AddMachineryScreen({ navigation, route }) {
             style={[S.submitBtn, loading && { opacity: 0.6 }]}
             onPress={handleSubmit}
             disabled={loading}
+            accessibilityRole="button"
+            accessibilityState={{ busy: loading }}
+            accessibilityLabel={uploading ? t('rent.uploadingMedia') : editMode ? t('rent.saveChanges') : t('rent.listMyEquipment')}
           >
             {loading
               ? <ActivityIndicator color={COLORS.white} />
@@ -525,12 +532,14 @@ export default function AddMachineryScreen({ navigation, route }) {
               <TouchableOpacity
                 style={[S.successBtn, S.successBtnSecondary]}
                 onPress={() => { setSuccess(null); navigation.goBack(); }}
+                accessibilityRole="button"
               >
                 <Text style={S.successBtnTextSecondary}>{t('rent.done')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[S.successBtn, S.successBtnPrimary]}
                 onPress={() => { setSuccess(null); navigation.navigate('RentHome'); }}
+                accessibilityRole="button"
               >
                 <Text style={S.successBtnTextPrimary}>{t('rent.viewListings')}</Text>
               </TouchableOpacity>

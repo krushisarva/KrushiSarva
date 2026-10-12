@@ -24,7 +24,7 @@ function Kpi({ icon: Icon, label, value, sub, to }: { icon: typeof Users; label:
         <Icon className="h-4 w-4 text-brand-600" />
       </div>
       <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-slate-400">{sub}</div>}
+      {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
     </Card>
   );
   return to ? <Link to={to} className="block transition hover:opacity-90">{body}</Link> : body;
@@ -93,12 +93,12 @@ export default function Dashboard() {
             <Card className="p-4">
               <h3 className="mb-3 text-sm font-medium text-slate-700">External API health (24h)</h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {Object.entries(m.apiHealth).length === 0 && <span className="text-sm text-slate-400">No health data yet.</span>}
+                {Object.entries(m.apiHealth).length === 0 && <span className="text-sm text-slate-500">No health data yet.</span>}
                 {Object.entries(m.apiHealth).map(([source, s]) => (
                   <div key={source} className="rounded-lg border border-slate-100 p-3">
                     <div className="truncate text-xs font-medium text-slate-500">{source}</div>
-                    <div className={`mt-1 text-lg font-semibold ${s.successRate >= 95 ? 'text-green-600' : s.successRate >= 80 ? 'text-amber-600' : 'text-red-600'}`}>{s.successRate}%</div>
-                    <div className="text-xs text-slate-400">{s.avgMs}ms · {s.total} calls</div>
+                    <div className={`mt-1 text-lg font-semibold ${s.successRate >= 95 ? 'text-green-700' : s.successRate >= 80 ? 'text-amber-700' : 'text-red-600'}`}>{s.successRate}%</div>
+                    <div className="text-xs text-slate-500">{s.avgMs}ms · {s.total} calls</div>
                   </div>
                 ))}
               </div>

@@ -412,6 +412,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
         <Pressable
           onPress={() => navigation.navigate('GrowthStory', { cycleId, cycle })}
           style={({ pressed }) => [styles.storyBtn, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
         >
           <View style={styles.storyIcon}>
             <Ionicons name="images-outline" size={16} color={COSMIC.PRIMARY} />
@@ -436,6 +437,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
             },
           })}
           style={({ pressed }) => [styles.askAiBtn, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
         >
           <View style={styles.askAiIcon}>
             <Ionicons name="sparkles" size={15} color={COSMIC.INVERSE} />
@@ -506,7 +508,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
                   />
                   <View style={styles.plLegend}>
                     {costSegments.map((s) => (
-                      <View key={s.label} style={styles.legendRow}>
+                      <View key={s.label} style={styles.legendRow} accessible>
                         <View style={[styles.legendDot, { backgroundColor: s.color }]} />
                         <Text style={styles.legendLabel} numberOfLines={1}>{s.label}</Text>
                         <Text style={styles.legendValue}>{formatInr(s.value)}</Text>
@@ -611,6 +613,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
           <Pressable
             onPress={() => setShowComplete(true)}
             style={({ pressed }) => [styles.completeFooter, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
           >
             <Ionicons name="checkmark-done" size={18} color={COSMIC.INVERSE} />
             <Text style={styles.completeFooterText}>{t('farmProfile.markCycleComplete', 'Mark cycle complete')}</Text>
@@ -620,6 +623,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
             onPress={reopenCycle}
             disabled={completing}
             style={({ pressed }) => [styles.reopenFooter, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
           >
             {completing
               ? <ActivityIndicator size="small" color={COSMIC.PRIMARY} />
@@ -632,6 +636,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
         <Pressable
           onPress={() => setShowDelete(true)}
           style={({ pressed }) => [styles.deleteFooter, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
         >
           <Ionicons name="trash-outline" size={15} color={COSMIC.DANGER} />
           <Text style={styles.deleteFooterText}>{t('farmProfile.deleteCycle', 'Delete crop cycle')}</Text>
@@ -718,20 +723,20 @@ export default function CropCycleDetailScreen({ navigation, route }) {
 
       {/* Delete confirmation — in-app popup */}
       <Modal visible={showDelete} transparent animationType="fade" onRequestClose={() => !deleting && setShowDelete(false)}>
-        <Pressable style={styles.delBackdrop} onPress={() => !deleting && setShowDelete(false)}>
-          <Pressable style={styles.delCard} onPress={() => {}}>
+        <Pressable style={styles.delBackdrop} onPress={() => !deleting && setShowDelete(false)} accessible={false} importantForAccessibility="no">
+          <Pressable style={styles.delCard} onPress={() => {}} accessible={false} importantForAccessibility="no">
             <View style={styles.delIconWrap}>
               <Ionicons name="trash-outline" size={26} color={COSMIC.DANGER} />
             </View>
-            <Text style={styles.delTitle}>{t('farmProfile.deleteCycleTitle', 'Delete crop cycle?')}</Text>
+            <Text style={styles.delTitle} accessibilityRole="header">{t('farmProfile.deleteCycleTitle', 'Delete crop cycle?')}</Text>
             <Text style={styles.delMsg}>
               {t('farmProfile.deleteCycleMsg', { cropName: cycle.cropName })}
             </Text>
             <View style={styles.delBtnRow}>
-              <Pressable style={[styles.delBtn, styles.delCancel]} onPress={() => setShowDelete(false)} disabled={deleting}>
+              <Pressable style={[styles.delBtn, styles.delCancel]} onPress={() => setShowDelete(false)} disabled={deleting} accessibilityRole="button">
                 <Text style={styles.delCancelTxt}>{t('rent.cancel') || 'Cancel'}</Text>
               </Pressable>
-              <Pressable style={[styles.delBtn, styles.delDanger, deleting && { opacity: 0.7 }]} onPress={confirmDelete} disabled={deleting}>
+              <Pressable style={[styles.delBtn, styles.delDanger, deleting && { opacity: 0.7 }]} onPress={confirmDelete} disabled={deleting} accessibilityRole="button" accessibilityState={{ busy: deleting }} accessibilityLabel={t('rent.delete') || 'Delete'}>
                 {deleting
                   ? <ActivityIndicator size="small" color={COSMIC.INVERSE} />
                   : <Text style={styles.delDangerTxt}>{t('rent.delete') || 'Delete'}</Text>}
@@ -743,20 +748,20 @@ export default function CropCycleDetailScreen({ navigation, route }) {
 
       {/* Complete confirmation — in-app popup (works on web + native, unlike Alert.alert) */}
       <Modal visible={showComplete} transparent animationType="fade" onRequestClose={() => !completing && setShowComplete(false)}>
-        <Pressable style={styles.delBackdrop} onPress={() => !completing && setShowComplete(false)}>
-          <Pressable style={styles.delCard} onPress={() => {}}>
+        <Pressable style={styles.delBackdrop} onPress={() => !completing && setShowComplete(false)} accessible={false} importantForAccessibility="no">
+          <Pressable style={styles.delCard} onPress={() => {}} accessible={false} importantForAccessibility="no">
             <View style={styles.completeIconWrap}>
               <Ionicons name="checkmark-done" size={26} color={COSMIC.PRIMARY} />
             </View>
-            <Text style={styles.delTitle}>{t('farmProfile.completeCycleTitle', 'Complete cycle?')}</Text>
+            <Text style={styles.delTitle} accessibilityRole="header">{t('farmProfile.completeCycleTitle', 'Complete cycle?')}</Text>
             <Text style={styles.delMsg}>
               {t('farmProfile.completeCycleMsg', { cropName: cycle.cropName })}
             </Text>
             <View style={styles.delBtnRow}>
-              <Pressable style={[styles.delBtn, styles.delCancel]} onPress={() => setShowComplete(false)} disabled={completing}>
+              <Pressable style={[styles.delBtn, styles.delCancel]} onPress={() => setShowComplete(false)} disabled={completing} accessibilityRole="button">
                 <Text style={styles.delCancelTxt}>{t('rent.cancel') || 'Cancel'}</Text>
               </Pressable>
-              <Pressable style={[styles.delBtn, styles.completeConfirm, completing && { opacity: 0.7 }]} onPress={completeCycle} disabled={completing}>
+              <Pressable style={[styles.delBtn, styles.completeConfirm, completing && { opacity: 0.7 }]} onPress={completeCycle} disabled={completing} accessibilityRole="button" accessibilityState={{ busy: completing }} accessibilityLabel={t('farmProfile.complete', 'Complete')}>
                 {completing
                   ? <ActivityIndicator size="small" color={COSMIC.INVERSE} />
                   : <Text style={styles.completeConfirmTxt}>{t('farmProfile.complete', 'Complete')}</Text>}
@@ -776,14 +781,14 @@ export default function CropCycleDetailScreen({ navigation, route }) {
 function SectionLabel({ title }) {
   return (
     <View style={styles.sectionLabel}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
     </View>
   );
 }
 
 function Stat({ value, label, light }) {
   return (
-    <View style={styles.statCol}>
+    <View style={styles.statCol} accessible>
       <Text style={[styles.statValue, light && styles.statValueLight]} numberOfLines={1}>{value}</Text>
       <Text style={[styles.statLabel, light && styles.statLabelLight]} numberOfLines={1}>{label}</Text>
     </View>
@@ -793,7 +798,7 @@ function Stat({ value, label, light }) {
 function TimelineRow({ item, isLast }) {
   const meta = activityMeta(item.type);
   return (
-    <View style={styles.tlRow}>
+    <View style={styles.tlRow} accessible>
       <View style={styles.tlRail}>
         <View style={[styles.tlDot, { backgroundColor: meta.color }]}>
           <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
@@ -813,7 +818,7 @@ function TimelineRow({ item, isLast }) {
 
 function FinCard({ label, value, tint, icon }) {
   return (
-    <View style={[styles.finCard, { borderLeftColor: tint }]}>
+    <View style={[styles.finCard, { borderLeftColor: tint }]} accessible>
       <View style={styles.finCardHead}>
         <Ionicons name={icon} size={11} color={tint} />
         <Text style={styles.finLabel} numberOfLines={1}>{label}</Text>
@@ -828,7 +833,7 @@ function InputModal({ visible, title, tint = COSMIC.PRIMARY, icon, onClose, onSa
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.modalBackdrop} onPress={onClose} />
+      <Pressable style={styles.modalBackdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ justifyContent: 'flex-end' }}
@@ -840,8 +845,8 @@ function InputModal({ visible, title, tint = COSMIC.PRIMARY, icon, onClose, onSa
             <View style={[styles.modalIconWrap, { backgroundColor: tint + '22', borderColor: tint + '55' }]}>
               <Ionicons name={icon || 'create-outline'} size={16} color={tint} />
             </View>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}>
+            <Text style={styles.modalTitle} accessibilityRole="header">{title}</Text>
+            <Pressable onPress={onClose} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
               <Ionicons name="close" size={18} color={COSMIC.TEXT_2} />
             </Pressable>
           </View>
@@ -856,6 +861,7 @@ function InputModal({ visible, title, tint = COSMIC.PRIMARY, icon, onClose, onSa
                 placeholderTextColor={COSMIC.MUTED}
                 keyboardType={f.kb || 'default'}
                 style={styles.modalInput}
+                accessibilityLabel={f.label}
               />
             </View>
           ))}

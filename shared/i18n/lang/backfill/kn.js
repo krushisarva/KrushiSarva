@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 875 keys.
 
 export default {
   "aiChat.attachHint": "ತ್ವರಿತ ರೋಗನಿರ್ಣಯಕ್ಕಾಗಿ ನಿಮ್ಮ ಬೆಳೆಯ ಫೋಟೋ ಹಂಚಿಕೊಳ್ಳಿ.",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} ಡೆಲಿವರಿ",
   "cart.freeDeliveryPrefix": "ಸೇರಿಸಿ",
   "cart.freeDeliverySuffix": "ಉಚಿತ ಡೆಲಿವರಿಗಾಗಿ ಇನ್ನಷ್ಟು!",
-  "cart.savedOnDelivery": "ಡೆಲಿವರಿಯಲ್ಲಿ ನೀವು ₹49 ಉಳಿಸಿದ್ದೀರಿ!",
+  "cart.savedOnDelivery": "ಈ ಆರ್ಡರ್‌ಗೆ ಉಚಿತ ಡೆಲಿವರಿ",
   "celebrationSheet.loggedTitle": "ದಾಖಲಿಸಲಾಗಿದೆ!",
   "close": "ಮುಚ್ಚಿ",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "ದಿನಗಳು",
   "diagReport.detection": "ಪತ್ತೆ",
   "diagReport.diagnosePrompt": "ರೋಗನಿರ್ಣಯ ಪ್ರಾಂಪ್ಟ್",
-  "diagReport.diagnosingPathologist": "ರೋಗನಿರ್ಣಯ ಮಾಡುವ ರೋಗತಜ್ಞ",
+  "diagReport.diagnosingPathologist": "AI ರೋಗನಿರ್ಣಯ ವ್ಯವಸ್ಥೆ",
   "diagReport.diagnosisModel": "ರೋಗನಿರ್ಣಯ ಮಾಡೆಲ್",
   "diagReport.differentialDiagnosis": "ಭೇದಾತ್ಮಕ ರೋಗನಿರ್ಣಯ",
   "diagReport.disclaimer": "ಈ ವರದಿಯನ್ನು AI-ಸಹಾಯಿತ ಸಲಹಾ ವ್ಯವಸ್ಥೆ ರಚಿಸಿದೆ. ಇದು ನಿರ್ಧಾರ-ಬೆಂಬಲ ದಾಖಲೆ, ಔಪಚಾರಿಕ ಔಷಧ ಶಿಫಾರಸ್ಸು ಅಲ್ಲ. ತೀವ್ರ, ಅಸಾಮಾನ್ಯ ಅಥವಾ ನಿರಂತರ ಪ್ರಕರಣಗಳಿಗೆ, ದಯವಿಟ್ಟು ಪ್ರಮಾಣೀಕೃತ ಕೃಷಿ ತಜ್ಞ ಅಥವಾ ಹತ್ತಿರದ ಕೃಷಿ ವಿಜ್ಞಾನ ಕೇಂದ್ರ (KVK) ಅನ್ನು ಸಂಪರ್ಕಿಸಿ. ಶಿಫಾರಸು ಮಾಡಿದ ಕೀಟನಾಶಕಗಳನ್ನು CIB&RC-ಅನುಮೋದಿತ ಲೇಬಲ್‌ಗಳ ಪ್ರಕಾರ ಕಟ್ಟುನಿಟ್ಟಾಗಿ ಬಳಸಬೇಕು.",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "ನೀರಾವರಿ",
   "diagReport.kisanCallCentre": "ಕಿಸಾನ್ ಕಾಲ್ ಸೆಂಟರ್:",
   "diagReport.kvkLocator": "KVK ಲೊಕೇಟರ್:",
-  "diagReport.labSub": "ಸಸ್ಯ ರೋಗಶಾಸ್ತ್ರ · ರೋಗನಿರ್ಣಯ ಪ್ರಯೋಗಾಲಯ",
+  "diagReport.labSub": "AI ಬೆಳೆ ಆರೋಗ್ಯ ಸಲಹೆ",
   "diagReport.labTag": "AI-ಸಹಾಯಿತ ಬೆಳೆ ಆರೋಗ್ಯ ರೋಗನಿರ್ಣಯ ಸೇವೆ",
   "diagReport.language": "ಭಾಷೆ:",
   "diagReport.leafWetness": "ಎಲೆ ತೇವಾಂಶ",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "ಒಟ್ಟಾರೆ ಅಪಾಯ",
   "diagReport.passed": "ಉತ್ತೀರ್ಣ",
   "diagReport.pathogenType": "ರೋಗಕಾರಕ ಪ್ರಕಾರ",
-  "diagReport.pathologistAi": "ರೋಗತಜ್ಞ (AI):",
+  "diagReport.pathologistAi": "AI ವ್ಯವಸ್ಥೆ:",
   "diagReport.patientSummary": "ರೋಗಿ ಸಾರಾಂಶ",
   "diagReport.perAcre": "ಪ್ರತಿ ಎಕರೆಗೆ",
   "diagReport.phone": "ಫೋನ್",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "ಬೆಳೆ ರೋಗ ಪತ್ತೆ ವರದಿ",
   "diagReport.requiredPpe": "ಅಗತ್ಯ PPE:",
   "diagReport.resistanceSafetyNotes": "ಪ್ರತಿರೋಧ & ಸುರಕ್ಷತಾ ಸೂಚನೆಗಳು",
-  "diagReport.reviewingAuthority": "ಪರಿಶೀಲನಾ ಅಧಿಕಾರಿ",
+  "diagReport.reviewingAuthority": "ಪರಿಶೀಲನೆಗೆ ಸೂಚಿಸಲಾಗಿದೆ — ಪರಿಶೀಲಿಸಲಾಗಿಲ್ಲ",
   "diagReport.rotation": "ಸರದಿ",
   "diagReport.ruledOut": "ತಳ್ಳಿಹಾಕಲಾಗಿದೆ",
   "diagReport.schedule": "ವೇಳಾಪಟ್ಟಿ",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "ಚಿಕಿತ್ಸೆ ಅವಧಿ",
   "diagReport.triggeringConditions": "ಪ್ರಚೋದಿಸುವ ಪರಿಸ್ಥಿತಿಗಳು",
   "diagReport.unverifiedLabel": "ಪರಿಶೀಲಿಸಲಾಗಿಲ್ಲ:",
-  "diagReport.verified": "ಪರಿಶೀಲಿಸಲಾಗಿದೆ",
+  "diagReport.verified": "AI ರಚಿಸಿದ್ದು",
   "diagReport.verifiedLabel": "ಪರಿಶೀಲಿಸಲಾಗಿದೆ:",
   "diagReport.vision": "ವಿಷನ್",
   "diagReport.visionModel": "ವಿಷನ್ ಮಾಡೆಲ್:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "ಲಭ್ಯತೆ",
   "product.countryOfOrigin": "ಮೂಲ ದೇಶ",
-  "product.cropSetuVerified": "KrushiSarva ಪರಿಶೀಲಿಸಲಾಗಿದೆ",
   "product.customerSupport": "ಗ್ರಾಹಕ ಬೆಂಬಲ",
   "product.deliveryAddressSub": "ನೇರ ಶಿಪ್ಪಿಂಗ್ ಅಂದಾಜು ಮತ್ತು ಉಳಿಸಿದ ವಿಳಾಸಗಳು ಶೀಘ್ರದಲ್ಲೇ ಬರಲಿವೆ.",
   "product.deliveryAddressTitle": "ಡೆಲಿವರಿ ಮತ್ತು ವಿಳಾಸ",

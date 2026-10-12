@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 875 keys.
 
 export default {
   "aiChat.attachHint": "விரைவு கண்டறிதலுக்கு உங்கள் பயிரின் புகைப்படத்தை பகிரவும்.",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} டெலிவரி",
   "cart.freeDeliveryPrefix": "சேர்க்கவும்",
   "cart.freeDeliverySuffix": "இலவச டெலிவரிக்கு இன்னும்!",
-  "cart.savedOnDelivery": "டெலிவரியில் ₹49 சேமித்தீர்கள்!",
+  "cart.savedOnDelivery": "இந்த ஆர்டருக்கு இலவச டெலிவரி",
   "celebrationSheet.loggedTitle": "பதிவு செய்யப்பட்டது!",
   "close": "மூடு",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "நாட்கள்",
   "diagReport.detection": "கண்டறிதல்",
   "diagReport.diagnosePrompt": "கண்டறிதல் ப்ராம்ப்ட்",
-  "diagReport.diagnosingPathologist": "கண்டறிந்த நோயியலாளர்",
+  "diagReport.diagnosingPathologist": "AI நோய் கண்டறிதல் அமைப்பு",
   "diagReport.diagnosisModel": "கண்டறிதல் மாதிரி",
   "diagReport.differentialDiagnosis": "வேறுபாட்டு கண்டறிதல்",
   "diagReport.disclaimer": "இந்த அறிக்கை AI உதவியுடன் இயங்கும் ஆலோசனை அமைப்பால் உருவாக்கப்பட்டது. இது முடிவெடுக்க உதவும் ஆவணமே தவிர முறையான மருந்துச்சீட்டு அல்ல. கடுமையான, அசாதாரண, அல்லது தொடர்ந்து நீடிக்கும் வழக்குகளுக்கு, சான்றளிக்கப்பட்ட வேளாண் நிபுணர் அல்லது அருகிலுள்ள கிருஷி விஞ்ஞான கேந்திரத்தை (KVK) அணுகவும். பரிந்துரைக்கப்பட்ட பூச்சிக்கொல்லிகளை CIB&RC-அங்கீகரித்த லேபிள்களின் படி கண்டிப்பாக பயன்படுத்த வேண்டும்.",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "நீர்ப்பாசனம்",
   "diagReport.kisanCallCentre": "கிசான் கால் சென்டர்:",
   "diagReport.kvkLocator": "KVK கண்டுபிடிப்பான்:",
-  "diagReport.labSub": "தாவர நோயியல் · கண்டறிதல் ஆய்வகம்",
+  "diagReport.labSub": "AI பயிர் ஆரோக்கிய ஆலோசனை",
   "diagReport.labTag": "AI உதவியுடன் பயிர் ஆரோக்கிய கண்டறிதல் சேவை",
   "diagReport.language": "மொழி:",
   "diagReport.leafWetness": "இலை ஈரம்",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "மொத்த ஆபத்து",
   "diagReport.passed": "தேர்ச்சி",
   "diagReport.pathogenType": "நோய்க்கிருமி வகை",
-  "diagReport.pathologistAi": "நோயியலாளர் (AI):",
+  "diagReport.pathologistAi": "AI அமைப்பு:",
   "diagReport.patientSummary": "நோயாளி சுருக்கம்",
   "diagReport.perAcre": "ஒரு ஏக்கருக்கு",
   "diagReport.phone": "தொலைபேசி",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "பயிர் நோய் கண்டறிதல் அறிக்கை",
   "diagReport.requiredPpe": "தேவையான PPE:",
   "diagReport.resistanceSafetyNotes": "எதிர்ப்புத்தன்மை & பாதுகாப்பு குறிப்புகள்",
-  "diagReport.reviewingAuthority": "மறுஆய்வு அதிகாரம்",
+  "diagReport.reviewingAuthority": "மறுஆய்வுக்குப் பரிந்துரைக்கப்பட்டது — மறுஆய்வு செய்யப்படவில்லை",
   "diagReport.rotation": "சுழற்சி",
   "diagReport.ruledOut": "நீக்கப்பட்டது",
   "diagReport.schedule": "அட்டவணை",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "சிகிச்சை கால அளவு",
   "diagReport.triggeringConditions": "தூண்டும் நிலைமைகள்",
   "diagReport.unverifiedLabel": "சரிபார்க்கப்படாதது:",
-  "diagReport.verified": "சரிபார்க்கப்பட்டது",
+  "diagReport.verified": "AI உருவாக்கியது",
   "diagReport.verifiedLabel": "சரிபார்க்கப்பட்டது:",
   "diagReport.vision": "Vision",
   "diagReport.visionModel": "Vision மாதிரி:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "கிடைக்கும் நிலை",
   "product.countryOfOrigin": "தயாரிப்பு நாடு",
-  "product.cropSetuVerified": "KrushiSarva சரிபார்க்கப்பட்டது",
   "product.customerSupport": "வாடிக்கையாளர் ஆதரவு",
   "product.deliveryAddressSub": "நேரடி ஷிப்பிங் மதிப்பீடுகளும் சேமித்த முகவரிகளும் விரைவில் வரும்.",
   "product.deliveryAddressTitle": "டெலிவரி & முகவரி",

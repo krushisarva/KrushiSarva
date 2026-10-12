@@ -1,0 +1,25 @@
+<!--
+  DRAFT for legal review; see the note at the top of privacy.html. The cookie
+  facts below come from backend/src/utils/cookies.js — update both together.
+-->
+<h1>Cookie Policy</h1>
+<p class="meta">Version {{version}} · Effective from {{effectiveDate}}</p>
+
+<h2>Mobile apps</h2>
+<p>The KrushiSarva farmer app and the KrushiSarva Seller app do not use cookies. Your sign-in is kept in your phone's secure storage.</p>
+
+<h2>Admin panel and web</h2>
+<p>When you sign in through a browser, we set two cookies. Both are strictly necessary: signing in does not work without them, so there is nothing to opt out of and no consent banner.</p>
+<table>
+  <thead><tr><th>Name</th><th>Purpose</th><th>Lifetime</th><th>Readable by scripts</th></tr></thead>
+  <tbody>
+    <tr><td><code>rt</code></td><td>Keeps you signed in (refresh token). Sent only to the sign-in endpoints.</td><td>Until you sign out, or 7 days without use</td><td>No</td></tr>
+    <tr><td><code>csrf</code></td><td>Protects your session from requests forged by other websites.</td><td>Same as <code>rt</code></td><td>Yes (it must be echoed back with each request)</td></tr>
+  </tbody>
+</table>
+
+<h2>What we do not use</h2>
+<p>We do not use analytics, advertising or tracking cookies, and we do not let third parties set cookies through our apps or the admin panel. If that ever changes, this page will be updated first and you will be asked before any non-essential cookie is set.</p>
+
+<h2>Contact</h2>
+<p>{{supportEmail}}</p>

@@ -147,6 +147,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
                     },
                     pressed && { transform: [{ scale: 0.97 }] },
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: sel }}
                 >
                   <View style={[styles.methodIcon, { backgroundColor: m.color + '33', borderColor: m.color + '55' }]}>
                     <IrrigationIcon type={m.icon} size={32} />
@@ -171,6 +173,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
               <Pressable
                 onPress={() => { Haptics.selection?.(); setEntryMode('duration'); }}
                 style={[styles.toggleBtn, entryMode === 'duration' && styles.toggleBtnActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: entryMode === 'duration' }}
               >
                 <Ionicons name="time-outline" size={16} color={entryMode === 'duration' ? COSMIC.INVERSE : COSMIC.TEXT_2} />
                 <Text style={[styles.toggleText, entryMode === 'duration' && styles.toggleTextActive]}>{t('irrigationLog.unitHours')}</Text>
@@ -178,6 +182,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
               <Pressable
                 onPress={() => { Haptics.selection?.(); setEntryMode('volume'); }}
                 style={[styles.toggleBtn, entryMode === 'volume' && styles.toggleBtnActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: entryMode === 'volume' }}
               >
                 <Ionicons name="beaker-outline" size={16} color={entryMode === 'volume' ? COSMIC.INVERSE : COSMIC.TEXT_2} />
                 <Text style={[styles.toggleText, entryMode === 'volume' && styles.toggleTextActive]}>{t('irrigationLog.unitLitres')}</Text>
@@ -192,6 +198,7 @@ export default function IrrigationLogScreen({ navigation, route }) {
                 placeholderTextColor={COSMIC.MUTED}
                 keyboardType="decimal-pad"
                 style={styles.bigInput}
+                accessibilityLabel={entryMode === 'duration' ? t('irrigationLog.unitHours') : t('irrigationLog.unitLitres')}
               />
               <View style={styles.unitPill}>
                 <Text style={styles.unitText}>{entryMode === 'duration' ? t('irrigationLog.unitHoursUpper') : t('irrigationLog.unitLitresUpper')}</Text>
@@ -215,6 +222,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
                       borderColor:     sel ? COSMIC.INFO : COSMIC.BORDER,
                     },
                   ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sel }}
                 >
                   <Ionicons name={s.icon} size={16} color={sel ? COSMIC.INFO : COSMIC.TEXT_2} />
                   <Text style={[styles.chipText, sel && { color: COSMIC.INFO, fontFamily: 'Inter_700Bold' }]}>
@@ -241,6 +250,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
                       backgroundColor: sel ? m.color + '22' : COSMIC.SURFACE,
                     },
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: sel }}
                 >
                   <View style={[styles.moistDot, { backgroundColor: m.color }]} />
                   <Text style={[styles.moistLabel, sel && { color: m.color, fontFamily: 'Inter_700Bold' }]}>
@@ -257,6 +268,8 @@ export default function IrrigationLogScreen({ navigation, route }) {
             <Pressable
               onPress={() => { Haptics.selection?.(); setFertigation((v) => !v); }}
               style={styles.fertRow}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: fertigation }}
             >
               <View style={[styles.checkbox, fertigation && styles.checkboxChecked]}>
                 {fertigation && <Ionicons name="checkmark" size={14} color={COSMIC.INVERSE} />}
@@ -272,6 +285,7 @@ export default function IrrigationLogScreen({ navigation, route }) {
               placeholderTextColor={COSMIC.MUTED}
               style={[styles.input, { minHeight: 88, textAlignVertical: 'top' }]}
               multiline
+              accessibilityLabel={t('irrigationLog.notes')}
             />
           </GlassCard>
 
@@ -311,7 +325,7 @@ function SectionHeader({ icon, tint, title, optional, optionalLabel }) {
       <View style={[styles.secIcon, { backgroundColor: tint + '28', borderColor: tint + '55' }]}>
         <Ionicons name={icon} size={16} color={tint} />
       </View>
-      <Text style={styles.secTitle}>{title}</Text>
+      <Text style={styles.secTitle} accessibilityRole="header">{title}</Text>
       {optional && <Text style={styles.optional}>{optionalLabel || 'Optional'}</Text>}
     </View>
   );

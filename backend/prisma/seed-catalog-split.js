@@ -25,6 +25,15 @@ import prisma from '../src/config/db.js';
 import { normalizeProductKey } from '../src/services/catalogMatch.service.js';
 import { rankOffersForVariant } from '../src/services/buyBox.service.js';
 
+// Demo data only — never production. The three Kendras below are invented, and
+// are written as KYC-VERIFIED with made-up licence numbers stamped verified.
+// First statement that runs, ahead of the first query — so it stops `--clean`
+// too, which deletes by phone number and by the product's normalizedKey.
+if (process.env.NODE_ENV === 'production') {
+  console.error('seed-catalog-split.js: refusing to run with NODE_ENV=production — this is DEMO data (invented Kendras, KYC status, licence numbers) and must not be loaded into production.');
+  process.exit(1);
+}
+
 const CATEGORY_NAME = 'Seeds';
 
 const KENDRAS = [

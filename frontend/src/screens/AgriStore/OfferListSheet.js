@@ -39,7 +39,7 @@ function OfferRow({ offer, isWinner, winnerPrice, selected, onSelect, onAdd, add
         pressed && { opacity: 0.85 },
       ]}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, checked: selected }}
       accessibilityLabel={t('offers.rowA11y', {
         seller: offer.sellerName,
         price: inr(offer.price),
@@ -160,7 +160,7 @@ export default function OfferListSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={S.backdrop} onPress={onClose} accessibilityLabel={t('close', 'Close')} />
+      <Pressable style={S.backdrop} onPress={onClose} accessibilityLabel={t('close', 'Close')} accessibilityRole="button" />
       <View style={[S.sheet, { paddingBottom: insets.bottom + 12 }]}>
         <View style={S.grabber} />
         <View style={S.head}>

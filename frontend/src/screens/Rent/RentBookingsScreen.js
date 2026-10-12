@@ -155,6 +155,7 @@ function ReceivedCard({ item, onApprove, onReject, loading, t }) {
             style={[S.rejectBtn, loading === item.id && { opacity: 0.5 }]}
             onPress={() => onReject(item)}
             disabled={!!loading}
+            accessibilityRole="button"
           >
             <Ionicons name="close" size={16} color={RED} />
             <Text style={S.rejectTxt}>{t('rent.reject')}</Text>
@@ -163,6 +164,9 @@ function ReceivedCard({ item, onApprove, onReject, loading, t }) {
             style={[S.approveBtn, loading === item.id && { opacity: 0.5 }]}
             onPress={() => onApprove(item)}
             disabled={!!loading}
+            accessibilityRole="button"
+            accessibilityState={{ busy: loading === item.id }}
+            accessibilityLabel={t('rent.approve')}
           >
             {loading === item.id
               ? <ActivityIndicator size="small" color={COLORS.white} />
@@ -430,7 +434,7 @@ export default function RentBookingsScreen({ navigation }) {
 
       {/* Header */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -449,6 +453,8 @@ export default function RentBookingsScreen({ navigation }) {
             key={tb.key}
             style={[S.tabItem, tab === tb.key && S.tabItemActive]}
             onPress={() => setTab(tb.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === tb.key }}
           >
             <Ionicons name={tb.icon} size={15} color={tab === tb.key ? COLORS.primary : COLORS.grayMedium} />
             <Text style={[S.tabTxt, tab === tb.key && S.tabTxtActive]}>{t('rent.' + tb.tKey)}</Text>
@@ -528,12 +534,13 @@ export default function RentBookingsScreen({ navigation }) {
                 </Text>
               </View>
             ) : null}
-            {actErr ? <Text style={S.cErr}>{actErr}</Text> : null}
+            {actErr ? <Text style={S.cErr} accessibilityLiveRegion="polite">{actErr}</Text> : null}
             <View style={S.cBtnRow}>
               <TouchableOpacity
                 style={[S.cBtn, S.cBtnSecondary]}
                 onPress={() => { setConfirm(null); setActErr(null); }}
                 disabled={!!acting}
+                accessibilityRole="button"
               >
                 <Text style={S.cBtnTextSecondary}>{t('rent.cancel')}</Text>
               </TouchableOpacity>
@@ -541,6 +548,9 @@ export default function RentBookingsScreen({ navigation }) {
                 style={[S.cBtn, { backgroundColor: cApprove ? COLORS.primary : RED }, !!acting && { opacity: 0.7 }]}
                 onPress={runAction}
                 disabled={!!acting}
+                accessibilityRole="button"
+                accessibilityState={{ busy: !!acting }}
+                accessibilityLabel={cApprove ? t('rent.approve') : t('rent.reject')}
               >
                 {acting
                   ? <ActivityIndicator size="small" color={COLORS.white} />

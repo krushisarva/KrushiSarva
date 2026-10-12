@@ -30,7 +30,7 @@ export default function MiniBars({
   const baseTop = zoneUp; // y of the zero line from the top of the plot area
 
   return (
-    <Animated.View style={[styles.wrap, reveal, style]}>
+    <Animated.View style={[styles.wrap, reveal, style]} accessible accessibilityLabel={data.map((b, i) => `${b.label}: ${valueFormat(vals[i])}`).join(', ')}>
       <View style={[styles.plot, { height }]}>
         {hasNeg && <View style={[styles.zeroLine, { top: baseTop }]} />}
         {data.map((b, i) => {

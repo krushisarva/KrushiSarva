@@ -170,7 +170,7 @@ export default function GrowthStoryScreen({ navigation, route }) {
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRail}>
           {photos.map((u, i) => (
-            <Image key={`${u}-${i}`} source={{ uri: u }} style={styles.photoThumb} />
+            <Image key={`${u}-${i}`} source={{ uri: u }} style={styles.photoThumb} accessible accessibilityRole="image" accessibilityLabel={t('a11y.photoNumber', { n: i + 1, total: photos.length, defaultValue: 'Photo {{n}} of {{total}}' })} />
           ))}
         </ScrollView>
       )}
@@ -194,7 +194,7 @@ export default function GrowthStoryScreen({ navigation, route }) {
                 {i < STAGES.length - 1 && <View style={[styles.tlLine, i < currentIdx && { backgroundColor: COSMIC.PRIMARY }]} />}
               </View>
 
-              <View style={[styles.tlCard, status === 'now' && styles.tlCardNow, status === 'upcoming' && { opacity: 0.7 }]}>
+              <View style={[styles.tlCard, status === 'now' && styles.tlCardNow, status === 'upcoming' && { opacity: 0.7 }]} accessible>
                 <StageScene stage={s} cropName={cropName} height={64} width={64} rounded />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={styles.tlTitleRow}>
@@ -222,7 +222,7 @@ export default function GrowthStoryScreen({ navigation, route }) {
         </View>
       </GlassCard>
 
-      <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [styles.backLink, pressed && { opacity: 0.7 }]}>
+      <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [styles.backLink, pressed && { opacity: 0.7 }]} accessibilityRole="button">
         <Ionicons name="arrow-back" size={15} color={COSMIC.PRIMARY} />
         <Text style={styles.backLinkTxt}>{t('growthStory.backToCycle')}</Text>
       </Pressable>
@@ -281,7 +281,7 @@ function StageScene({ stage, cropName, photo, height = 200, width, rounded = fal
 function SectionLabel({ title }) {
   return (
     <View style={styles.sectionLabel}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
     </View>
   );
 }

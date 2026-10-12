@@ -62,7 +62,7 @@ export default function LoginPage() {
         </div>
 
         {notAdmin && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
             <span>That account is valid but is not an administrator. Access denied.</span>
           </div>
@@ -73,7 +73,7 @@ export default function LoginPage() {
             <Field label="Phone number">
               <Input inputMode="numeric" autoComplete="tel" placeholder="10-digit mobile" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus />
             </Field>
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
             <Button type="submit" variant="primary" className="w-full" loading={busy} disabled={phone.trim().length < 10}>Send OTP</Button>
           </form>
         ) : (
@@ -86,7 +86,7 @@ export default function LoginPage() {
             <Field label={`Enter the OTP sent to ${phone}`}>
               <Input inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} autoFocus />
             </Field>
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
             <Button type="submit" variant="primary" className="w-full" loading={busy} disabled={otp.trim().length !== 6}>Verify & sign in</Button>
             <button type="button" className="w-full text-center text-sm text-slate-500 hover:text-slate-700" onClick={() => { setStep('phone'); setOtp(''); setErr(null); }}>
               Use a different number
