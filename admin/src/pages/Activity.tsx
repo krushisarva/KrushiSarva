@@ -70,9 +70,9 @@ export function ActivityFeedPage() {
       render: (it) => it.user
         ? <button onClick={(e) => { e.stopPropagation(); navigate(`/activity/users/${it.user!.id}`); }} className="text-left hover:underline">
             <span className="block text-slate-800">{it.user.name || 'Unnamed'}</span>
-            <span className="block font-mono text-xs text-slate-400">{it.user.phone}</span>
+            <span className="block font-mono text-xs text-slate-500">{it.user.phone}</span>
           </button>
-        : <span className="text-slate-400">—</span>,
+        : <span className="text-slate-500">—</span>,
       csv: (it) => it.user ? `${it.user.name ?? ''} ${it.user.phone}` : '',
     },
     { key: 'title', header: 'Activity', render: (it) => <span className="font-medium text-slate-800">{it.title}</span>, csv: (it) => it.title },
@@ -183,7 +183,7 @@ export function UserActivity360Page() {
           const Icon = TYPE_META[c.type].icon;
           return (
             <Card key={c.key} className="p-4">
-              <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400"><Icon className="h-3.5 w-3.5" /> {c.label}</div>
+              <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-500"><Icon className="h-3.5 w-3.5" /> {c.label}</div>
               <div className="text-2xl font-semibold text-slate-800">{formatNumber(counts[c.key])}</div>
             </Card>
           );
@@ -196,8 +196,8 @@ export function UserActivity360Page() {
           {recent.aiConversations.map((c) => (
             <Row key={c.id} onClick={() => setThread({ kind: 'ai', id: c.id, title: c.title || 'AI chat' })}>
               <span className="flex-1 truncate text-slate-800">{c.title || 'Untitled chat'}{c.isScanSession && <Badge tone="green" className="ml-2">scan</Badge>}</span>
-              <span className="text-xs text-slate-400">{c.messageCount} msg</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(c.updatedAt)}</span>
+              <span className="text-xs text-slate-500">{c.messageCount} msg</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(c.updatedAt)}</span>
             </Row>
           ))}
         </Section>
@@ -206,8 +206,8 @@ export function UserActivity360Page() {
           {recent.voiceConversations.map((c) => (
             <Row key={c.id} onClick={() => setThread({ kind: 'voice', id: c.id, title: c.title || 'Voice chat' })}>
               <span className="flex-1 truncate text-slate-800">{c.title || 'Untitled voice chat'}</span>
-              <span className="text-xs text-slate-400">{c.messageCount} msg</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(c.updatedAt)}</span>
+              <span className="text-xs text-slate-500">{c.messageCount} msg</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(c.updatedAt)}</span>
             </Row>
           ))}
         </Section>
@@ -216,8 +216,8 @@ export function UserActivity360Page() {
           {recent.voiceSessions.map((v) => (
             <div key={v.id} className="flex items-start gap-3 py-2 text-sm">
               <span className="flex-1 italic text-slate-500">“{v.transcriptionPreview || '(no transcript)'}”</span>
-              <span className="whitespace-nowrap text-xs text-slate-400">{v.durationSeconds != null ? `${Math.round(v.durationSeconds)}s` : '—'}</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(v.createdAt)}</span>
+              <span className="whitespace-nowrap text-xs text-slate-500">{v.durationSeconds != null ? `${Math.round(v.durationSeconds)}s` : '—'}</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(v.createdAt)}</span>
             </div>
           ))}
         </Section>
@@ -227,8 +227,8 @@ export function UserActivity360Page() {
             <div key={d.id} className="flex items-center gap-3 py-2 text-sm">
               <span className="flex-1 truncate text-slate-800">{d.cropType} · {d.primaryDisease}</span>
               <StatusBadge value={d.riskLevel.toUpperCase()} />
-              <span className="text-xs text-slate-400">{Math.round((d.confidenceScore ?? 0) * 100)}%</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(d.createdAt)}</span>
+              <span className="text-xs text-slate-500">{Math.round((d.confidenceScore ?? 0) * 100)}%</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(d.createdAt)}</span>
             </div>
           ))}
         </Section>
@@ -239,7 +239,7 @@ export function UserActivity360Page() {
               <span className="flex-1 font-mono text-xs text-slate-500">{o.id.slice(0, 8)}</span>
               <StatusBadge value={o.status} />
               <span className="text-slate-700">{formatINR(o.totalAmount)}</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(o.createdAt)}</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(o.createdAt)}</span>
             </div>
           ))}
         </Section>
@@ -250,7 +250,7 @@ export function UserActivity360Page() {
               <span className="flex-1 font-mono text-xs text-slate-500">{b.id.slice(0, 8)}{b.type && <Badge className="ml-2">{b.type}</Badge>}</span>
               <StatusBadge value={b.status} />
               <span className="text-slate-700">{formatINR(b.totalAmount)}</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(b.createdAt)}</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(b.createdAt)}</span>
             </div>
           ))}
         </Section>
@@ -258,9 +258,9 @@ export function UserActivity360Page() {
         <Section title="Reviews" icon={Star} empty="No reviews.">
           {recent.reviews.map((r) => (
             <div key={r.id} className="flex items-start gap-3 py-2 text-sm">
-              <span className="whitespace-nowrap text-amber-600">{'★'.repeat(r.rating)}</span>
+              <span className="whitespace-nowrap text-amber-700">{'★'.repeat(r.rating)}</span>
               <span className="flex-1 truncate text-slate-600">{r.comment || '(no comment)'}</span>
-              <span className="w-20 text-right text-xs text-slate-400">{relativeTime(r.createdAt)}</span>
+              <span className="w-20 text-right text-xs text-slate-500">{relativeTime(r.createdAt)}</span>
             </div>
           ))}
         </Section>
@@ -277,7 +277,7 @@ function Section({ title, icon: Icon, empty, children }: { title: string; icon: 
   return (
     <Card className="p-5">
       <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-slate-700"><Icon className="h-4 w-4 text-slate-400" /> {title}</h3>
-      {isEmpty ? <p className="py-2 text-sm text-slate-400">{empty}</p> : <div className="divide-y divide-slate-100">{children}</div>}
+      {isEmpty ? <p className="py-2 text-sm text-slate-500">{empty}</p> : <div className="divide-y divide-slate-100">{children}</div>}
     </Card>
   );
 }
@@ -287,8 +287,10 @@ function Row({ onClick, children }: { onClick?: () => void; children: React.Reac
     <div
       onClick={onClick}
       className={`flex items-center gap-3 py-2 text-sm ${onClick ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+      role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter') onClick(); } : undefined}
+      // preventDefault: Space on a focused non-button would scroll the page.
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
     >
       {children}
     </div>
@@ -344,14 +346,14 @@ function ThreadDrawer({ kind, id, title, onClose }: { kind: ThreadKind; id: stri
 
       {q.data && (
         <div className="space-y-3">
-          {q.data.messages.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No messages.</p>}
+          {q.data.messages.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No messages.</p>}
           {q.data.messages.map((m) => {
             const isUser = m.role === 'user';
             const ai = m as AiMessage;
             const voice = m as VoiceMessage;
             return (
               <div key={m.id} className={`rounded-lg border p-3 ${isUser ? 'border-slate-200 bg-white' : 'border-brand-100 bg-brand-50/40'}`}>
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <Badge tone={isUser ? 'slate' : 'violet'}>{m.role}</Badge>
                   {m.modelUsed && <span>{m.modelUsed}</span>}
                   {kind === 'ai' && <span>· {formatNumber(ai.tokensUsed)} tok</span>}
@@ -370,7 +372,7 @@ function ThreadDrawer({ kind, id, title, onClose }: { kind: ThreadKind; id: stri
             );
           })}
           {!reveal.on && q.data.messages.length > 0 && (
-            <p className="pt-1 text-center text-xs text-slate-400">Content is masked. Use “Reveal content” (audited) to view the full text.</p>
+            <p className="pt-1 text-center text-xs text-slate-500">Content is masked. Use “Reveal content” (audited) to view the full text.</p>
           )}
         </div>
       )}

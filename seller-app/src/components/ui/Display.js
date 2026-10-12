@@ -307,7 +307,7 @@ const cs = StyleSheet.create({
     marginBottom: SP.lg,
     gap: SP.md,
   },
-  sectionTitle: { ...T.section, color: C.textMuted, textTransform: 'uppercase' },
+  sectionTitle: { ...T.section, color: C.textMuted, textTransform: 'uppercase', flexShrink: 1 },
   sectionRule: { flex: 1, height: 1, backgroundColor: C.border },
 
   pill: {
@@ -321,7 +321,7 @@ const cs = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   pillCompact: { paddingHorizontal: SP.sm, paddingVertical: 3 },
-  pillTxt: { ...T.micro, textTransform: 'uppercase' },
+  pillTxt: { ...T.micro, textTransform: 'uppercase', flexShrink: 1 },
   pillTxtCompact: { fontSize: 10, letterSpacing: 0.4 },
 
   badge: {
@@ -334,7 +334,7 @@ const cs = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
-  badgeTxt: { ...T.micro, textTransform: 'uppercase' },
+  badgeTxt: { ...T.micro, textTransform: 'uppercase', flexShrink: 1 },
 
   countBadge: {
     minWidth: 26,

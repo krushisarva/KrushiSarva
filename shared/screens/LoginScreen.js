@@ -22,6 +22,11 @@
 //     reads autocomplete="one-time-code" — all on the one input.
 //   One spinner. "Verifying…" lives in the button only; the status box that
 //     spun alongside it is gone.
+//   Consent. The phone step used to end with "By continuing you agree to our
+//     Terms & Privacy Policy", and the server recorded that agreement when the
+//     account was created, though nobody had been asked. It is now a tick box
+//     above Send OTP: never pre-ticked, never stored, and no code is requested
+//     without it (sendOtpBlocker in shared/utils/otp.js).
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -33,6 +38,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Keyboard,
+  Linking,
   Platform,
   Image,
   ScrollView,
@@ -45,11 +51,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, resendSeconds } from '../context/AuthContext';
 import { isValidPhone, normalizePhone } from '../utils/validators';
 import {
-  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
+  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, sendOtpBlocker, shouldAutoSubmitOtp, OTP_LENGTH,
 } from '../utils/otp';
 import { revealScrollOffset } from '../utils/keyboardInset';
 import { useKeyboardRoom } from '../hooks/useKeyboardRoom';
 import { KHET, KFONT, KSHADOW } from '../constants/khetTheme';
+import { LEGAL_URLS } from '../constants/config';
 
 const HERO = require('../assets/khet/welcome-hero.jpg');
 
@@ -68,7 +75,7 @@ const OTP_AUTOCOMPLETE = Platform.select({ ios: 'one-time-code', android: 'sms-o
 
 // Auto-submit is deliberately not instantaneous: the filled cells need a beat on
 // screen so the farmer sees WHY the app moved on. Longer when the code arrived by
-// itself, so the "Auto-filled from SMS" banner is readable before it disappears.
+// itself, so the "Code filled in" banner is readable before it disappears.
 const AUTO_SUBMIT_DELAY_MS = 350;
 const AUTO_SUBMIT_DELAY_AUTOFILLED_MS = 900;
 
@@ -118,6 +125,13 @@ const WEB_SHRINK = IS_WEB ? { minHeight: 0 } : null;
 // it so the footer text is pushed to the bottom on tall screens.
 const SCROLL_GROW = IS_WEB ? { flexGrow: 0 } : null;
 
+// Terms / Privacy open in the device browser. A failure is swallowed on
+// purpose: this screen has no toast host, and a link that cannot open must
+// never stand between someone and signing in.
+function openLegal(url) {
+  Linking.openURL(url).catch(() => {});
+}
+
 export default function LoginScreen() {
   const { sendOtp, verifyOtp, otpResendSeconds } = useAuth();
   const insets = useSafeAreaInsets();
@@ -132,6 +146,12 @@ export default function LoginScreen() {
   const [phoneReady, setPhoneReady] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [phoneDisplay, setPhoneDisplay] = useState(''); // STABLE snapshot for the field + OTP labels
+
+  // Agreement to the Terms and Privacy Policy, ticked on the phone step. Plain
+  // state on purpose: un-ticked on every mount and never stored, because the
+  // server records it as consent given on this screen.
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   // OTP — one string, drawn as six cells.
   const [code, setCode] = useState('');
@@ -154,7 +174,13 @@ export default function LoginScreen() {
   // Only the newest OTP request may update this screen.
   const sendAttemptRef = useRef(0);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // Re-armed in the effect body, not just cleared in the cleanup: React re-runs
+  // effects without remounting (Fast Refresh, StrictMode), and a flag left at
+  // `false` makes every later request drop its reply and never clear `loading`.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const otpComplete = isOtpComplete(code, OTP_LEN);
 
@@ -220,8 +246,20 @@ export default function LoginScreen() {
   async function handleSendOtp({ isResend = false } = {}) {
     if (loading) return;
     const phone = phoneValueRef.current || phoneDisplay;
-    if (!isValidPhone(phone)) {
+    // Nothing below this point runs without the tick: not a new code, not a
+    // resend, and not the shortcut back to a code that is still fresh.
+    const blocker = sendOtpBlocker({ phoneValid: isValidPhone(phone), agreed: consent });
+    if (blocker === 'phone') {
       setErrorMsg('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (blocker === 'consent') {
+      // Said next to the box rather than silently refused. The number is
+      // complete, so the keyboard has nothing left to do: closing it leaves the
+      // box, its message and the button in view together.
+      setErrorMsg(null);
+      setConsentError(true);
+      if (!IS_WEB) Keyboard.dismiss();
       return;
     }
     if (resendIn > 0) {
@@ -306,7 +344,15 @@ export default function LoginScreen() {
     sendAttemptRef.current += 1;
     if (!verifyingRef.current) setLoading(false);
     setErrorMsg(null);
+    setConsentError(false);
     setStep(STEPS.WELCOME);
+  }
+
+  function toggleConsent() {
+    setConsent((ticked) => !ticked);
+    // Either way the "tick this box" message has done its job: ticked, it is
+    // answered; un-ticked again, the next tap on Send says so afresh.
+    setConsentError(false);
   }
 
   if (step === STEPS.WELCOME) {
@@ -328,13 +374,11 @@ export default function LoginScreen() {
           <Text style={sty.onlinePillTxt}>Online</Text>
         </View>
       ) : <View style={{ width: 40 }} />}
+      // No footer on the phone step: its "By continuing you agree…" line is now
+      // the tick box above Send OTP, where agreement is given, not assumed.
       footer={onOtp
         ? <Text style={sty.footerTerms}>Didn't get the code? Check your SMS inbox or try again in a moment.</Text>
-        : (
-          <Text style={sty.footerTerms}>
-            By continuing you agree to our <Text style={sty.footerStrong}>Terms</Text> & <Text style={sty.footerStrong}>Privacy Policy</Text>
-          </Text>
-        )}
+        : null}
     >
       {({ reveal }) => (onOtp ? (
         <OtpStep
@@ -363,10 +407,13 @@ export default function LoginScreen() {
           phoneFocused={phoneFocused}
           phoneDisplay={phoneDisplay}
           revealRef={revealRef}
+          consent={consent}
+          consentError={consentError}
           onChange={handlePhoneChange}
           onFocus={() => { setPhoneFocused(true); reveal(); }}
           onBlur={() => setPhoneFocused(false)}
           onSubmit={() => handleSendOtp()}
+          onToggleConsent={toggleConsent}
         />
       ))}
     </AuthSurface>
@@ -550,8 +597,17 @@ function WelcomeView({ insets, onStart }) {
         </View>
       </View>
 
-      {/* Bottom content panel — fixed (no scroll); content sits at the bottom over the hero. */}
-      <View style={[sty.welcomeBody, { paddingBottom: insets.bottom + 24 }]}>
+      {/* Bottom content panel — sits at the bottom over the hero when it fits.
+          It is a ScrollView (not a fixed View) so that on short screens or with
+          a large system font it scrolls below the top bar instead of
+          overflowing upward underneath it. */}
+      <ScrollView
+        style={[{ flex: 1 }, WEB_SHRINK]}
+        contentContainerStyle={[sty.welcomeBody, { paddingBottom: insets.bottom + 24 }]}
+        bounces={false}
+        overScrollMode="never"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={sty.heroTitle}>
           Your farm,{'\n'}
           <Text style={sty.heroTitleItalic}>smarter every season.</Text>
@@ -578,20 +634,41 @@ function WelcomeView({ insets, onStart }) {
 
         <View style={sty.termsRow}>
           <Ionicons name="shield-checkmark" size={12} color="rgba(255,255,255,0.6)" />
-          <Text style={sty.termsTxt}>By continuing you agree to our Terms & Privacy</Text>
+          {/* A pointer to the documents, not agreement by tapping: agreement is
+              the tick box on the next step. */}
+          <Text style={sty.termsTxt}>
+            Read our{' '}
+            <Text style={sty.termsLink} accessibilityRole="link" onPress={() => openLegal(LEGAL_URLS.terms)}>Terms</Text>
+            {' '}&{' '}
+            <Text style={sty.termsLink} accessibilityRole="link" onPress={() => openLegal(LEGAL_URLS.privacy)}>Privacy Policy</Text>
+          </Text>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 // ── Phone (mobile entry) ─────────────────────────────────────────────────────
-function PhoneStep({ loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, revealRef, onChange, onFocus, onBlur, onSubmit }) {
+function PhoneStep({
+  loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, revealRef,
+  consent, consentError, onChange, onFocus, onBlur, onSubmit, onToggleConsent,
+}) {
+  // Ten digits in, nothing left to type: the keyboard goes away so the tick box
+  // and the button under it are in view (the code step does the same when its
+  // six digits are in). Only on the CHANGE to ready: a number carried back from
+  // the code step opens with the keyboard up, because it is about to be edited.
+  // Not on web, where it would blur the field and lose Enter-to-submit.
+  const wasReadyRef = useRef(phoneReady);
+  useEffect(() => {
+    if (phoneReady && !wasReadyRef.current && !IS_WEB) Keyboard.dismiss();
+    wasReadyRef.current = phoneReady;
+  }, [phoneReady]);
+
   return (
     <View style={{ marginTop: 24 }}>
       <View style={sty.accentPill}>
-        <Ionicons name="sparkles" size={11} color={KHET.primary} />
-        <Text style={sty.accentPillTxt}>Secure AI verification</Text>
+        <Ionicons name="shield-checkmark" size={11} color={KHET.primary} />
+        <Text style={sty.accentPillTxt}>Secure OTP verification</Text>
       </View>
 
       <View style={sty.progressRow}>
@@ -612,8 +689,8 @@ function PhoneStep({ loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, 
       <Text style={[sty.subtle, { marginTop: 4 }]}>आपका मोबाइल नंबर क्या है?</Text>
 
       <Text style={sty.fieldLabel}>MOBILE NUMBER</Text>
-      {/* Kept above the keyboard as one block: the field, its message, and the
-          button that sends the code. */}
+      {/* Kept above the keyboard as one block: the field, its message, the
+          consent tick, and the button that sends the code. */}
       <View ref={revealRef} collapsable={false}>
         <View style={[sty.inputCard, phoneFocused && sty.inputCardFocused]}>
           <View style={sty.ccChip}>
@@ -623,7 +700,7 @@ function PhoneStep({ loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, 
           <TextInput
             style={sty.phoneInput}
             placeholder="98765 43210"
-            placeholderTextColor="rgba(87,104,90,0.5)"
+            placeholderTextColor={KHET.mutedForeground}
             keyboardType="number-pad"
             maxLength={15}
             defaultValue={phoneDisplay}
@@ -645,16 +722,55 @@ function PhoneStep({ loading, errorMsg, phoneReady, phoneFocused, phoneDisplay, 
         ) : (
           <View style={sty.privacyBox}>
             <Ionicons name="shield-checkmark" size={15} color={KHET.primary} />
-            <Text style={sty.privacyTxt}>Your number stays private. Never shared or sold.</Text>
+            <Text style={sty.privacyTxt}>Used to sign you in and for your orders. We never sell it.</Text>
           </View>
         )}
+
+        {/* The agreement the server records when the account is created. Asked
+            for here, above the button it gates, and never pre-ticked. The box
+            and the plain words of the label tick it; the two links only open
+            their document. */}
+        <View style={[sty.consentCard, consentError && sty.consentCardError]}>
+          <View style={sty.consentRow}>
+            <TouchableOpacity
+              style={sty.consentHit}
+              activeOpacity={0.7}
+              onPress={onToggleConsent}
+              disabled={loading}
+              accessibilityRole="checkbox"
+              accessibilityLabel="I agree to the Terms and Privacy Policy"
+              accessibilityState={{ checked: !!consent, disabled: !!loading }}
+            >
+              <View style={[sty.consentBox, consent && sty.consentBoxOn, consentError && sty.consentBoxError]}>
+                {consent ? <Ionicons name="checkmark" size={18} color={KHET.primaryForeground} /> : null}
+              </View>
+            </TouchableOpacity>
+            <View style={sty.consentBody}>
+              <Text style={sty.consentTxt} onPress={loading ? undefined : onToggleConsent}>
+                I agree to the{' '}
+                <Text style={sty.footerStrong} accessibilityRole="link" onPress={() => openLegal(LEGAL_URLS.terms)}>Terms</Text>
+                {' '}and{' '}
+                <Text style={sty.footerStrong} accessibilityRole="link" onPress={() => openLegal(LEGAL_URLS.privacy)}>Privacy Policy</Text>
+              </Text>
+              <Text style={sty.consentTxtAlt} onPress={loading ? undefined : onToggleConsent}>
+                मैं नियम एवं शर्तों और गोपनीयता नीति से सहमत हूं
+              </Text>
+            </View>
+          </View>
+          {consentError ? (
+            <View style={sty.consentErr} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              <Ionicons name="alert-circle" size={14} color={KHET.destructive} />
+              <Text style={sty.consentErrTxt}>Tick this box to continue. / जारी रखने के लिए इस बॉक्स पर टिक करें।</Text>
+            </View>
+          ) : null}
+        </View>
 
         <GradientButton
           label="Send OTP / OTP भेजें"
           onPress={onSubmit}
           loading={loading}
           disabled={loading || !phoneReady}
-          style={{ marginTop: 28, opacity: !phoneReady && !loading ? 0.65 : 1 }}
+          style={{ marginTop: 16, opacity: !phoneReady && !loading ? 0.65 : 1 }}
         />
       </View>
     </View>
@@ -762,8 +878,8 @@ function OtpStep({
 
         {autoFilled ? (
           <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.autofillBanner}>
-            <Ionicons name="sparkles" size={13} color={KHET.primaryForeground} />
-            <Text style={sty.autofillTxt}>Auto-filled from SMS</Text>
+            <Ionicons name="checkmark-circle" size={13} color={KHET.primaryForeground} />
+            <Text style={sty.autofillTxt}>Code filled in</Text>
           </LinearGradient>
         ) : null}
 
@@ -808,12 +924,8 @@ const sty = StyleSheet.create({
   root: { flex: 1, backgroundColor: KHET.background, overflow: 'hidden' },
 
   // ── Welcome ──
+  // In normal flow (not absolute) so the body below can never slide under it.
   topbar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -831,7 +943,7 @@ const sty = StyleSheet.create({
     paddingVertical: 7,
   },
   glassPillTxt: { color: '#fff', fontSize: 13, fontFamily: KFONT.sansSemi },
-  welcomeBody: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: 24 },
+  welcomeBody: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: 24, paddingTop: 16 },
   heroTitle: { color: '#fff', fontSize: 44, lineHeight: 46, fontFamily: KFONT.display, letterSpacing: -0.5 },
   heroTitleItalic: { color: KHET.primaryGlow, fontFamily: KFONT.displayItalic, fontStyle: 'italic' },
   heroDesc: { color: 'rgba(255,255,255,0.82)', fontSize: 15, lineHeight: 23, marginTop: 16, fontFamily: KFONT.sans },
@@ -846,7 +958,10 @@ const sty = StyleSheet.create({
   },
   langChipTxt: { color: 'rgba(255,255,255,0.88)', fontSize: 11, fontFamily: KFONT.sansMed },
   termsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 24 },
-  termsTxt: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: KFONT.sans },
+  // flexShrink so a large system font wraps the line inside the row instead of
+  // pushing the shield icon past the screen padding.
+  termsTxt: { flexShrink: 1, color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: KFONT.sans },
+  termsLink: { color: '#fff', textDecorationLine: 'underline' },
 
   // ── Gradient button ──
   gradBtn: {
@@ -984,7 +1099,47 @@ const sty = StyleSheet.create({
   errorTxt: { flex: 1, color: KHET.destructiveInk, fontSize: 13, lineHeight: 18, fontFamily: KFONT.sansMed },
 
   footerTerms: { textAlign: 'center', color: KHET.mutedForeground, fontSize: 11, marginTop: 40, fontFamily: KFONT.sans, lineHeight: 16 },
-  footerStrong: { color: KHET.foreground, fontFamily: KFONT.sansSemi },
+  footerStrong: { color: KHET.foreground, fontFamily: KFONT.sansSemi, textDecorationLine: 'underline' },
+
+  // ── Consent tick (phone step) ──
+  consentCard: {
+    backgroundColor: KHET.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: KHET.border,
+    marginTop: 12,
+  },
+  consentCardError: { borderColor: KHET.destructive },
+  consentRow: { flexDirection: 'row' },
+  // The tick's own target: never under 48dp square, and as tall as the label
+  // beside it once that wraps.
+  consentHit: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  consentBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: KHET.mutedForeground,
+    backgroundColor: KHET.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  consentBoxOn: { backgroundColor: KHET.primary, borderColor: KHET.primary },
+  consentBoxError: { borderColor: KHET.destructive },
+  // flex: 1 so the label wraps inside the card on a 320dp screen or at a large
+  // system font instead of running past its edge.
+  consentBody: { flex: 1, minHeight: 48, justifyContent: 'center', paddingVertical: 8, paddingRight: 12 },
+  consentTxt: { color: KHET.foreground, fontSize: 13, lineHeight: 19, fontFamily: KFONT.sansMed },
+  consentTxtAlt: { color: KHET.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 2, fontFamily: KFONT.sans },
+  consentErr: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingLeft: 48,
+    paddingRight: 12,
+    paddingBottom: 10,
+  },
+  consentErrTxt: { flex: 1, color: KHET.destructiveInk, fontSize: 12, lineHeight: 17, fontFamily: KFONT.sansMed },
 
   // ── OTP cells ──
   otpRow: { marginTop: 32, justifyContent: 'center' },

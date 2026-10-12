@@ -18,6 +18,7 @@ import { Animated, Text, View, TouchableOpacity, StyleSheet, Image, Platform } f
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { connectSocket } from '@krushisarva/shared/services/socket';
 import { navigate, getActiveRoute } from '../navigation/navigationRef';
 import { COLORS } from '@krushisarva/shared/constants/colors';
@@ -26,6 +27,7 @@ const VISIBLE_MS = 4500;
 
 export default function InAppChatBanner() {
   const { user, isLoggedIn } = useAuth();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const [notice, setNotice] = useState(null);
   const slide = useRef(new Animated.Value(-200)).current;
@@ -115,7 +117,7 @@ export default function InAppChatBanner() {
       pointerEvents="box-none"
       style={[styles.wrap, { paddingTop: insets.top + 6, transform: [{ translateY: slide }] }]}
     >
-      <TouchableOpacity activeOpacity={0.92} onPress={open} style={styles.card}>
+      <TouchableOpacity activeOpacity={0.92} onPress={open} style={styles.card} accessibilityRole="button">
         <View style={styles.avatar}>
           {notice.avatar ? (
             <Image source={{ uri: notice.avatar }} style={styles.avatarImg} />
@@ -127,7 +129,7 @@ export default function InAppChatBanner() {
           <Text style={styles.name} numberOfLines={1}>{notice.name}</Text>
           <Text style={styles.msg} numberOfLines={1}>{notice.text}</Text>
         </View>
-        <TouchableOpacity onPress={hide} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.close}>
+        <TouchableOpacity onPress={hide} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.close} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
           <Ionicons name="close" size={18} color={COLORS.textLight} />
         </TouchableOpacity>
       </TouchableOpacity>

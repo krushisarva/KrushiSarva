@@ -109,6 +109,7 @@ function ServiceTile({ item, index, variant, onPress, t }) {
         onPressIn={() => Animated.spring(sc, PRESS_SPRING).start()}
         onPressOut={() => Animated.spring(sc, RELEASE_SPRING).start()}
         onPress={() => onPress(item)}
+        accessibilityRole="button"
       >
         {/* Badge (cards only) */}
         {isCard && item.badge && (
@@ -253,7 +254,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
         </Animated.View>
 
         {/* ── Ask input ──────────────────────────────────────────────────── */}
-        <TouchableOpacity style={S.askBtn} activeOpacity={0.85} onPress={() => navigation.navigate('AIChat')}>
+        <TouchableOpacity style={S.askBtn} activeOpacity={0.85} onPress={() => navigation.navigate('AIChat')} accessibilityRole="button">
           <Ionicons name="sparkles-outline" size={16} color={COLORS.textLight} />
           <Text style={S.askPlaceholder}>{t('aiHome.askPlaceholder')}</Text>
           <View style={S.askMic}>
@@ -277,7 +278,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
         {/* ── AI Tools section ───────────────────────────────────────────── */}
         <View style={S.sectionHeader}>
           <View style={[S.sectionDot, { backgroundColor: GREEN }]} />
-          <Text style={S.sectionTitle}>{t('aiHome.aiTools')}</Text>
+          <Text style={S.sectionTitle} accessibilityRole="header">{t('aiHome.aiTools')}</Text>
           <View style={S.newBadge}>
             <Text style={S.newBadgeTxt}>{t('aiHome.newBadge', { count: '1' })}</Text>
           </View>
@@ -296,6 +297,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
             style={S.historyChip}
             activeOpacity={0.85}
             onPress={() => navigation.navigate('AIChat', { showHistory: true })}
+            accessibilityRole="button"
           >
             <Ionicons name="chatbubbles-outline" size={16} color={COLORS.blue} />
             <Text style={S.historyChipTxt}>{t('aiHome.history.chat', 'Chat history')}</Text>
@@ -304,6 +306,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
             style={S.historyChip}
             activeOpacity={0.85}
             onPress={() => navigation.navigate('VoiceHistory')}
+            accessibilityRole="button"
           >
             <Ionicons name="mic-outline" size={16} color={COLORS.rustOrange} />
             <Text style={S.historyChipTxt}>{t('aiHome.history.voice', 'Voice history')}</Text>
@@ -312,6 +315,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
             style={S.historyChip}
             activeOpacity={0.85}
             onPress={() => navigation.navigate('ScanHistory')}
+            accessibilityRole="button"
           >
             <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
             <Text style={S.historyChipTxt}>{t('aiHome.history.scan', 'Scan history')}</Text>
@@ -324,6 +328,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
             style={S.creditCard}
             activeOpacity={0.85}
             onPress={() => navigation.navigate('AICredits')}
+            accessibilityRole="button"
           >
             <View style={S.creditCardLeft}>
               <View style={S.creditIconWrap}>
@@ -354,7 +359,7 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
         )}
 
         {/* ── Quick Weather card ─────────────────────────────────────────── */}
-        <TouchableOpacity style={S.weatherCard} activeOpacity={0.88} onPress={() => navigation.navigate('Weather')}>
+        <TouchableOpacity style={S.weatherCard} activeOpacity={0.88} onPress={() => navigation.navigate('Weather')} accessibilityRole="button">
           <LinearGradient
             colors={[COLORS.skyBg, COLORS.iceBluePale, COLORS.skyBorder, COLORS.babyBlue]}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -391,11 +396,11 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
 
           {/* Row 4 — stat pills */}
           <View style={S.wxStatRow}>
-            <View style={S.wxStatPill}>
+            <View style={S.wxStatPill} accessibilityLabel={t('aiHome.humidity', { pct: wxData?.current?.humidity ?? '—', defaultValue: 'Humidity {{pct}}%' })}>
               <Ionicons name="water-outline" size={11} color={COLORS.blueDark} />
               <Text style={S.wxStatTxt}>{wxData?.current?.humidity ?? '—'}%</Text>
             </View>
-            <View style={S.wxStatPill}>
+            <View style={S.wxStatPill} accessibilityLabel={`${t('weatherHome.wind', 'Wind')} ${wxData?.current?.windSpeed ?? '—'} km/h`}>
               <Ionicons name="navigate-outline" size={11} color={COLORS.blueDark} />
               <Text style={S.wxStatTxt}>{wxData?.current?.windSpeed ?? '—'} km/h</Text>
             </View>

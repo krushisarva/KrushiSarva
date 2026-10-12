@@ -332,7 +332,19 @@ const MachineryCard = memo(function MachineryCard({
       onPress={() => onPress(item)}
       index={index}
       scaleValue={0.97}
-      accessibilityLabel={`${item.name} ${item.pricePerDay} per day`}
+      accessibilityLabel={[
+        item.name,
+        statusLabel,
+        item.pricePerDay != null
+          ? `₹${item.pricePerDay.toLocaleString()} ${t("perDay")}`
+          : null,
+        item.rating > 0
+          ? t("a11y.rated", { rating: item.rating.toFixed(1), defaultValue: "Rated {{rating}} out of 5" })
+          : null,
+        item.location,
+      ]
+        .filter(Boolean)
+        .join(", ")}
     >
       {/* Photo */}
       <View style={S.mPhotoWrap}>
@@ -421,30 +433,35 @@ const MachineryCard = memo(function MachineryCard({
           </View>
         </View>
 
-        <View style={S.mMetaRow}>
-          <View style={S.ratingPill}>
-            <Ionicons name="star" size={11} color={COLORS.yellowDark2} />
-            <Text style={S.ratingTxt}>
-              {item.rating?.toFixed(1)} ({item.ratingCount})
-            </Text>
+        {/* Only facts the listing actually carries. There used to be a green
+            "Verified" pill here on every card, but machinery listings have no
+            verified field — nothing had been checked. And the rating showed
+            for unrated listings too, as "0.0 (0)". The row is skipped when it
+            would be empty so it does not leave a blank gap. */}
+        {(item.rating > 0 || item.ageYears != null) && (
+          <View style={S.mMetaRow}>
+            {item.rating > 0 && (
+              <View style={S.ratingPill}>
+                <Ionicons name="star" size={11} color={COLORS.yellowDark2} />
+                <Text style={S.ratingTxt}>
+                  {item.rating?.toFixed(1)} ({item.ratingCount})
+                </Text>
+              </View>
+            )}
+            {item.ageYears != null && (
+              <View style={S.metaPill}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={11}
+                  color={COLORS.grayMedium}
+                />
+                <Text style={S.metaTxt}>
+                  {t("rent.yrOld", { count: item.ageYears })}
+                </Text>
+              </View>
+            )}
           </View>
-          {item.ageYears != null && (
-            <View style={S.metaPill}>
-              <Ionicons
-                name="calendar-outline"
-                size={11}
-                color={COLORS.grayMedium}
-              />
-              <Text style={S.metaTxt}>
-                {t("rent.yrOld", { count: item.ageYears })}
-              </Text>
-            </View>
-          )}
-          <View style={S.verifiedPill}>
-            <Ionicons name="checkmark-circle" size={11} color={GREEN} />
-            <Text style={[S.metaTxt, { color: GREEN }]}>{t("verified")}</Text>
-          </View>
-        </View>
+        )}
 
         <View style={S.mLocRow}>
           <Ionicons
@@ -469,7 +486,7 @@ const MachineryCard = memo(function MachineryCard({
         ) : bookingStatus ? (
           <BookedTag status={bookingStatus} t={t} />
         ) : (
-          <TouchableOpacity style={S.bookBtn} onPress={() => onPress(item)}>
+          <TouchableOpacity style={S.bookBtn} onPress={() => onPress(item)} accessibilityRole="button">
             <Ionicons name="calendar" size={KICON.sm} color={COLORS.white} />
             <Text style={S.bookBtnTxt}>{t("bookNow")}</Text>
           </TouchableOpacity>
@@ -537,6 +554,28 @@ const WorkerCard = memo(function WorkerCard({
         onPressOut={() => {
           if (!isReducedMotion()) sc.value = withSpring(1, SPRINGS.snappy);
         }}
+        accessibilityRole="button"
+        accessibilityLabel={[
+          item.leader || item.name,
+          subtitle,
+          item.bookedStatus === "BOOKED"
+            ? t("rent.bookedNow", "Booked")
+            : item.bookedStatus === "RESERVED"
+              ? t("rent.reservedSoon", "Reserved")
+              : item.available
+                ? t("available")
+                : t("notAvailable"),
+          (item.skills || []).slice(0, 2).join(", "),
+          item.pricePerDay != null
+            ? `₹${item.pricePerDay.toLocaleString()} ${t("perDay")}`
+            : null,
+          item.rating > 0
+            ? t("a11y.rated", { rating: item.rating.toFixed(1), defaultValue: "Rated {{rating}} out of 5" })
+            : null,
+          item.location || item.district,
+        ]
+          .filter(Boolean)
+          .join(", ")}
       >
         {/* Header — avatar + status, stacked like MachineryCard's photo block.
             This card renders in a 2-column grid (~155px wide). The old layout
@@ -653,7 +692,7 @@ const WorkerCard = memo(function WorkerCard({
           ) : bookingStatus ? (
             <BookedTag status={bookingStatus} t={t} />
           ) : (
-            <TouchableOpacity style={S.callBtn} onPress={() => onPress(item)}>
+            <TouchableOpacity style={S.callBtn} onPress={() => onPress(item)} accessibilityRole="button">
               <Ionicons name="call" size={13} color={COLORS.white} />
               <Text style={S.callBtnTxt} numberOfLines={1}>{t("rent.call")}</Text>
             </TouchableOpacity>
@@ -931,6 +970,7 @@ export default function RentHome({ navigation }) {
             value={search}
             onChangeText={setSearch}
             returnKeyType="search"
+            accessibilityLabel={t("search", "Search")}
           />
           {deferredSearch !== search && (
             <ActivityIndicator size="small" color={COLORS.grayLightMid} />
@@ -1164,7 +1204,7 @@ export default function RentHome({ navigation }) {
           onPress={active.loadMore}
           disabled={active.loadingMore}
           accessibilityRole="button"
-          accessibilityState={{ disabled: active.loadingMore, busy: active.loadingMore }}
+          accessibilityState={{ disabled: active.loadingMore }}
         >
           {active.loadingMore ? (
             <ActivityIndicator size="small" color={GREEN} />
@@ -1184,6 +1224,7 @@ export default function RentHome({ navigation }) {
             navigation.navigate(tab === "machinery" ? "AddMachinery" : "AddWorker")
           }
           activeOpacity={0.9}
+          accessibilityRole="button"
         >
           <View style={S.listBannerLeft}>
             {tab === "machinery" ? (
@@ -1702,15 +1743,6 @@ const S = StyleSheet.create({
     paddingVertical: KSPACE.s3,
   },
   metaTxt: { fontSize: 11, fontWeight: "600", color: COLORS.textBody },
-  verifiedPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: KSPACE.s3,
-    backgroundColor: COLORS.primaryPale,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: KSPACE.s3,
-  },
   mLocRow: {
     flexDirection: "row",
     alignItems: "center",

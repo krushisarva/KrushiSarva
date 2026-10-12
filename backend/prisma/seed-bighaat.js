@@ -9,6 +9,14 @@
  */
 import prisma from '../src/config/db.js';
 
+// Demo data only — never production: a TEST catalogue under real brand names
+// with invented prices and stock, and photos hotlinked from third-party hosts
+// (PRODUCT_IMG below). Runs ahead of the first query.
+if (process.env.NODE_ENV === 'production') {
+  console.error('seed-bighaat.js: refusing to run with NODE_ENV=production — this is DEMO data (test catalogue, invented prices, hotlinked third-party images) and must not be loaded into production.');
+  process.exit(1);
+}
+
 const PRODUCTS = [
   {
     "category": "Seeds & Planting Material",

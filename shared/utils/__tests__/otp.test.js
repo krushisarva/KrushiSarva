@@ -1,5 +1,5 @@
 import {
-  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, shouldAutoSubmitOtp, OTP_LENGTH,
+  activeOtpCell, arrivedWhole, isOtpComplete, sanitizeOtp, sendOtpBlocker, shouldAutoSubmitOtp, OTP_LENGTH,
 } from '../otp';
 
 describe('sanitizeOtp', () => {
@@ -76,5 +76,23 @@ describe('shouldAutoSubmitOtp', () => {
   });
   test('fires for a different code even if one was submitted before', () => {
     expect(shouldAutoSubmitOtp({ code: full, verifying: false, lastSubmitted: '111111' })).toBe(true);
+  });
+});
+
+describe('sendOtpBlocker', () => {
+  test('a valid number with the box ticked may ask for a code', () => {
+    expect(sendOtpBlocker({ phoneValid: true, agreed: true })).toBeNull();
+  });
+  test('a valid number without the tick is stopped for consent', () => {
+    expect(sendOtpBlocker({ phoneValid: true, agreed: false })).toBe('consent');
+  });
+  test('the number is reported before the box', () => {
+    expect(sendOtpBlocker({ phoneValid: false, agreed: false })).toBe('phone');
+    expect(sendOtpBlocker({ phoneValid: false, agreed: true })).toBe('phone');
+  });
+  // The tick is recorded as consent at signup, so nothing but `true` may pass:
+  // not a missing value, and not something merely truthy.
+  test.each([undefined, null, 'true', 1, {}])('agreed = %p is not consent', (agreed) => {
+    expect(sendOtpBlocker({ phoneValid: true, agreed })).toBe('consent');
   });
 });

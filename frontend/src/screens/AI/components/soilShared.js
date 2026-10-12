@@ -10,6 +10,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { ArrowLeft } from 'lucide-react-native';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 // ── Cosmic theme tokens (match AIChatScreen) ─────────────────────────────────
 export const BG       = '#050D08';
@@ -96,10 +97,11 @@ export function soilHumanError(err, t) {
 
 // ── Shared cosmic header (back button + gradient icon badge + titles) ─────────
 export function CosmicHeader({ title, subtitle, onBack, Icon, right, insetTop = 0 }) {
+  const { t } = useLanguage();
   return (
     <BlurView intensity={30} tint="dark" style={[H.wrap, { paddingTop: insetTop + 10 }]}>
       <View style={H.row}>
-        <TouchableOpacity onPress={onBack} style={H.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={onBack} style={H.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <ArrowLeft size={22} color={TEXT} strokeWidth={2.2} />
         </TouchableOpacity>
         <View style={H.brand}>

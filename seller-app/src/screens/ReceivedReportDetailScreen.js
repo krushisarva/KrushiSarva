@@ -137,7 +137,7 @@ const ProductPickRow = React.memo(function ProductPickRow({ product, checked, on
 
       <View style={{ flex: 1 }}>
         <Text style={rd.productName} numberOfLines={1}>{product.name}</Text>
-        <Text style={[rd.productMeta, reason && { color: C.danger }]} numberOfLines={1}>
+        <Text style={[rd.productMeta, reason && { color: C.danger }]} numberOfLines={2}>
           {formatCurrency(product.price)}/{product.unit}
           {reasonLabel
             ? ` · ${reasonLabel}`
@@ -830,7 +830,7 @@ const rd = StyleSheet.create({
   },
 
   // ── Severity ──
-  severityRow: { flexDirection: 'row', alignItems: 'center', gap: SP.lg },
+  severityRow: { flexDirection: 'row', alignItems: 'center', gap: SP.lg, flexWrap: 'wrap' },
   riskPill: {
     flexDirection: 'row',
     alignItems: 'center',

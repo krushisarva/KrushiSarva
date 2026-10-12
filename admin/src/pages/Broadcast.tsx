@@ -141,7 +141,7 @@ function ComposeTab() {
         )}
         <div className="mt-2 flex flex-wrap gap-1">
           {Object.entries(filters()).filter(([, v]) => v).map(([k, v]) => <Badge key={k}>{k}: {String(v)}</Badge>)}
-          {Object.values(filters()).every((v) => !v) && <span className="text-xs text-slate-400">No filters — all active users.</span>}
+          {Object.values(filters()).every((v) => !v) && <span className="text-xs text-slate-500">No filters — all active users.</span>}
         </div>
         <div className="mt-auto pt-4">
           <Button variant="primary" className="w-full" disabled={!valid} loading={send.isPending} onClick={onSend}><Megaphone className="h-4 w-4" /> Send broadcast</Button>
@@ -173,13 +173,13 @@ function TemplatesTab() {
     { key: 'langs', header: 'Languages', render: (t) => <Badge>{Object.keys(t.titleI18n ?? {}).length} langs</Badge>, csv: (t) => Object.keys(t.titleI18n ?? {}).join('|') },
     { key: 'category', header: 'Category', render: (t) => <Badge>{t.category}</Badge>, csv: (t) => t.category },
     { key: 'isActive', header: 'Active', render: (t) => <BoolBadge value={t.isActive} />, csv: (t) => String(t.isActive) },
-    { key: 'actions', header: '', render: (t) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(t)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(t)}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
+    { key: 'actions', header: '', render: (t) => <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}><Button variant="ghost" onClick={() => setEditing(t)} aria-label={`Edit template ${t.key}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" onClick={() => onDelete(t)} aria-label={`Deactivate template ${t.key}`}><Trash2 className="h-4 w-4 text-red-500" /></Button></div> },
   ];
 
   return (
     <div>
       <Toolbar>
-        <Input className="w-44" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category…" />
+        <Input className="w-44" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category…" aria-label="Filter by category" />
         <FilterSelect label="Active" value={active} onChange={setActive} options={[{ label: 'Active', value: 'true' }, { label: 'Inactive', value: 'false' }]} />
         <div className="ml-auto"><Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New template</Button></div>
       </Toolbar>
@@ -235,8 +235,8 @@ function TemplateForm({ template, onClose, onSaved }: { template: Template | nul
             <div key={l.code} className="rounded-lg border border-slate-100 p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{l.label}{l.code === 'en' && ' *'}</div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Input value={title[l.code] ?? ''} onChange={(e) => setT(l.code, e.target.value)} maxLength={120} placeholder="Title" />
-                <Textarea rows={2} value={body[l.code] ?? ''} onChange={(e) => setB(l.code, e.target.value)} maxLength={1000} placeholder="Body" />
+                <Input value={title[l.code] ?? ''} onChange={(e) => setT(l.code, e.target.value)} maxLength={120} placeholder="Title" aria-label={`${l.label} title`} />
+                <Textarea rows={2} value={body[l.code] ?? ''} onChange={(e) => setB(l.code, e.target.value)} maxLength={1000} placeholder="Body" aria-label={`${l.label} body`} />
               </div>
             </div>
           ))}
@@ -259,11 +259,11 @@ function HistoryTab() {
   const columns: Column<BroadcastRow>[] = [
     { key: 'createdAt', header: 'Sent', render: (b) => <span className="text-xs text-slate-500">{formatDateTime(b.createdAt)}</span>, csv: (b) => b.createdAt },
     { key: 'title', header: 'Title', render: (b) => <span className="font-medium">{b.title}</span>, csv: (b) => b.title },
-    { key: 'templateKey', header: 'Template', render: (b) => b.templateKey ? <Badge>{b.templateKey}</Badge> : <span className="text-slate-400">—</span>, csv: (b) => b.templateKey ?? '' },
+    { key: 'templateKey', header: 'Template', render: (b) => b.templateKey ? <Badge>{b.templateKey}</Badge> : <span className="text-slate-500">—</span>, csv: (b) => b.templateKey ?? '' },
     { key: 'target', header: 'Target', render: (b) => <span className="text-xs text-slate-600">{targetSummary(b.filters)}</span>, csv: (b) => targetSummary(b.filters) },
     { key: 'estimated', header: 'Estimated', render: (b) => formatNumber(b.estimated), csv: (b) => String(b.estimated) },
     { key: 'sent', header: 'Sent', render: (b) => <span className="font-medium text-green-700">{formatNumber(b.sent)}</span>, csv: (b) => String(b.sent) },
-    { key: 'failed', header: 'Failed', render: (b) => b.failed ? <span className="font-medium text-red-600">{formatNumber(b.failed)}</span> : <span className="text-slate-400">0</span>, csv: (b) => String(b.failed) },
+    { key: 'failed', header: 'Failed', render: (b) => b.failed ? <span className="font-medium text-red-600">{formatNumber(b.failed)}</span> : <span className="text-slate-500">0</span>, csv: (b) => String(b.failed) },
   ];
 
   return (

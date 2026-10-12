@@ -12,8 +12,10 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COSMIC, CR, CT } from '../theme/cosmicTheme';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 export default function SyncBadge({ status = 'synced', lastSyncedText, compact = false }) {
+  const { t } = useLanguage();
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -30,7 +32,11 @@ export default function SyncBadge({ status = 'synced', lastSyncedText, compact =
   const cfg = CFG[status] || CFG.synced;
 
   return (
-    <View style={[styles.badge, cfg.bg, compact && styles.compact]}>
+    <View
+      style={[styles.badge, cfg.bg, compact && styles.compact]}
+      accessible={compact}
+      accessibilityLabel={compact ? t(`a11y.sync_${CFG[status] ? status : 'synced'}`, status === 'error' ? 'Sync failed' : cfg.label) : undefined}
+    >
       {status === 'syncing' ? (
         <Animated.View style={{ transform: [{ rotate }] }}>
           <Ionicons name="sync" size={compact ? 12 : 14} color={cfg.color} />

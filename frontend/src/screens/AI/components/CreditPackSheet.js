@@ -14,10 +14,11 @@
  * saves. The ScrollView is there so a fifth pack — or a small screen in a large
  * font setting — still reaches the bottom row.
  */
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 // The shop's rupee formatter. Imported rather than copied — paymentClient.js
 // already reaches into shopUtils for the same reason: one money-formatting
 // rule, not one per feature.
@@ -41,7 +42,7 @@ export default function CreditPackSheet({
         {/* Tapping the dimmed area closes the sheet, the usual bottom-sheet
             gesture. It goes through the same guarded onClose, so it cannot
             close a sheet whose payment is already in flight. */}
-        <TouchableOpacity style={S.backdropTap} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={S.backdropTap} activeOpacity={1} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
 
         <View style={S.sheet}>
           <View style={S.grabber} />
@@ -78,6 +79,8 @@ export default function CreditPackSheet({
                   disabled={busy}
                   onPress={() => onSelect(pack.id)}
                   accessibilityRole="button"
+                  accessibilityState={{ busy: isSelected }}
+                  accessibilityLabel={`${pack.label || `${pack.credits} ${t('aiCredits.credits', 'credits')}`}, ${inr(pack.priceInr)}`}
                 >
                   <View style={S.rowIcon}>
                     <Ionicons name="flash" size={18} color={COLORS.amber} />
@@ -106,6 +109,14 @@ export default function CreditPackSheet({
               {t('payments.secureNote', 'Payment is processed securely. Do not close the app while paying.')}
             </Text>
           </View>
+          <TouchableOpacity
+            style={S.policyLink}
+            onPress={() => Linking.openURL(LEGAL_URLS.refunds).catch(() => {})}
+            hitSlop={{ top: 8, bottom: 8 }}
+            accessibilityRole="link"
+          >
+            <Text style={S.policyLinkTxt}>{t('a11y.refundPolicyLink', 'Refund, Cancellation & Return Policy')}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -151,4 +162,6 @@ const S = StyleSheet.create({
 
   foot: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
   footText: { flex: 1, fontSize: 11, color: COLORS.textLight, fontWeight: '600' },
+  policyLink: { alignSelf: 'flex-start', marginTop: 10 },
+  policyLinkTxt: { fontSize: 12, color: COLORS.textMedium, fontWeight: '600', textDecorationLine: 'underline' },
 });

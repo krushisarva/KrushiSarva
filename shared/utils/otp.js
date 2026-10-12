@@ -55,3 +55,17 @@ export function shouldAutoSubmitOtp({ code, verifying, lastSubmitted, len = OTP_
   if (verifying) return false;
   return asString(code) !== lastSubmitted;
 }
+
+/**
+ * What stops a "Send OTP" request, or null when the code may be asked for.
+ *
+ * The number comes first, so someone still typing is told about the number and
+ * not about the box under it. `agreed` is the Terms / Privacy Policy tick on the
+ * phone step. The server records that agreement when the account is created, so
+ * it is never assumed here: only a real `true` counts.
+ */
+export function sendOtpBlocker({ phoneValid, agreed }) {
+  if (!phoneValid) return 'phone';
+  if (agreed !== true) return 'consent';
+  return null;
+}

@@ -49,7 +49,7 @@ function MSPRateCard({ item, onCompare, language, t }) {
           </View>
         )}
       </View>
-      <TouchableOpacity style={S.compareBtn} onPress={() => onCompare(item)}>
+      <TouchableOpacity style={S.compareBtn} onPress={() => onCompare(item)} accessibilityRole="button">
         <Ionicons name="swap-horizontal-outline" size={13} color={COLORS.primary} />
         <Text style={S.compareTxt}>{t('mspTracker.compareWithMandi')}</Text>
       </TouchableOpacity>
@@ -89,7 +89,7 @@ function ComparisonView({ item, state, language, t, onBack }) {
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, gap: 14 }}>
-      <TouchableOpacity onPress={onBack} style={S.backLink}>
+      <TouchableOpacity onPress={onBack} style={S.backLink} accessibilityRole="button">
         <Ionicons name="chevron-back" size={16} color={COLORS.primary} />
         <Text style={S.backLinkTxt}>{t('mspTracker.back')}</Text>
       </TouchableOpacity>
@@ -107,14 +107,14 @@ function ComparisonView({ item, state, language, t, onBack }) {
       )}
 
       <View style={S.compGrid}>
-        <View style={[S.compBox, { borderColor: 'rgba(23,107,67,0.25)' }]}>
+        <View style={[S.compBox, { borderColor: 'rgba(23,107,67,0.25)' }]} accessible>
           <Text style={S.compBoxLabel}>{t('mspTracker.govtMsp')}</Text>
           <Text style={[S.compBoxVal, { color: COLORS.primary }]}>
             ₹{data?.msp?.price?.toLocaleString() || item.mspPrice?.toLocaleString()}
           </Text>
           <Text style={S.compBoxUnit}>/quintal</Text>
         </View>
-        <View style={[S.compBox, { borderColor: 'rgba(243,156,18,0.25)' }]}>
+        <View style={[S.compBox, { borderColor: 'rgba(243,156,18,0.25)' }]} accessible>
           <Text style={S.compBoxLabel}>{t('mspTracker.mandiPrice')}</Text>
           <Text style={[S.compBoxVal, { color: COLORS.amberDark }]}>
             ₹{data?.mandi?.modalPrice?.toLocaleString() || '—'}
@@ -175,7 +175,7 @@ export default function MSPTrackerScreen({ navigation }) {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
       <View style={S.header}>
-        <TouchableOpacity onPress={() => { comparing ? setComparing(null) : navigation.goBack(); }} style={S.backBtn}>
+        <TouchableOpacity onPress={() => { comparing ? setComparing(null) : navigation.goBack(); }} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -191,6 +191,8 @@ export default function MSPTrackerScreen({ navigation }) {
               key={s}
               style={[S.seasonTab, season === s && S.seasonTabActive]}
               onPress={() => setSeason(s)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: season === s }}
             >
               <Text style={[S.seasonTabTxt, season === s && S.seasonTabTxtActive]}>
                 {s === 'kharif' ? (t('mspTracker.kharif')) : (t('mspTracker.rabi'))}

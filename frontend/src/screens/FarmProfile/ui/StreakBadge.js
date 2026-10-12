@@ -11,8 +11,10 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, G } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COSMIC, GRADIENT, GLOW, CR, CT } from '../theme/cosmicTheme';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 export default function StreakBadge({ days = 0, resting = false, compact = false }) {
+  const { t } = useLanguage();
   const earned = days >= 1;
   const lit    = days >= 7;
   const size   = compact ? 28 : 36;
@@ -38,7 +40,11 @@ export default function StreakBadge({ days = 0, resting = false, compact = false
     : 'Log one activity to start a streak';
 
   return (
-    <View style={[styles.row, { gap: compact ? 8 : 10 }]}>
+    <View
+      style={[styles.row, { gap: compact ? 8 : 10 }]}
+      accessible={compact}
+      accessibilityLabel={compact ? t('a11y.dayStreak', { count: days, defaultValue: '{{count}}-day streak' }) : undefined}
+    >
       <View style={[styles.badge, { width: size, height: size, borderRadius: size / 2 }, lit && !resting ? GLOW.gold : earned ? GLOW.green : null]}>
         <LinearGradient
           colors={gradientColors}

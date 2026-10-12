@@ -69,7 +69,7 @@ export default function WeedingLogScreen({ navigation, route }) {
       <TileGrid items={methods} value={method} onChange={(v) => setMethod(v)} columns={3} />
 
       <SectionHeader icon="cash-outline" tint={COSMIC.WEEDING} title={t('weedingLog.labourCost')} optional />
-      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.WEEDING} /></Card>
+      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.WEEDING} accessibilityLabel={t('weedingLog.labourCost')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('weedingLog.notes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

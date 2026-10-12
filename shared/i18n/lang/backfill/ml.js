@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 875 keys.
 
 export default {
   "aiChat.attachHint": "വേഗത്തിലുള്ള രോഗനിർണയത്തിന് നിങ്ങളുടെ വിളയുടെ ഫോട്ടോ പങ്കിടുക.",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} ഡെലിവറി",
   "cart.freeDeliveryPrefix": "ചേർക്കുക",
   "cart.freeDeliverySuffix": "ഫ്രീ ഡെലിവറിക്ക് കൂടുതൽ!",
-  "cart.savedOnDelivery": "ഡെലിവറിയിൽ നിങ്ങൾ ₹49 ലാഭിച്ചു!",
+  "cart.savedOnDelivery": "ഈ ഓർഡറിന് ഫ്രീ ഡെലിവറി",
   "celebrationSheet.loggedTitle": "രേഖപ്പെടുത്തി!",
   "close": "അടയ്ക്കുക",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "ദിവസം",
   "diagReport.detection": "കണ്ടെത്തൽ",
   "diagReport.diagnosePrompt": "രോഗനിർണയ പ്രോംപ്റ്റ്",
-  "diagReport.diagnosingPathologist": "രോഗനിർണയ പാത്തോളജിസ്റ്റ്",
+  "diagReport.diagnosingPathologist": "AI രോഗനിർണയ സംവിധാനം",
   "diagReport.diagnosisModel": "രോഗനിർണയ മോഡൽ",
   "diagReport.differentialDiagnosis": "വ്യത്യസ്ത രോഗനിർണയം",
   "diagReport.disclaimer": "ഈ റിപ്പോർട്ട് AI സഹായത്തോടെയുള്ള ഉപദേശ സംവിധാനം സൃഷ്ടിച്ചതാണ്. ഇത് തീരുമാനങ്ങൾക്ക് സഹായിക്കുന്ന രേഖയാണ്, ഔദ്യോഗിക കുറിപ്പടി അല്ല. ഗുരുതരമോ അസാധാരണമോ നീണ്ടുനിൽക്കുന്നതോ ആയ കേസുകൾക്ക്, അംഗീകൃത കാർഷിക വിദഗ്ധനെയോ അടുത്തുള്ള കൃഷി വിജ്ഞാന കേന്ദ്രത്തെയോ (KVK) സമീപിക്കുക. ശുപാർശ ചെയ്ത കീടനാശിനികൾ CIB&RC-അംഗീകൃത ലേബലുകൾ പ്രകാരം മാത്രം ഉപയോഗിക്കണം.",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "ജലസേചനം",
   "diagReport.kisanCallCentre": "കിസാൻ കോൾ സെന്റർ:",
   "diagReport.kvkLocator": "KVK ലൊക്കേറ്റർ:",
-  "diagReport.labSub": "സസ്യരോഗ ശാസ്ത്രം · ഡയഗ്നോസ്റ്റിക് ലാബ്",
+  "diagReport.labSub": "AI വിള ആരോഗ്യ ഉപദേശം",
   "diagReport.labTag": "AI സഹായത്തോടെയുള്ള വിള ആരോഗ്യ രോഗനിർണയ സേവനം",
   "diagReport.language": "ഭാഷ:",
   "diagReport.leafWetness": "ഇല നനവ്",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "മൊത്തം റിസ്ക്",
   "diagReport.passed": "വിജയിച്ചു",
   "diagReport.pathogenType": "രോഗാണു തരം",
-  "diagReport.pathologistAi": "പാത്തോളജിസ്റ്റ് (AI):",
+  "diagReport.pathologistAi": "AI സംവിധാനം:",
   "diagReport.patientSummary": "രോഗി സംഗ്രഹം",
   "diagReport.perAcre": "ഒരു ഏക്കറിന്",
   "diagReport.phone": "ഫോൺ",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "വിള രോഗ കണ്ടെത്തൽ റിപ്പോർട്ട്",
   "diagReport.requiredPpe": "ആവശ്യമായ PPE:",
   "diagReport.resistanceSafetyNotes": "പ്രതിരോധശേഷി & സുരക്ഷാ കുറിപ്പുകൾ",
-  "diagReport.reviewingAuthority": "അവലോകന അധികാരി",
+  "diagReport.reviewingAuthority": "അവലോകനത്തിന് നിർദ്ദേശിച്ചത് — അവലോകനം ചെയ്തിട്ടില്ല",
   "diagReport.rotation": "റൊട്ടേഷൻ",
   "diagReport.ruledOut": "ഒഴിവാക്കി",
   "diagReport.schedule": "ഷെഡ്യൂൾ",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "ചികിത്സ സമയം",
   "diagReport.triggeringConditions": "കാരണമായ സാഹചര്യങ്ങൾ",
   "diagReport.unverifiedLabel": "പരിശോധിക്കാത്തത്:",
-  "diagReport.verified": "പരിശോധിച്ചു",
+  "diagReport.verified": "AI തയ്യാറാക്കിയത്",
   "diagReport.verifiedLabel": "പരിശോധിച്ചത്:",
   "diagReport.vision": "വിഷൻ",
   "diagReport.visionModel": "വിഷൻ മോഡൽ:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "ലഭ്യത",
   "product.countryOfOrigin": "ഉത്ഭവ രാജ്യം",
-  "product.cropSetuVerified": "KrushiSarva സ്ഥിരീകരിച്ചത്",
   "product.customerSupport": "ഉപഭോക്തൃ പിന്തുണ",
   "product.deliveryAddressSub": "ലൈവ് ഷിപ്പിംഗ് കണക്കുകളും സേവ് ചെയ്ത വിലാസങ്ങളും ഉടൻ വരുന്നു.",
   "product.deliveryAddressTitle": "ഡെലിവറിയും വിലാസവും",

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost, errorMessage } from '../lib/api';
@@ -8,6 +8,15 @@ import { Drawer } from '../components/Modal';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
 import { formatDateTime, relativeTime } from '../lib/format';
+
+// Hand-built tables on this page open a drawer from the row. Same contract as
+// DataTable rows: focusable, outlined on focus (a collapsed table row does not
+// paint the app-wide ring), and Enter/Space on the row itself opens it.
+const CLICKABLE_ROW = 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700';
+const onRowKey = (open: () => void) => (e: KeyboardEvent<HTMLTableRowElement>) => {
+  if (e.target !== e.currentTarget) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+};
 
 // ── Moderation ────────────────────────────────────────────────────────────────
 interface Flag { id: string; entityType: string; entityId: string; reasons: string[]; score: number; status: string; createdAt: string; resolution?: string | null }
@@ -51,17 +60,17 @@ export function ModerationPage() {
             <thead className="bg-slate-50"><tr><th className="table-th">Type</th><th className="table-th">Reasons</th><th className="table-th">Score</th><th className="table-th">Status</th><th className="table-th">Flagged</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {(q.data ?? []).map((f) => (
-                <tr key={f.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setOpenId(f.id)}>
+                <tr key={f.id} className={CLICKABLE_ROW} tabIndex={0} onClick={() => setOpenId(f.id)} onKeyDown={onRowKey(() => setOpenId(f.id))}>
                   <td className="table-td"><Badge>{f.entityType}</Badge></td>
                   <td className="table-td">{f.reasons.map((r) => <Badge key={r} tone="amber" className="mr-1">{r}</Badge>)}</td>
                   <td className="table-td font-medium">{f.score}</td>
                   <td className="table-td"><StatusBadge value={f.status} /></td>
-                  <td className="table-td text-xs text-slate-400">{relativeTime(f.createdAt)}</td>
+                  <td className="table-td text-xs text-slate-500">{relativeTime(f.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">Queue is clear.</p>}
+          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">Queue is clear.</p>}
         </Card>
       )}
 
@@ -123,14 +132,14 @@ export function FraudPage() {
                   {c.accounts.map((a) => (
                     <li key={a.userId} className="flex items-center justify-between px-4 py-2">
                       <span className="font-mono text-xs">{a.userId}</span>
-                      <span className="text-slate-400">{a.lastContext} · {a.seenCount}× · {relativeTime(a.lastSeenAt)}</span>
+                      <span className="text-slate-500">{a.lastContext} · {a.seenCount}× · {relativeTime(a.lastSeenAt)}</span>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
           ))}
-          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">No clusters above the threshold.</p>}
+          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">No clusters above the threshold.</p>}
         </div>
       )}
     </div>
@@ -176,18 +185,18 @@ export function IncidentsPage() {
             <thead className="bg-slate-50"><tr><th className="table-th">Ref</th><th className="table-th">Title</th><th className="table-th">Severity</th><th className="table-th">Status</th><th className="table-th">Breach SLA</th><th className="table-th">Opened</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {(q.data ?? []).map((i) => (
-                <tr key={i.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setOpenId(i.id)}>
+                <tr key={i.id} className={CLICKABLE_ROW} tabIndex={0} onClick={() => setOpenId(i.id)} onKeyDown={onRowKey(() => setOpenId(i.id))}>
                   <td className="table-td font-mono text-xs">{i.reference}</td>
                   <td className="table-td font-medium">{i.title}</td>
                   <td className="table-td"><StatusBadge value={i.severity} /></td>
                   <td className="table-td"><StatusBadge value={i.status} /></td>
-                  <td className="table-td">{i.notificationRequired ? (isOverdue(i) ? <Badge tone="red"><AlertTriangle className="mr-1 inline h-3 w-3" />Overdue</Badge> : i.boardNotifiedAt ? <Badge tone="green">Notified</Badge> : <Badge tone="amber">Due {relativeTime(i.notifyDueAt)}</Badge>) : <span className="text-slate-300">—</span>}</td>
-                  <td className="table-td text-xs text-slate-400">{relativeTime(i.createdAt)}</td>
+                  <td className="table-td">{i.notificationRequired ? (isOverdue(i) ? <Badge tone="red"><AlertTriangle className="mr-1 inline h-3 w-3" />Overdue</Badge> : i.boardNotifiedAt ? <Badge tone="green">Notified</Badge> : <Badge tone="amber">Due {relativeTime(i.notifyDueAt)}</Badge>) : <span className="text-slate-500">—</span>}</td>
+                  <td className="table-td text-xs text-slate-500">{relativeTime(i.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-400">No incidents.</p>}
+          {(q.data ?? []).length === 0 && <p className="py-10 text-center text-sm text-slate-500">No incidents.</p>}
         </Card>
       )}
 
@@ -222,19 +231,19 @@ export function IncidentsPage() {
                   <li key={u.id}>
                     <div className="flex items-center gap-2">
                       {u.statusTo && <StatusBadge value={u.statusTo} />}
-                      <span className="text-xs text-slate-400">{formatDateTime(u.createdAt)}</span>
+                      <span className="text-xs text-slate-500">{formatDateTime(u.createdAt)}</span>
                     </div>
                     <p className="text-slate-600">{u.note}</p>
                   </li>
                 ))}
-                {(detail.data.updates ?? []).length === 0 && <li className="text-slate-400">No updates yet.</li>}
+                {(detail.data.updates ?? []).length === 0 && <li className="text-slate-500">No updates yet.</li>}
               </ul>
             </div>
 
             <div className="space-y-2 border-t border-slate-100 pt-4">
               <Field label="Add timeline note"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What changed?" /></Field>
               <div className="flex items-center gap-2">
-                <Select value={statusTo} onChange={(e) => setStatusTo(e.target.value)} className="flex-1"><option value="">Keep status</option>{INC_STATUS.map((s) => <option key={s} value={s}>Set: {s}</option>)}</Select>
+                <Select value={statusTo} onChange={(e) => setStatusTo(e.target.value)} className="flex-1" aria-label="Incident status"><option value="">Keep status</option>{INC_STATUS.map((s) => <option key={s} value={s}>Set: {s}</option>)}</Select>
                 <Button variant="primary" disabled={!note.trim()} loading={addUpdate.isPending} onClick={() => addUpdate.mutate()}>Add</Button>
               </div>
             </div>

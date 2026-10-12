@@ -77,6 +77,8 @@ import agriPredictRoutes   from './routes/agriPredict.routes.js';
 import onboardingRoutes    from './routes/onboarding.routes.js';
 import farmRoutes          from './routes/farm.routes.js';
 import farmCropCycleRoutes from './routes/farmCropCycle.routes.js';
+import { legalPagesRouter, legalApiRouter, logLegalStatus } from './routes/legal.routes.js';
+import { LEGAL_INDEX_PATH } from './constants/legal.js';
 
 const app = express();
 
@@ -419,6 +421,14 @@ if (fs.existsSync(path.join(ADMIN_DIST_DIR, 'index.html'))) {
   logger.info('[Admin] Serving admin SPA from %s at /admin', ADMIN_DIST_DIR);
 }
 
+// ── Legal pages (public) ──────────────────────────────────────────────────────
+// Privacy policy, terms, refund policy, cookie policy and business details as
+// plain HTML at /legal/*. Both apps and the admin login link here. Mounted with
+// the admin SPA above — static-style GETs that need no body parser or CSRF
+// guard. Unapproved drafts are never served in production (see the router).
+app.use(LEGAL_INDEX_PATH, legalPagesRouter);
+logLegalStatus();
+
 // ── Global per-IP rate limit ──────────────────────────────────────────────────
 // Baseline brute-force / DDoS protection for every API route. Mounted AFTER the
 // health probes (so LB liveness/readiness checks are never throttled) and BEFORE
@@ -484,6 +494,7 @@ app.use(`${API}/notifications`, notificationsRoutes);
 app.use(`${API}/addresses`,    addressesRoutes);
 app.use(`${API}/location`,     locationRoutes);
 app.use(`${API}/consent`,      consentRoutes);
+app.use(`${API}/legal`,        legalApiRouter);
 app.use(`${API}/admin/incidents`, incidentRoutes);
 app.use(`${API}/admin/fraud`,  fraudRoutes);
 app.use(`${API}/admin/moderation`, moderationRoutes);

@@ -128,7 +128,7 @@ export function SectionHeader({ icon, tint = COSMIC.PRIMARY, title, optional }) 
           <Ionicons name={fillIcon(icon)} size={16} color={tint} />
         )}
       </View>
-      <Text style={k.secTitle}>{title}</Text>
+      <Text style={k.secTitle} accessibilityRole="header">{title}</Text>
       {optional && <Text style={k.optional}>{t('logger.optional')}</Text>}
     </View>
   );
@@ -153,6 +153,8 @@ export function TileGrid({ items, value, onChange, columns = 2, photoSet = null 
               { flexBasis: basis, borderColor: sel ? color : COSMIC.BORDER, backgroundColor: sel ? color + '22' : COSMIC.SURFACE },
               pressed && { transform: [{ scale: 0.97 }] },
             ]}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: sel }}
           >
             <View style={[
               k.tileIcon,
@@ -200,6 +202,8 @@ export function ChipRow({ items, value, onChange, multi = false, tint = COSMIC.I
             key={it.key}
             onPress={() => toggle(it.key)}
             style={[k.chip, { backgroundColor: sel ? tint + '1A' : COSMIC.SURFACE, borderColor: sel ? tint : COSMIC.BORDER }]}
+            accessibilityRole={multi ? 'checkbox' : 'button'}
+            accessibilityState={multi ? { checked: sel } : { selected: sel }}
           >
             {it.icon && <Ionicons name={fillIcon(it.icon)} size={15} color={sel ? tint : COSMIC.TEXT_2} />}
             <Text style={[k.chipText, sel && { color: tint, fontFamily: 'PlusJakartaSans_700Bold' }]}>{it.label}</Text>
@@ -211,7 +215,7 @@ export function ChipRow({ items, value, onChange, multi = false, tint = COSMIC.I
 }
 
 /** Large centred numeric field with a unit pill (cost ₹, kg, hours…). */
-export function BigNumberInput({ value, onChange, unit = '₹', placeholder = '0', tint = COSMIC.PRIMARY, keyboardType = 'decimal-pad' }) {
+export function BigNumberInput({ value, onChange, unit = '₹', placeholder = '0', tint = COSMIC.PRIMARY, keyboardType = 'decimal-pad', accessibilityLabel }) {
   return (
     <View style={k.bigRow}>
       <TextInput
@@ -221,6 +225,7 @@ export function BigNumberInput({ value, onChange, unit = '₹', placeholder = '0
         placeholderTextColor={COSMIC.MUTED}
         keyboardType={keyboardType}
         style={[k.bigInput, { borderColor: tint + '40', backgroundColor: tint + '12' }]}
+        accessibilityLabel={accessibilityLabel}
       />
       <View style={k.unitPill}><Text style={k.unitText}>{unit}</Text></View>
     </View>
@@ -231,7 +236,7 @@ export function LabeledInput({ label, ...props }) {
   return (
     <>
       {!!label && <Text style={k.subLabel}>{label}</Text>}
-      <TextInput placeholderTextColor={COSMIC.MUTED} style={k.input} {...props} />
+      <TextInput accessibilityLabel={label || undefined} placeholderTextColor={COSMIC.MUTED} style={k.input} {...props} />
     </>
   );
 }
@@ -248,6 +253,7 @@ export function NotesField({ value, onChange, placeholder }) {
         placeholderTextColor={COSMIC.MUTED}
         style={[k.input, { minHeight: 80, textAlignVertical: 'top' }]}
         multiline
+        accessibilityLabel={t('logger.notes')}
       />
     </>
   );

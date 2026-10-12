@@ -58,7 +58,7 @@ function ChatRow({ row, onPress }) {
     : 'Tap to start the conversation';
 
   return (
-    <TouchableOpacity style={s.row} onPress={() => onPress(row)} activeOpacity={0.7}>
+    <TouchableOpacity style={s.row} onPress={() => onPress(row)} activeOpacity={0.7} accessibilityRole="button">
       {thumb ? (
         <Image source={{ uri: thumb }} style={s.thumb} />
       ) : (
@@ -180,7 +180,7 @@ export default function MyAnimalChatsScreen({ navigation }) {
   return (
     <SafeAreaView style={s.root} edges={['bottom']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('chatWithSeller') || 'Chat with Seller'}</Text>
@@ -201,7 +201,7 @@ export default function MyAnimalChatsScreen({ navigation }) {
         <View style={s.center}>
           <Ionicons name="alert-circle-outline" size={48} color={COLORS.error} />
           <Text style={s.errorTxt}>{error}</Text>
-          <TouchableOpacity style={s.retryBtn} onPress={fetchChats}>
+          <TouchableOpacity style={s.retryBtn} onPress={fetchChats} accessibilityRole="button">
             <Text style={s.retryTxt}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -225,6 +225,7 @@ export default function MyAnimalChatsScreen({ navigation }) {
               <TouchableOpacity
                 style={[s.retryBtn, { marginTop: 14 }]}
                 onPress={() => navigation.navigate('AnimalTradeHome')}
+                accessibilityRole="button"
               >
                 <Text style={s.retryTxt}>Browse Animals</Text>
               </TouchableOpacity>

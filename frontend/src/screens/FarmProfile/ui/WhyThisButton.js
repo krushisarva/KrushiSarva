@@ -25,6 +25,7 @@ export default function WhyThisButton({ onPress, label, compact = false, style }
         pressed && { opacity: 0.7 },
         style,
       ]}
+      accessibilityRole="button"
     >
       <Ionicons name="bulb-outline" size={compact ? 12 : 14} color={COSMIC.ACCENT} />
       <Text style={[styles.text, compact && styles.textCompact]} numberOfLines={1}>{resolvedLabel}</Text>

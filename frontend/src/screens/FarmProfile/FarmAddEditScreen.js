@@ -162,6 +162,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                 onChangeText={(v) => u('farmName', v)}
                 placeholder={t('farmProfile.farmNamePlaceholder') || 'e.g. Gavran shet, Road-side plot'}
                 autoCapitalize="words"
+                accessibilityLabel={t('farmProfile.farmNickname')}
               />
             </Field>
           </SectionCard>
@@ -176,6 +177,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                 placeholder={t('pincode.placeholder')}
                 keyboardType="number-pad"
                 maxLength={PINCODE_INPUT_MAX_LENGTH}
+                accessibilityLabel={t('farmProfile.pincode') || 'Pincode'}
               />
               {pin.status === 'idle' ? (
                 <Text style={styles.pinHint}>{t('pincode.autofillHint')}</Text>
@@ -229,6 +231,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                   value={form.taluka}
                   onChangeText={(v) => u('taluka', v)}
                   placeholder={t('farmProfile.talukaPlaceholder') || 'Type taluka'}
+                  accessibilityLabel={t('farmProfile.taluka') || 'Taluka'}
                 />
               </Field>
             )}
@@ -239,6 +242,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                 onChangeText={(v) => u('village', v)}
                 placeholder={t('farmProfile.villagePlaceholder') || 'Village name'}
                 autoCapitalize="words"
+                accessibilityLabel={t('farmProfile.village') || 'Village'}
               />
             </Field>
 
@@ -249,6 +253,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                 form.latitude != null && styles.gpsBtnActive,
                 pressed && { opacity: 0.8 },
               ]}
+              accessibilityRole="button"
             >
               <Ionicons
                 name={form.latitude != null ? 'checkmark-circle' : 'navigate'}
@@ -272,6 +277,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
                 placeholder={t('farmProfile.landSizePlaceholder') || '2.5'}
                 keyboardType="decimal-pad"
                 style={styles.landInput}
+                accessibilityLabel={t('farmProfile.landSizeLabel') || 'Total land size (acres)'}
               />
             </Field>
 
@@ -288,6 +294,8 @@ export default function FarmAddEditScreen({ navigation, route }) {
                     key={soil.key}
                     onPress={() => { Haptics.selection?.(); u('soilType', soil.key); }}
                     style={styles.soilCol}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
                   >
                     <View style={[styles.soilTile, selected && styles.soilTileSel]}>
                       <LinearGradient
@@ -328,6 +336,8 @@ export default function FarmAddEditScreen({ navigation, route }) {
                       { borderColor: selected ? irr.color : COSMIC.BORDER, backgroundColor: selected ? irr.color + '22' : COSMIC.SURFACE },
                       pressed && { transform: [{ scale: 0.97 }] },
                     ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
                   >
                     <View style={[styles.irrIconWrap, { backgroundColor: irr.color + '28' }]}>
                       {irr.ik
@@ -378,7 +388,7 @@ function SectionCard({ icon, iconTint, title, children }) {
         <View style={[styles.secIcon, { backgroundColor: iconTint + '28', borderColor: iconTint + '55' }]}>
           <Ionicons name={icon} size={16} color={iconTint} />
         </View>
-        <Text style={styles.secTitle}>{title}</Text>
+        <Text style={styles.secTitle} accessibilityRole="header">{title}</Text>
       </View>
       {children}
     </GlassCard>

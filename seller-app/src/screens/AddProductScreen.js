@@ -1039,7 +1039,7 @@ export default function AddProductScreen({ route, navigation }) {
                   {/* Attach only: on an edit offerCount includes this seller's
                       own offer, so "N other sellers" would count them. */}
                   {isAttach && catalogVariant?.offerCount > 0 ? (
-                    <Text style={s.attachCompete} numberOfLines={1}>
+                    <Text style={s.attachCompete} numberOfLines={2}>
                       {t('products.competingWith', {
                         count: catalogVariant.offerCount,
                         price: `₹${Number(catalogVariant.lowestPrice).toLocaleString('en-IN')}`,
@@ -1740,14 +1740,14 @@ const s = StyleSheet.create({
   // ── Attach mode ──
   attachCard: { marginBottom: SP.lg },
   attachRow: { flexDirection: 'row', gap: SP.md, alignItems: 'flex-start' },
-  attachImg: { width: 52, height: 52, borderRadius: R.sm, backgroundColor: C.surfaceAlt },
+  attachImg: { width: 52, height: 52, borderRadius: R.sm, backgroundColor: C.surfaceSunken },
   attachImgEmpty: { alignItems: 'center', justifyContent: 'center' },
   attachName: { ...T.bodyBold, color: C.text },
   attachPack: { ...T.caption, color: C.textMuted, marginTop: 1 },
-  attachCompete: { ...T.caption, color: C.brand, marginTop: 3 },
+  attachCompete: { ...T.caption, color: C.brandInk, marginTop: 3 },
   readOnlyRow: {
     flexDirection: 'row', alignItems: 'center', gap: SP.sm,
-    backgroundColor: C.surfaceAlt, borderRadius: R.md,
+    backgroundColor: C.surfaceSunken, borderRadius: R.md,
     paddingHorizontal: SP.md, paddingVertical: SP.sm + 2,
   },
   readOnlyTxt: { ...T.bodyBold, color: C.text },
@@ -1759,7 +1759,9 @@ const s = StyleSheet.create({
   progressFigDim: { color: C.textFaint },
 
   // ── Photos ──
-  imgRow: { flexDirection: 'row', gap: SP.md, paddingVertical: SP.xs, paddingRight: SP.xs },
+  // Top/right padding must cover imgRemove's -SP.sm overhang: the horizontal
+  // ScrollView clips to its bounds on Android and would cut the button off.
+  imgRow: { flexDirection: 'row', gap: SP.md, paddingTop: SP.sm, paddingBottom: SP.xs, paddingRight: SP.sm },
   imgWrap: { position: 'relative' },
   imgThumb: {
     width: 104, height: 104,

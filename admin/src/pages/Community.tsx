@@ -32,7 +32,7 @@ export function PostsPage() {
   };
 
   const columns: Column<Post>[] = [
-    { key: 'title', header: 'Title', render: (p) => <span className={`font-medium ${p.deletedAt ? 'text-slate-400 line-through' : ''}`}>{p.title}</span>, csv: (p) => p.title },
+    { key: 'title', header: 'Title', render: (p) => <span className={`font-medium ${p.deletedAt ? 'text-slate-500 line-through' : ''}`}>{p.title}</span>, csv: (p) => p.title },
     { key: 'author', header: 'Author', render: (p) => p.author?.name || '—', csv: (p) => p.author?.name || '' },
     { key: 'category', header: 'Category', render: (p) => <Badge>{p.category}</Badge>, csv: (p) => p.category },
     { key: 'isPinned', header: 'Pinned', render: (p) => <BoolBadge value={p.isPinned} />, csv: (p) => String(p.isPinned) },
@@ -40,10 +40,10 @@ export function PostsPage() {
     { key: 'createdAt', header: 'Posted', render: (p) => formatDate(p.createdAt), csv: (p) => p.createdAt },
     { key: 'actions', header: '', render: (p) => (
       <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-        {!p.deletedAt && <Button variant="ghost" title={p.isPinned ? 'Unpin' : 'Pin'} onClick={() => patch.mutate({ id: p.id, data: { isPinned: !p.isPinned } })}>{p.isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}</Button>}
+        {!p.deletedAt && <Button variant="ghost" title={p.isPinned ? 'Unpin' : 'Pin'} aria-label={p.isPinned ? 'Unpin post' : 'Pin post'} onClick={() => patch.mutate({ id: p.id, data: { isPinned: !p.isPinned } })}>{p.isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}</Button>}
         {p.deletedAt
-          ? <Button variant="ghost" title="Restore" onClick={() => patch.mutate({ id: p.id, data: { restore: true } })}><RotateCcw className="h-4 w-4 text-green-600" /></Button>
-          : <Button variant="ghost" title="Remove" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-red-500" /></Button>}
+          ? <Button variant="ghost" title="Restore" aria-label="Restore post" onClick={() => patch.mutate({ id: p.id, data: { restore: true } })}><RotateCcw className="h-4 w-4 text-green-600" /></Button>
+          : <Button variant="ghost" title="Remove" aria-label="Remove post" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-red-500" /></Button>}
       </div>
     )},
   ];
@@ -77,7 +77,7 @@ export function CommentsPage() {
     { key: 'author', header: 'Author', render: (c) => c.author?.name || '—', csv: (c) => c.author?.name || '' },
     { key: 'post', header: 'On post', render: (c) => <span className="line-clamp-1 max-w-xs text-slate-500">{c.post?.title || '—'}</span>, csv: (c) => c.post?.title || '' },
     { key: 'createdAt', header: 'When', render: (c) => relativeTime(c.createdAt), csv: (c) => c.createdAt },
-    { key: 'actions', header: '', render: (c) => <Button variant="ghost" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-red-500" /></Button> },
+    { key: 'actions', header: '', render: (c) => <Button variant="ghost" onClick={() => onDelete(c)} aria-label="Delete comment"><Trash2 className="h-4 w-4 text-red-500" /></Button> },
   ];
 
   return (

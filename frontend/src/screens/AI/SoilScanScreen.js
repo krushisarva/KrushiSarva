@@ -106,9 +106,9 @@ export default function SoilScanScreen({ navigation }) {
         <View style={S.frame}>
           {preview ? (
             <>
-              <Image source={{ uri: preview.uri }} style={S.previewImg} resizeMode="cover" />
+              <Image source={{ uri: preview.uri }} style={S.previewImg} resizeMode="cover" accessible accessibilityRole="image" accessibilityLabel={t('soilHub.scan.photo', 'Photo')} />
               {reading && (
-                <View style={S.readingOverlay}>
+                <View style={S.readingOverlay} accessibilityLiveRegion="polite">
                   <ActivityIndicator color={P_LIGHT} size="large" />
                   <Text style={S.readingTxt}>{t('soilHub.scan.reading', 'Reading your card…')}</Text>
                 </View>
@@ -124,16 +124,16 @@ export default function SoilScanScreen({ navigation }) {
           )}
         </View>
 
-        {error ? <Text style={S.errorTxt}>{error}</Text> : null}
+        {error ? <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text> : null}
 
         {/* Actions */}
         {!reading && (
           <View style={S.actions}>
-            <TouchableOpacity style={[S.actionBtn, S.actionPrimary]} activeOpacity={0.9} onPress={pickFromCamera}>
+            <TouchableOpacity style={[S.actionBtn, S.actionPrimary]} activeOpacity={0.9} onPress={pickFromCamera} accessibilityRole="button">
               <Camera size={18} color={BG} strokeWidth={2.3} />
               <Text style={S.actionPrimaryTxt}>{preview ? t('soilHub.scan.retake', 'Retake') : t('soilHub.scan.takePhoto', 'Take photo')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[S.actionBtn, S.actionGhost]} activeOpacity={0.9} onPress={pickFromGallery}>
+            <TouchableOpacity style={[S.actionBtn, S.actionGhost]} activeOpacity={0.9} onPress={pickFromGallery} accessibilityRole="button">
               <ImageIcon size={18} color={TEXT} strokeWidth={2.3} />
               <Text style={S.actionGhostTxt}>{t('soilHub.scan.gallery', 'Gallery')}</Text>
             </TouchableOpacity>
@@ -142,14 +142,14 @@ export default function SoilScanScreen({ navigation }) {
 
         {/* Retry OCR on the same photo */}
         {preview && error && !reading && (
-          <TouchableOpacity style={S.retryRow} activeOpacity={0.85} onPress={() => runOcr(preview.base64)}>
+          <TouchableOpacity style={S.retryRow} activeOpacity={0.85} onPress={() => runOcr(preview.base64)} accessibilityRole="button">
             <RotateCcw size={15} color={ACCENT} />
             <Text style={S.retryTxt}>{t('soilHub.scan.retry', 'Try reading again')}</Text>
           </TouchableOpacity>
         )}
 
         {/* Manual fallback */}
-        <TouchableOpacity style={S.manualRow} activeOpacity={0.85} onPress={() => navigation.replace('SoilForm')}>
+        <TouchableOpacity style={S.manualRow} activeOpacity={0.85} onPress={() => navigation.replace('SoilForm')} accessibilityRole="button">
           <Text style={S.manualTxt}>{t('soilHub.scan.manual', 'Or enter values manually')}</Text>
         </TouchableOpacity>
 

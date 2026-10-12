@@ -174,7 +174,7 @@ function LedgerDrawer({ sellerId, onClose, onAdjust }: { sellerId: string | null
                     </div>
                     <div className="shrink-0 text-right">
                       <div className={e.amount < 0 ? 'text-red-600' : 'text-green-700'}>{formatINR(e.amount)}</div>
-                      <div className="text-xs text-slate-400">bal {formatINR(e.balanceAfter)}</div>
+                      <div className="text-xs text-slate-500">bal {formatINR(e.balanceAfter)}</div>
                     </div>
                   </li>
                 ))}
@@ -240,7 +240,7 @@ export default function FinancePage() {
     {
       key: 'sellerId', header: 'Seller',
       render: (p) => (
-        <button className="font-mono text-xs text-brand-600 hover:underline" onClick={(e) => { e.stopPropagation(); setLedgerSeller(p.sellerId); }}>
+        <button className="font-mono text-xs text-brand-700 hover:underline" onClick={(e) => { e.stopPropagation(); setLedgerSeller(p.sellerId); }}>
           {p.sellerId.slice(0, 8)}
         </button>
       ),
@@ -259,7 +259,7 @@ export default function FinancePage() {
             <Button variant="secondary" onClick={() => onMark(p, 'PAID')}>Paid</Button>
             <Button variant="danger" onClick={() => onMark(p, 'FAILED')}>Failed</Button>
           </div>
-        ) : <span className="text-slate-400">—</span>
+        ) : <span className="text-slate-500">—</span>
       ),
       csv: () => '',
     },

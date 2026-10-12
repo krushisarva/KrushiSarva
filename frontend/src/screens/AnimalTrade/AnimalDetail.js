@@ -85,7 +85,7 @@ function InfoRow({ icon, label, value, last }) {
 // runtime — CDN unreachable, stale asset, flaky network — RN's <Image> renders
 // an empty/blank box and never recovers. We track onError per-slide and swap in
 // the AnimalIcon placeholder so the hero is never a silent white screen.
-function HeroImage({ uri, fallbackType, scale }) {
+function HeroImage({ uri, fallbackType, scale, label }) {
   const [failed, setFailed] = useState(false);
   return (
     <Animated.View style={[styles.heroInner, scale ? { transform: [{ scale }] } : null]}>
@@ -95,6 +95,9 @@ function HeroImage({ uri, fallbackType, scale }) {
           style={styles.heroImg}
           resizeMode="cover"
           onError={() => setFailed(true)}
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={label}
         />
       ) : (
         <View style={[styles.heroImg, styles.heroFallback]}>
@@ -386,7 +389,7 @@ export default function AnimalDetail({ route, navigation }) {
                 >
                   {images.map((uri, i) => (
                     <View key={uri} style={{ width: W, height: HERO_H }}>
-                      <HeroImage uri={uri} fallbackType={fallbackType} />
+                      <HeroImage uri={uri} fallbackType={fallbackType} label={t('a11y.photoOf', { name: `${listing.breed || ''} ${listing.animal || ''}`.trim(), defaultValue: 'Photo of {{name}}' })} />
                     </View>
                   ))}
                 </ScrollView>
@@ -403,7 +406,7 @@ export default function AnimalDetail({ route, navigation }) {
                 </View>
               </>
             ) : (
-              <HeroImage uri={images[0] || null} fallbackType={fallbackType} scale={heroScale} />
+              <HeroImage uri={images[0] || null} fallbackType={fallbackType} scale={heroScale} label={t('a11y.photoOf', { name: `${listing.breed || ''} ${listing.animal || ''}`.trim(), defaultValue: 'Photo of {{name}}' })} />
             )}
 
             <LinearGradient
@@ -687,7 +690,7 @@ export default function AnimalDetail({ route, navigation }) {
         {/* Report reasons */}
         <Modal visible={reportOpen} transparent animationType="slide" onRequestClose={() => setReportOpen(false)}>
           <View style={styles.modalBackdrop}>
-            <Pressable style={{ flex: 1 }} onPress={() => setReportOpen(false)} accessibilityLabel={t('cancel')} />
+            <Pressable style={{ flex: 1 }} onPress={() => setReportOpen(false)} accessibilityRole="button" accessibilityLabel={t('cancel')} />
             <View style={[styles.reportSheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.grabber} />
               <Text style={styles.reportTitle}>{t('animal.reportListing', 'Report listing')}</Text>

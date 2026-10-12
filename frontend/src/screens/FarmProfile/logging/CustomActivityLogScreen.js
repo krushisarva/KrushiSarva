@@ -87,7 +87,7 @@ export default function CustomActivityLogScreen({ navigation, route }) {
       />
 
       <SectionHeader icon="cash-outline" tint={COSMIC.EXPENSE} title={t('customActivity.costRupees')} optional />
-      <Card><BigNumberInput value={cost} onChange={setCost} unit="₹" keyboardType="decimal-pad" tint={COSMIC.EXPENSE} /></Card>
+      <Card><BigNumberInput value={cost} onChange={setCost} unit="₹" keyboardType="decimal-pad" tint={COSMIC.EXPENSE} accessibilityLabel={t('customActivity.costRupees')} /></Card>
 
       <SectionHeader icon="document-text-outline" tint={COSMIC.TEXT_3} title={t('customActivity.notes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

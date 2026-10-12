@@ -67,10 +67,10 @@ export function AiCreditsPage() {
       {s && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Card className="p-4"><div className="text-xs text-slate-400">Balance</div><div className="text-2xl font-semibold">{formatNumber(s.balance)}</div></Card>
-            <Card className="p-4"><div className="text-xs text-slate-400">Tier</div><div className="text-2xl font-semibold">{s.tierLabel}</div></Card>
-            <Card className="p-4"><div className="text-xs text-slate-400">Lifetime spent</div><div className="text-2xl font-semibold">{formatNumber(s.lifetimeSpent)}</div></Card>
-            <Card className="p-4"><div className="text-xs text-slate-400">Spent today</div><div className="text-2xl font-semibold">{formatNumber(s.todaySpent)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-slate-500">Balance</div><div className="text-2xl font-semibold">{formatNumber(s.balance)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-slate-500">Tier</div><div className="text-2xl font-semibold">{s.tierLabel}</div></Card>
+            <Card className="p-4"><div className="text-xs text-slate-500">Lifetime spent</div><div className="text-2xl font-semibold">{formatNumber(s.lifetimeSpent)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-slate-500">Spent today</div><div className="text-2xl font-semibold">{formatNumber(s.todaySpent)}</div></Card>
           </div>
           <div className="flex justify-end"><Button variant="primary" onClick={() => setAdjustOpen(true)}>Adjust credits</Button></div>
           <Card className="overflow-hidden">
@@ -81,15 +81,15 @@ export function AiCreditsPage() {
                 {s.recentTransactions.map((t) => (
                   <tr key={t.id}>
                     <td className="table-td"><Badge>{t.type}</Badge></td>
-                    <td className={`table-td font-medium ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{t.amount > 0 ? '+' : ''}{t.amount}</td>
+                    <td className={`table-td font-medium ${t.amount < 0 ? 'text-red-600' : 'text-green-700'}`}>{t.amount > 0 ? '+' : ''}{t.amount}</td>
                     <td className="table-td">{t.balanceAfter}</td>
                     <td className="table-td text-slate-500">{t.description || '—'}</td>
-                    <td className="table-td text-xs text-slate-400">{formatDateTime(t.date)}</td>
+                    <td className="table-td text-xs text-slate-500">{formatDateTime(t.date)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {s.recentTransactions.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No transactions.</p>}
+            {s.recentTransactions.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No transactions.</p>}
           </Card>
         </div>
       )}
@@ -166,8 +166,8 @@ export function ReportsPage() {
       {d && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Card className="p-4"><div className="text-xs text-slate-400">Total scans</div><div className="text-2xl font-semibold">{formatNumber(d.total)}</div></Card>
-            {d.byRisk.map((r) => <Card key={r.riskLevel} className="p-4"><div className="text-xs text-slate-400">{r.riskLevel} risk</div><div className="text-2xl font-semibold">{formatNumber(r.count)}</div></Card>)}
+            <Card className="p-4"><div className="text-xs text-slate-500">Total scans</div><div className="text-2xl font-semibold">{formatNumber(d.total)}</div></Card>
+            {d.byRisk.map((r) => <Card key={r.riskLevel} className="p-4"><div className="text-xs text-slate-500">{r.riskLevel} risk</div><div className="text-2xl font-semibold">{formatNumber(r.count)}</div></Card>)}
           </div>
           <Card className="p-4">
             <h3 className="mb-3 text-sm font-medium text-slate-700">Top crops scanned</h3>
@@ -189,7 +189,7 @@ export function ReportsPage() {
               <thead className="bg-slate-50"><tr><th className="table-th">Crop</th><th className="table-th">Disease</th><th className="table-th">Risk</th><th className="table-th">Confidence</th><th className="table-th">When</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {d.recent.map((r) => (
-                  <tr key={r.id}><td className="table-td">{r.cropType}</td><td className="table-td">{r.primaryDisease}</td><td className="table-td"><StatusBadge value={r.riskLevel.toUpperCase()} /></td><td className="table-td">{Math.round((r.confidenceScore ?? 0) * 100)}%</td><td className="table-td text-xs text-slate-400">{formatDateTime(r.createdAt)}</td></tr>
+                  <tr key={r.id}><td className="table-td">{r.cropType}</td><td className="table-td">{r.primaryDisease}</td><td className="table-td"><StatusBadge value={r.riskLevel.toUpperCase()} /></td><td className="table-td">{Math.round((r.confidenceScore ?? 0) * 100)}%</td><td className="table-td text-xs text-slate-500">{formatDateTime(r.createdAt)}</td></tr>
                 ))}
               </tbody>
             </table>

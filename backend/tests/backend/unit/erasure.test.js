@@ -27,10 +27,12 @@ describe('anonymizedUserFields', () => {
 
   test('clears every PII field', () => {
     const piiFields = [
-      'avatar', 'statusQuote',
+      // `email` was once missing from the patch: it survived erasure and, being
+      // unique, blocked the address from a new account.
+      'email', 'avatar', 'statusQuote',
       'pincode', 'district', 'city', 'state', 'taluka', 'village', 'lat', 'lng',
       'gstNumber', 'aadhaarLast4', 'annualHouseholdIncome',
-      'dateOfBirth', 'dependents', 'familySize', 'education', 'gender',
+      'dateOfBirth', 'dependents', 'familySize', 'education', 'gender', 'farmingExperienceYrs',
       'preferredContactMethod', 'preferredMandi', 'businessType', 'activeFarmId',
     ];
     for (const f of piiFields) {

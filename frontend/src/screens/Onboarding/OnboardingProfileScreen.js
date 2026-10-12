@@ -370,24 +370,24 @@ export default function OnboardingProfileScreen({ navigation }) {
 
           {/* ── Header with back ─────────────────────────────────────────── */}
           <View style={sty.headerRow}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={sty.backBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={sty.backBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
               <Ionicons name="arrow-back" size={18} color={KHET.foreground} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={sty.headerTitle}>{t('onboarding.profileTitle')}</Text>
+              <Text style={sty.headerTitle} accessibilityRole="header">{t('onboarding.profileTitle')}</Text>
               <Text style={sty.headerSub}>{t('onboarding.nameSub')}</Text>
             </View>
           </View>
 
           {/* Progress bar */}
-          <View style={sty.progressBar}>
+          <View style={sty.progressBar} accessible accessibilityRole="progressbar" accessibilityLabel={t('onboarding.profileTitle')} accessibilityValue={{ min: 0, max: 4, now: filledSections }}>
             <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={[sty.progressFill, { width: `${Math.max(8, (filledSections / 4) * 100)}%` }]} />
           </View>
 
           {/* ── Profile Photo ────────────────────────────────────────────── */}
           <Rise delay={40} style={sty.photoSection}>
-            <TouchableOpacity style={sty.avatarWrap} onPress={handlePickPhoto} activeOpacity={0.85}>
+            <TouchableOpacity style={sty.avatarWrap} onPress={handlePickPhoto} activeOpacity={0.85} accessibilityRole="button" accessibilityState={{ busy: uploadingPhoto }} accessibilityLabel={avatarUri ? t('profile.a11yChangePhoto', 'Change profile photo') : t('onboarding.tapAddPhoto')}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={sty.avatarImg} />
               ) : (
@@ -408,19 +408,21 @@ export default function OnboardingProfileScreen({ navigation }) {
           <Rise delay={90} style={sty.section}>
             <View style={sty.sectionHeader}>
               <SectionIcon name="person-outline" />
-              <Text style={sty.sectionTitle}>{t('onboarding.yourName')}</Text>
+              <Text style={sty.sectionTitle} accessibilityRole="header">{t('onboarding.yourName')}</Text>
               <Text style={sty.required}>*</Text>
             </View>
             <View style={sty.row}>
               <View style={{ flex: 1 }}>
                 <TextInput {...fieldProps(firstNameRef)} style={sty.input} value={firstName} onChangeText={setFirstName}
                   placeholder={t('onboarding.firstName')} placeholderTextColor={PLACEHOLDER} maxLength={50}
-                  autoCapitalize="words" />
+                  autoCapitalize="words"
+                  accessibilityLabel={t('onboarding.firstName')} />
               </View>
               <View style={{ flex: 1 }}>
                 <TextInput {...fieldProps(lastNameRef)} style={sty.input} value={lastName} onChangeText={setLastName}
                   placeholder={t('onboarding.lastName')} placeholderTextColor={PLACEHOLDER} maxLength={50}
-                  autoCapitalize="words" />
+                  autoCapitalize="words"
+                  accessibilityLabel={t('onboarding.lastName')} />
               </View>
             </View>
           </Rise>
@@ -429,7 +431,7 @@ export default function OnboardingProfileScreen({ navigation }) {
           <Rise delay={140} style={sty.section}>
             <View style={sty.sectionHeader}>
               <SectionIcon name="location-outline" />
-              <Text style={sty.sectionTitle}>{t('farmProfile.farmLocation')}</Text>
+              <Text style={sty.sectionTitle} accessibilityRole="header">{t('farmProfile.farmLocation')}</Text>
               <Text style={sty.required}>*</Text>
             </View>
 
@@ -440,7 +442,8 @@ export default function OnboardingProfileScreen({ navigation }) {
             <TextInput {...fieldProps(pincodeRef)} style={sty.input} value={pincode}
               onChangeText={(v) => setPincode(cleanPincode(v))}
               placeholder={t('onboarding.pincodePlaceholder')} keyboardType="number-pad"
-              maxLength={PINCODE_INPUT_MAX_LENGTH} placeholderTextColor={PLACEHOLDER} />
+              maxLength={PINCODE_INPUT_MAX_LENGTH} placeholderTextColor={PLACEHOLDER}
+              accessibilityLabel={t('farmProfile.pincode')} />
             {pin.status === 'idle' ? (
               <Text style={sty.pinHint}>{t('pincode.autofillHint')}</Text>
             ) : (
@@ -467,14 +470,16 @@ export default function OnboardingProfileScreen({ navigation }) {
                 triggerStyle={sty.pickerTrigger} triggerTextStyle={sty.pickerText} />
             ) : (
               <TextInput {...fieldProps(talukaRef)} style={sty.input} value={taluka} onChangeText={setTaluka}
-                placeholder={t('onboarding.talukaPlaceholder')} placeholderTextColor={PLACEHOLDER} />
+                placeholder={t('onboarding.talukaPlaceholder')} placeholderTextColor={PLACEHOLDER}
+                accessibilityLabel={t('farmProfile.taluka')} />
             )}
 
             <Text style={sty.fieldLabel}>{t('farmProfile.village')}</Text>
             <TextInput {...fieldProps(villageRef)} style={sty.input} value={village} onChangeText={setVillage}
-              placeholder={t('onboarding.enterVillage')} placeholderTextColor={PLACEHOLDER} />
+              placeholder={t('onboarding.enterVillage')} placeholderTextColor={PLACEHOLDER}
+              accessibilityLabel={t('farmProfile.village')} />
 
-            <TouchableOpacity style={sty.gpsBtn} onPress={captureGPS} disabled={gpsLoading} activeOpacity={0.8}>
+            <TouchableOpacity style={sty.gpsBtn} onPress={captureGPS} disabled={gpsLoading} activeOpacity={0.8} accessibilityRole="button">
               <Ionicons name={lat ? 'checkmark-circle' : 'navigate-outline'} size={16} color={KHET.primary} />
               <Text style={sty.gpsTxt}>
                 {gpsLoading ? t('onboarding.gettingLocation') : lat ? t('onboarding.gpsCaptured', { lat: lat.toFixed(4), lng: lng.toFixed(4) }) : t('onboarding.detectLocation')}
@@ -486,17 +491,19 @@ export default function OnboardingProfileScreen({ navigation }) {
           <Rise delay={190} style={sty.section}>
             <View style={sty.sectionHeader}>
               <SectionIcon name="leaf-outline" />
-              <Text style={sty.sectionTitle}>{t('farmDetails')}</Text>
+              <Text style={sty.sectionTitle} accessibilityRole="header">{t('farmDetails')}</Text>
             </View>
 
             <Text style={sty.fieldLabel}>{t('farmProfile.farmName')}</Text>
             <TextInput {...fieldProps(farmNameRef)} style={sty.input} value={farmName} onChangeText={setFarmName}
-              placeholder={t('onboarding.farmNamePlaceholderOwner', { owner: firstName.trim() || 'My' })} placeholderTextColor={PLACEHOLDER} maxLength={60} />
+              placeholder={t('onboarding.farmNamePlaceholderOwner', { owner: firstName.trim() || 'My' })} placeholderTextColor={PLACEHOLDER} maxLength={60}
+              accessibilityLabel={t('farmProfile.farmName')} />
 
             <Text style={[sty.fieldLabel, { marginTop: vs(14) }]}>{t('onboarding.landSize')}</Text>
             <TextInput {...fieldProps(landSizeRef)} style={[sty.input, { textAlign: 'center', fontSize: fs(18), fontFamily: KFONT.sansBold }]}
               value={landSize} onChangeText={(v) => setLandSize(cleanAcres(v))}
-              placeholder={t('farmProfile.landSizePlaceholder')} keyboardType="decimal-pad" placeholderTextColor={PLACEHOLDER} />
+              placeholder={t('farmProfile.landSizePlaceholder')} keyboardType="decimal-pad" placeholderTextColor={PLACEHOLDER}
+              accessibilityLabel={t('onboarding.landSize')} />
 
             <Text style={[sty.fieldLabel, { marginTop: vs(14) }]}>{t('farmProfile.soilType')}</Text>
             <View style={sty.soilGrid}>
@@ -505,7 +512,7 @@ export default function OnboardingProfileScreen({ navigation }) {
                 return (
                   <TouchableOpacity key={soil.key} style={[sty.soilCard, i % GRID_COLUMNS !== GRID_COLUMNS - 1 && sty.gridGutter]}
                     onPress={() => setSoilType(soil.key)} activeOpacity={0.8}
-                    accessibilityRole="radio" accessibilityState={{ selected: sel }}>
+                    accessibilityRole="radio" accessibilityState={{ checked: sel }}>
                     <LinearGradient colors={soil.bg} style={[sty.soilSquare, sel && sty.soilSquareSel]}>
                       {soil.sk ? <SoilIcon type={soil.sk} size={30} /> : <Ionicons name="help-circle" size={30} color={KHET.gold} />}
                       {sel && <View style={sty.soilCheck}><Ionicons name="checkmark" size={10} color="#FFF" /></View>}
@@ -524,7 +531,7 @@ export default function OnboardingProfileScreen({ navigation }) {
               {IRRS.map(irr => {
                 const sel = irrigation === irr.key;
                 return (
-                  <TouchableOpacity key={irr.key} style={[sty.irrChip, sel && sty.irrChipSel]} onPress={() => setIrrigation(irr.key)} activeOpacity={0.8}>
+                  <TouchableOpacity key={irr.key} style={[sty.irrChip, sel && sty.irrChipSel]} onPress={() => setIrrigation(irr.key)} activeOpacity={0.8} accessibilityRole="radio" accessibilityState={{ checked: sel }}>
                     <View style={[sty.irrIconSmall, sel && sty.irrIconSmallSel]}>
                       {irr.ik ? <IrrigationIcon type={irr.ik} size={20} /> : <Ionicons name="shuffle" size={18} color={KHET.gold} />}
                     </View>
@@ -540,7 +547,7 @@ export default function OnboardingProfileScreen({ navigation }) {
           <Rise delay={240} style={sty.section}>
             <View style={sty.sectionHeader}>
               <SectionIcon name="nutrition-outline" />
-              <Text style={sty.sectionTitle}>{t('onboarding.cropsTitle')}</Text>
+              <Text style={sty.sectionTitle} accessibilityRole="header">{t('onboarding.cropsTitle')}</Text>
               {selectedCrops.size > 0 && (
                 <View style={sty.cropBadge}><Text style={sty.cropBadgeText}>{selectedCrops.size}</Text></View>
               )}
@@ -597,10 +604,13 @@ export default function OnboardingProfileScreen({ navigation }) {
                   returnKeyType="done"
                   maxLength={30}
                   autoFocus
+                  accessibilityLabel={t('onboarding.typeCropName', 'Type crop name')}
                 />
                 <TouchableOpacity
                   style={[sty.customAddBtn, !customCrop.trim() && { opacity: 0.5 }]}
                   onPress={addCustomCrop} disabled={!customCrop.trim()} activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('a11y.addNew', 'Add new')}
                 >
                   <Ionicons name="add" size={22} color={KHET.primaryForeground} />
                 </TouchableOpacity>
@@ -613,7 +623,7 @@ export default function OnboardingProfileScreen({ navigation }) {
                 {customCrops.map(c => (
                   <View key={c} style={sty.customChip}>
                     <Text style={sty.customChipTxt}>{c}</Text>
-                    <TouchableOpacity onPress={() => toggleCrop(c)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
+                    <TouchableOpacity onPress={() => toggleCrop(c)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }} accessibilityRole="button" accessibilityLabel={t('a11y.removeItem', { name: c, defaultValue: 'Remove {{name}}' })}>
                       <Ionicons name="close-circle" size={16} color={KHET.primary} />
                     </TouchableOpacity>
                   </View>
@@ -630,7 +640,7 @@ export default function OnboardingProfileScreen({ navigation }) {
       {/* The navigation bar is drawn over the app (edge-to-edge): without the
           inset, Skip and Complete sat under the system back/home buttons. */}
       <View style={[sty.bottomBar, { paddingBottom: insets.bottom + vs(12) }]} onLayout={onBarLayout}>
-        <TouchableOpacity style={[sty.skipBtn, saving && { opacity: 0.5 }]} onPress={handleSkip} disabled={saving} activeOpacity={0.8}>
+        <TouchableOpacity style={[sty.skipBtn, saving && { opacity: 0.5 }]} onPress={handleSkip} disabled={saving} activeOpacity={0.8} accessibilityRole="button">
           <Text style={sty.skipTxt}>{t('onboarding.skip')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -638,6 +648,7 @@ export default function OnboardingProfileScreen({ navigation }) {
           onPress={handleComplete}
           disabled={saving || !canSubmit}
           activeOpacity={0.9}
+          accessibilityRole="button"
         >
           <LinearGradient colors={KHET.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={sty.submitGrad}>
             {saving ? <ActivityIndicator color="#FFF" /> : (

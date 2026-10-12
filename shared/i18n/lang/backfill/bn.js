@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 875 keys.
 
 export default {
   "aiChat.attachHint": "দ্রুত রোগ নির্ণয়ের জন্য আপনার ফসলের একটি ছবি দিন।",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} ডেলিভারি",
   "cart.freeDeliveryPrefix": "যোগ করুন",
   "cart.freeDeliverySuffix": "ফ্রি ডেলিভারির জন্য আরও!",
-  "cart.savedOnDelivery": "আপনি ডেলিভারিতে ₹49 সাশ্রয় করেছেন!",
+  "cart.savedOnDelivery": "এই অর্ডারে ফ্রি ডেলিভারি",
   "celebrationSheet.loggedTitle": "লগ করা হয়েছে!",
   "close": "বন্ধ করুন",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "দিন",
   "diagReport.detection": "শনাক্তকরণ",
   "diagReport.diagnosePrompt": "রোগ নির্ণয় প্রম্পট",
-  "diagReport.diagnosingPathologist": "রোগ নির্ণয়কারী বিশেষজ্ঞ",
+  "diagReport.diagnosingPathologist": "AI রোগ নির্ণয় ব্যবস্থা",
   "diagReport.diagnosisModel": "রোগ নির্ণয় মডেল",
   "diagReport.differentialDiagnosis": "পার্থক্যমূলক রোগ নির্ণয়",
   "diagReport.disclaimer": "এই রিপোর্টটি একটি AI-সহায়ক পরামর্শ ব্যবস্থা দ্বারা তৈরি। এটি একটি সিদ্ধান্ত-সহায়ক নথি, কোনও আনুষ্ঠানিক প্রেসক্রিপশন নয়। গুরুতর, অস্বাভাবিক বা দীর্ঘস্থায়ী ক্ষেত্রে অনুগ্রহ করে একজন প্রত্যয়িত কৃষি বিশেষজ্ঞ বা আপনার নিকটতম কৃষি বিজ্ঞান কেন্দ্র (KVK)-এর পরামর্শ নিন। প্রস্তাবিত কীটনাশকগুলি অবশ্যই CIB&RC-অনুমোদিত লেবেল অনুযায়ী ব্যবহার করতে হবে।",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "সেচ",
   "diagReport.kisanCallCentre": "কিষাণ কল সেন্টার:",
   "diagReport.kvkLocator": "KVK লোকেটর:",
-  "diagReport.labSub": "উদ্ভিদ রোগবিদ্যা · ডায়াগনস্টিক ল্যাব",
+  "diagReport.labSub": "AI ফসল স্বাস্থ্য পরামর্শ",
   "diagReport.labTag": "একটি AI-সহায়ক ফসল স্বাস্থ্য নির্ণয় পরিষেবা",
   "diagReport.language": "ভাষা:",
   "diagReport.leafWetness": "পাতার আর্দ্রতা",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "সামগ্রিক ঝুঁকি",
   "diagReport.passed": "উত্তীর্ণ",
   "diagReport.pathogenType": "রোগজীবাণুর ধরন",
-  "diagReport.pathologistAi": "রোগ বিশেষজ্ঞ (AI):",
+  "diagReport.pathologistAi": "AI ব্যবস্থা:",
   "diagReport.patientSummary": "রোগীর সারসংক্ষেপ",
   "diagReport.perAcre": "প্রতি একর",
   "diagReport.phone": "ফোন",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "ফসলের রোগ শনাক্তকরণ রিপোর্ট",
   "diagReport.requiredPpe": "প্রয়োজনীয় PPE:",
   "diagReport.resistanceSafetyNotes": "প্রতিরোধ ও নিরাপত্তা নোট",
-  "diagReport.reviewingAuthority": "পর্যালোচনাকারী কর্তৃপক্ষ",
+  "diagReport.reviewingAuthority": "পর্যালোচনার জন্য প্রস্তাবিত — পর্যালোচনা করা হয়নি",
   "diagReport.rotation": "ঘূর্ণন",
   "diagReport.ruledOut": "বাদ দেওয়া হয়েছে",
   "diagReport.schedule": "সময়সূচি",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "চিকিৎসার সময়সীমা",
   "diagReport.triggeringConditions": "উদ্রেককারী পরিস্থিতি",
   "diagReport.unverifiedLabel": "অযাচাইকৃত:",
-  "diagReport.verified": "যাচাইকৃত",
+  "diagReport.verified": "AI দ্বারা তৈরি",
   "diagReport.verifiedLabel": "যাচাইকৃত:",
   "diagReport.vision": "ভিশন",
   "diagReport.visionModel": "ভিশন মডেল:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "প্রাপ্যতা",
   "product.countryOfOrigin": "উৎপত্তির দেশ",
-  "product.cropSetuVerified": "KrushiSarva যাচাইকৃত",
   "product.customerSupport": "গ্রাহক সহায়তা",
   "product.deliveryAddressSub": "লাইভ শিপিং অনুমান ও সংরক্ষিত ঠিকানা শীঘ্রই আসছে।",
   "product.deliveryAddressTitle": "ডেলিভারি ও ঠিকানা",

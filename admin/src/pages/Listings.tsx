@@ -15,7 +15,7 @@ const BOOKING_STATUSES = ['PENDING', 'CONFIRMED', 'ACTIVE', 'COMPLETED', 'CANCEL
 
 function StatusSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Select className="w-auto py-1 text-xs" value={value} onClick={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)}>
+    <Select className="w-auto py-1 text-xs" value={value} onClick={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value)} aria-label="Listing status">
       {LISTING_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
     </Select>
   );
@@ -46,8 +46,8 @@ export function AnimalsPage() {
     { key: 'verified', header: 'Verified', render: (a) => <BoolBadge value={a.verified} />, csv: (a) => String(a.verified) },
     { key: 'status', header: 'Status', render: (a) => <StatusSelect value={a.status} onChange={(v) => patch.mutate({ id: a.id, data: { status: v } })} /> },
     { key: 'actions', header: '', render: (a) => (
-      <Button variant="ghost" onClick={(e) => { e.stopPropagation(); patch.mutate({ id: a.id, data: { verified: !a.verified } }); }}>
-        {a.verified ? <BadgeX className="h-4 w-4 text-slate-400" /> : <BadgeCheck className="h-4 w-4 text-green-600" />}
+      <Button variant="ghost" aria-label={a.verified ? `Remove verification from ${a.animal} listing` : `Verify ${a.animal} listing`} onClick={(e) => { e.stopPropagation(); patch.mutate({ id: a.id, data: { verified: !a.verified } }); }}>
+        {a.verified ? <BadgeX className="h-4 w-4 text-slate-500" /> : <BadgeCheck className="h-4 w-4 text-green-600" />}
       </Button>
     )},
   ];

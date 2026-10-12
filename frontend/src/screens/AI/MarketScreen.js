@@ -162,6 +162,8 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
       <Pressable
         style={[M.cropTile, isSelected && M.cropTileActive]}
         onPress={() => { onSelect(item); onClose(); }}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: isSelected }}
       >
         {isSelected && (
           <View style={M.cropTileCheck}>
@@ -183,7 +185,7 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop */}
       <Animated.View style={[M.modalBackdrop, { opacity: backdropAnim }]}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
       </Animated.View>
 
       {/* Sheet */}
@@ -196,7 +198,7 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
         {/* Title row */}
         <View style={M.modalTitleRow}>
           <Text style={M.modalTitle}>{t('market.selectCrop', 'Select Crop')}</Text>
-          <Pressable style={M.modalClose} onPress={onClose}>
+          <Pressable style={M.modalClose} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
             <Ionicons name="close" size={KICON.md} color={SLATE} />
           </Pressable>
         </View>
@@ -213,9 +215,10 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
             value={query}
             onChangeText={setQuery}
             autoCorrect={false}
+            accessibilityLabel={t('market.searchCrops', 'Search crops…')}
           />
           {query.length > 0 && (
-            <Pressable onPress={() => setQuery('')}>
+            <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('rent.clearSearch', 'Clear search')}>
               <Ionicons name="close-circle" size={KICON.base} color={COLORS.textDisabled} />
             </Pressable>
           )}
@@ -235,6 +238,8 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
                 key={cat.key}
                 style={[M.catChip, active && { backgroundColor: cat.color, borderColor: cat.color }]}
                 onPress={() => setActiveCategory(cat.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
               >
                 <Ionicons name={cat.icon + '-outline'} size={KICON.sm} color={active ? COLORS.white : COLORS.textMedium} />
                 <Text style={[M.catChipText, active && { color: COLORS.white }]} numberOfLines={1}>{t('market.cat_' + cat.key, cat.label)}</Text>
@@ -274,7 +279,7 @@ function CropPickerModal({ visible, selected, onSelect, onClose, t }) {
 // ── StatPill ──────────────────────────────────────────────────────────────────
 function StatPill({ label, value, color }) {
   return (
-    <View style={[M.statPill, { borderColor: withAlpha(color, '30') }]}>
+    <View style={[M.statPill, { borderColor: withAlpha(color, '30') }]} accessible>
       <Text style={[M.statPillLabel, { color }]}>{label}</Text>
       <Text style={[M.statPillValue, { color }]}>{value}</Text>
     </View>
@@ -400,7 +405,7 @@ export default function MarketScreen({ navigation }) {
 
       {/* ── Header ── */}
       <View style={[M.header, { paddingTop: insets.top + KSPACE.s8 }]}>
-        <Pressable onPress={() => navigation.goBack()} style={M.backBtn}>
+        <Pressable onPress={() => navigation.goBack()} style={M.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={KICON.xl} color={SLATE} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -433,7 +438,7 @@ export default function MarketScreen({ navigation }) {
       </View>
 
       {/* ── Crop selector ── */}
-      <Pressable style={M.cropSelector} onPress={() => setPickerVisible(true)}>
+      <Pressable style={M.cropSelector} onPress={() => setPickerVisible(true)} accessibilityRole="button">
         <View style={M.cropSelectorLeft}>
           <View style={M.cropSelectorIcon}>
             <CropIcon crop={selectedCrop} size={38} />
@@ -454,7 +459,7 @@ export default function MarketScreen({ navigation }) {
       {/* ── State + District filter row ── */}
       <View style={M.filterRow}>
         {/* State picker */}
-        <Pressable style={M.stateBtn} onPress={() => { setShowStateMenu(v => !v); setShowDistrictMenu(false); }}>
+        <Pressable style={M.stateBtn} onPress={() => { setShowStateMenu(v => !v); setShowDistrictMenu(false); }} accessibilityRole="button" accessibilityState={{ expanded: showStateMenu }} accessibilityLabel={`${t('profile.state', 'State')}: ${selectedState}`}>
           <Ionicons name="map-outline" size={KICON.xs} color={COLORS.primary} />
           <Text style={M.stateBtnTxt} numberOfLines={1}>{selectedState}</Text>
           <Ionicons name="chevron-down" size={KICON.xs} color={COLORS.textMedium} />
@@ -464,6 +469,9 @@ export default function MarketScreen({ navigation }) {
         <Pressable
           style={M.districtBtn}
           onPress={() => { setShowDistrictMenu(v => !v); setShowStateMenu(false); }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showDistrictMenu }}
+          accessibilityLabel={`${t('profile.district', 'District')}: ${selectedDistrict || t('market.allDistricts', 'All Districts')}`}
         >
             <Ionicons name="location-outline" size={KICON.xs} color={selectedDistrict ? COLORS.primary : COLORS.textMedium} />
           <Text
@@ -477,7 +485,9 @@ export default function MarketScreen({ navigation }) {
               <Pressable onPress={() => {
                 setSelectedDistrict('');
                 loadMandiPrices(selectedCrop, selectedState, '');
-              }} hitSlop={8}>
+              }} hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('a11y.removeItem', { name: selectedDistrict, defaultValue: 'Remove {{name}}' })}>
                 {/* GAP: 13 sits between KICON.xs (12) and sm (14). */}
                 <Ionicons name="close-circle" size={13} color={COLORS.textDisabled} />
               </Pressable>
@@ -494,6 +504,8 @@ export default function MarketScreen({ navigation }) {
             setShowDistrictMenu(false);
             loadMandiPrices(selectedCrop, selectedState, selectedDistrict);
           }}
+          accessibilityRole="button"
+          accessibilityLabel={t('search', 'Search')}
         >
           {/* GAP: 15 sits between KICON.sm (14) and base (16). */}
           <Ionicons name="analytics-outline" size={15} color={COLORS.white} />
@@ -514,6 +526,8 @@ export default function MarketScreen({ navigation }) {
                   setShowStateMenu(false);
                   loadMandiPrices(selectedCrop, s, '');
                 }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: s === selectedState }}
               >
                 <Text style={[M.stateItemTxt, s === selectedState && { color: COLORS.primary, fontWeight: '800' }]}>{s}</Text>
               </Pressable>
@@ -534,6 +548,8 @@ export default function MarketScreen({ navigation }) {
                 setShowDistrictMenu(false);
                 loadMandiPrices(selectedCrop, selectedState, '');
               }}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: !selectedDistrict }}
             >
               <Text style={[M.stateItemTxt, !selectedDistrict && { color: COLORS.primary, fontWeight: '800' }]}>
                 {t('market.allDistricts', 'All Districts')}
@@ -549,6 +565,8 @@ export default function MarketScreen({ navigation }) {
                     setShowDistrictMenu(false);
                     loadMandiPrices(selectedCrop, selectedState, d);
                   }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: d === selectedDistrict }}
                 >
                   <Text style={[M.stateItemTxt, d === selectedDistrict && { color: COLORS.primary, fontWeight: '800' }]}>{d}</Text>
                 </Pressable>
@@ -599,8 +617,8 @@ export default function MarketScreen({ navigation }) {
               {/* GAP: KICON jumps 24 → 48. */}
               <Ionicons name="cloud-offline-outline" size={36} color={COLORS.textDisabled} />
             </View>
-            <Text style={M.errorTxt}>{mandiError}</Text>
-            <Pressable onPress={() => loadMandiPrices()} style={M.retryBtn}>
+            <Text style={M.errorTxt} accessibilityLiveRegion="polite">{mandiError}</Text>
+            <Pressable onPress={() => loadMandiPrices()} style={M.retryBtn} accessibilityRole="button">
               <Ionicons name="refresh" size={KICON.sm} color={COLORS.primary} />
               <Text style={M.retryTxt}>{t('market.tryAgain', 'Try Again')}</Text>
             </Pressable>
@@ -746,7 +764,7 @@ export default function MarketScreen({ navigation }) {
             <Text style={[M.loadingTxt, { fontSize: 12 }]}>
               {t('market.tryDifferent', 'Try a different state or district.')}
             </Text>
-            <Pressable onPress={() => loadMandiPrices()} style={M.retryBtn}>
+            <Pressable onPress={() => loadMandiPrices()} style={M.retryBtn} accessibilityRole="button">
               <Ionicons name="refresh" size={KICON.sm} color={COLORS.primary} />
               <Text style={M.retryTxt}>{t('market.refresh', 'Refresh')}</Text>
             </Pressable>
@@ -761,6 +779,7 @@ export default function MarketScreen({ navigation }) {
               onPress={() => navigation.navigate('AIChat', {
                 initialMessage: `What's the best time to sell my ${selectedCrop} in ${selectedState}?`,
               })}
+              accessibilityRole="button"
             >
               <LinearGradient
                 colors={[COLORS.primary, COLORS.greenDark2]}

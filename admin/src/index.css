@@ -14,7 +14,7 @@
   }
   /* Visible keyboard focus everywhere (accessibility). */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-1;
+    @apply outline-none ring-2 ring-brand-700 ring-offset-1;
   }
 }
 
@@ -31,8 +31,8 @@
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
-           placeholder:text-slate-400 focus:border-brand-500;
+    @apply w-full rounded-lg border border-slate-500 bg-white px-3 py-2 text-sm
+           placeholder:text-slate-500 focus:border-brand-700;
   }
   .label { @apply mb-1 block text-sm font-medium text-slate-700; }
   .table-th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }

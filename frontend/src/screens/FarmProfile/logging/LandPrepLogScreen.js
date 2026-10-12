@@ -84,10 +84,10 @@ export default function LandPrepLogScreen({ navigation, route }) {
       <ChipRow items={implements_} value={implement} onChange={setImplement} tint={COSMIC.LAND_PREP} />
 
       <SectionHeader icon="people-outline" tint={COSMIC.LAND_PREP} title={t('landPrepLog.sectionLabourCost')} optional />
-      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.LAND_PREP} /></Card>
+      <Card><BigNumberInput value={labour} onChange={setLabour} unit="₹" tint={COSMIC.LAND_PREP} accessibilityLabel={t('landPrepLog.sectionLabourCost')} /></Card>
 
       <SectionHeader icon="construct-outline" tint={COSMIC.INFO} title={t('landPrepLog.sectionMachineryCost')} optional />
-      <Card><BigNumberInput value={machinery} onChange={setMachinery} unit="₹" tint={COSMIC.INFO} /></Card>
+      <Card><BigNumberInput value={machinery} onChange={setMachinery} unit="₹" tint={COSMIC.INFO} accessibilityLabel={t('landPrepLog.sectionMachineryCost')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('landPrepLog.sectionNotes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

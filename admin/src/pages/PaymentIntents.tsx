@@ -50,8 +50,8 @@ const PURPOSE_OPTIONS = PAYMENT_PURPOSES.map((p) => ({ label: purposeLabel(p), v
  */
 const CHIP: Record<Tone, { on: string; off: string }> = {
   red: { on: 'bg-red-600 text-white shadow-sm', off: 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' },
-  amber: { on: 'bg-amber-500 text-white shadow-sm', off: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100' },
-  green: { on: 'bg-green-600 text-white shadow-sm', off: 'border-green-200 bg-green-50 text-green-800 hover:bg-green-100' },
+  amber: { on: 'bg-amber-700 text-white shadow-sm', off: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100' },
+  green: { on: 'bg-green-700 text-white shadow-sm', off: 'border-green-200 bg-green-50 text-green-800 hover:bg-green-100' },
   blue: { on: 'bg-blue-600 text-white shadow-sm', off: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100' },
   violet: { on: 'bg-violet-600 text-white shadow-sm', off: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100' },
   slate: { on: 'bg-slate-800 text-white shadow-sm', off: 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' },
@@ -93,7 +93,7 @@ function Chip({ tone, label, title, active, count, loading, onClick }: {
         <span
           className={[
             'rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums transition-colors',
-            active ? 'bg-white/25' : count === '0' ? 'bg-slate-100 text-slate-400' : 'bg-white/70',
+            active ? 'bg-white/25' : count === '0' ? 'bg-slate-100 text-slate-600' : 'bg-white/70',
           ].join(' ')}
         >
           {count}
@@ -119,9 +119,9 @@ function Ids({ intent }: { intent: IntentRow }) {
       <ul className="divide-y divide-slate-100 rounded-lg border border-slate-100">
         {rows.map((r) => (
           <li key={r.label} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
               {r.label}
-              {r.hint && <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">· {r.hint}</span>}
+              {r.hint && <span className="ml-1 font-normal normal-case tracking-normal text-slate-500">· {r.hint}</span>}
             </span>
             <span className="min-w-0 text-sm text-slate-800">
               <CopyValue value={r.value} label={r.label.toLowerCase()} />
@@ -166,7 +166,7 @@ function IntentDrawer({ intent, onClose }: { intent: IntentRow | null; onClose: 
             { label: 'Gateway', value: intent.provider || '—' },
             { label: 'Started', value: <span title={formatDateTime(intent.createdAt)}>{relativeTime(intent.createdAt)}</span> },
             { label: 'Last changed', value: <span title={formatDateTime(intent.updatedAt)}>{relativeTime(intent.updatedAt)}</span> },
-            { label: 'Reconciled', value: intent.reconciledAt ? <span title={formatDateTime(intent.reconciledAt)}>{relativeTime(intent.reconciledAt)}</span> : <span className="text-slate-400">Not yet</span> },
+            { label: 'Reconciled', value: intent.reconciledAt ? <span title={formatDateTime(intent.reconciledAt)}>{relativeTime(intent.reconciledAt)}</span> : <span className="text-slate-500">Not yet</span> },
           ]}
           />
 
@@ -356,7 +356,7 @@ export default function PaymentIntentsPage() {
           </p>
         )}
         {summary.error != null && (
-          <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-400">
+          <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-500">
             Queue totals unavailable right now — the chips and filters still work, they just cannot say how many.
           </p>
         )}

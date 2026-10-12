@@ -1,11 +1,11 @@
 /**
  * BusinessProfileScreen — seller onboarding / KYC.
  *
- * The single most consequential form in the app: submitting it is the explicit
- * consent that promotes FARMER → SELLER, and it carries bank + Aadhaar + PAN.
- * The consent flag and the encrypted-field rule ("blank means keep what's on
- * file") are unchanged. The rules themselves live in utils/businessProfile.js,
- * where they are unit-tested; this file is layout and wiring.
+ * The single most consequential form in the app: saved with its consent box
+ * ticked, it is what promotes FARMER → SELLER, and it carries bank + Aadhaar +
+ * PAN. The encrypted-field rule ("blank means keep what's on file") is
+ * unchanged. The rules themselves live in utils/businessProfile.js, where they
+ * are unit-tested; this file is layout and wiring.
  *
  * IT HAS TO FEEL LIKE A BANK COUNTER, NOT A SIGN-UP FORM
  * ------------------------------------------------------
@@ -52,13 +52,19 @@
  *     offers a way to log out instead of trapping someone who signed in with
  *     the wrong number.
  *   - A stale offline flag is re-checked when Save is tapped.
+ *   - Becoming a seller is asked for, not assumed. Every save used to send
+ *     `sellerConsent: true`, so the API recorded a consent the person had never
+ *     been shown. An account that is not a seller yet now gets a tick box above
+ *     Save (never pre-ticked, never restored) and the flag goes out only when
+ *     it is ticked. A seller sees no box and is asked nothing.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage, saveTokens } from '@krushisarva/shared/services/api';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { DISTRICT_LIST, getTalukas, BUSINESS_TYPES } from '@krushisarva/shared/constants/locations';
 import { hasSellerRole } from '@krushisarva/shared/utils/roles';
 import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
@@ -69,6 +75,7 @@ import { C, E, R, SP, T, alpha, kycStatusMeta, useResponsive } from '../theme';
 import { useNetwork } from '../hooks/useNetwork';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import useProfileSync, { noteProfileWrite } from '../hooks/useProfileSync';
+import { openExternalUrl } from '../utils/openUrl';
 import {
   FIELD_ORDER, ID_INPUT_MAX, NAME_MAX, TEXT_MAX,
   applyFieldChange, buildBusinessProfilePayload, canonicalDistrict, canonicalTaluka,
@@ -209,14 +216,26 @@ function BusinessProfileForm({ navigation }) {
     () => ({ status: pin.status, state: pin.summary?.state || null }),
     [pin.status, pin.summary],
   );
-  const validationCtx = useMemo(() => ({ onFile, t, pincode: pinOutcome }), [onFile, t, pinOutcome]);
+  // Not a seller yet: this save is the one that opens the seller account, so
+  // the form shows the consent box and will not save without the tick. A
+  // seller never sees it. Neither does a minor, who cannot submit the form.
+  const needsConsent = !hasSellerRole(user) && !isMinor;
+  const validationCtx = useMemo(
+    () => ({ onFile, t, pincode: pinOutcome, requireConsent: needsConsent }),
+    [onFile, t, pinOutcome, needsConsent],
+  );
   const dirtyRef = useRef(isDirty);
   dirtyRef.current = isDirty;
   const ctxRef = useRef(validationCtx);
   ctxRef.current = validationCtx;
   const savingRef = useRef(false);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // Re-armed in the body: effects re-run without a remount (Fast Refresh,
+  // StrictMode), and a flag stuck at `false` would leave `saving` on forever.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // A fresher copy of the account arrived (a focus refresh). Take it as the new
   // starting point — unless the seller has started typing, which must never be
@@ -347,8 +366,9 @@ function BusinessProfileForm({ navigation }) {
       return;
     }
 
-    // An existing seller tapping Save on an untouched form. A FARMER is always
-    // let through: for them the save is the consent that promotes the account.
+    // An existing seller tapping Save on an untouched form. An account that is
+    // not a seller yet is always let through: its save, with the consent box
+    // ticked (checked just above), is what promotes the account.
     if (hasSellerRole(user) && !hasUnsavedChanges(current, initialRef.current)) {
       toast.info(t('sellerBizProfile.noChanges', 'No changes to save'));
       return;
@@ -911,6 +931,19 @@ function BusinessProfileForm({ navigation }) {
           <InlineNotice variant="success" icon="lock-closed">
             {t('sellerBizProfile.securityNote')}
           </InlineNotice>
+
+          {/* Last thing before Save, and only for an account that is not a
+              seller yet. Un-ticked every time the form opens: see
+              initialFormFromUser. */}
+          {needsConsent ? (
+            <SellerConsent
+              fieldRef={refFor('sellerConsent')}
+              checked={form.sellerConsent}
+              onToggle={() => set.sellerConsent(!form.sellerConsent)}
+              error={errorOf('sellerConsent')}
+              disabled={saving}
+            />
+          ) : null}
       </KeyboardAwareScroll>
 
       <ActionBar>
@@ -928,6 +961,63 @@ function BusinessProfileForm({ navigation }) {
         />
       </ActionBar>
     </Screen>
+  );
+}
+
+// ── Seller consent ───────────────────────────────────────────────────────────
+
+/**
+ * The tick that opens a seller account, for an account that is not one yet.
+ * The API promotes the account and writes its consent record when the save
+ * carries `sellerConsent: true`, so that flag comes from this box and from
+ * nowhere else (utils/businessProfile.js).
+ *
+ * The two documents are buttons of their own under the box, outside its press
+ * area: tapping one opens it and cannot tick or untick the box.
+ */
+function SellerConsent({ fieldRef, checked, onToggle, error, disabled }) {
+  const { t } = useLanguage();
+  const toast = useToast();
+
+  const openLegal = useCallback(async (url) => {
+    if (!(await openExternalUrl(url, Linking))) {
+      toast.error(t('common.linkFailed', 'Could not open the link on this device.'));
+    }
+  }, [toast, t]);
+
+  const opensBrowser = t('common.opensBrowser', 'Opens in your browser');
+
+  return (
+    <View style={b.consent}>
+      <Field ref={fieldRef} error={error} style={b.consentField}>
+        <CheckboxRow
+          checked={checked}
+          onToggle={onToggle}
+          disabled={disabled}
+          label={t('sellerBizProfile.consentLabel', 'I want to open a seller account on KrushiSarva. I agree to the Terms & Conditions and the Privacy Policy.')}
+          hint={t('sellerBizProfile.consentHint', 'We use your Aadhaar, PAN and bank details to verify your shop (KYC), and your bank account to pay you.')}
+          style={error ? b.consentRowError : null}
+        />
+      </Field>
+      <View style={b.consentLinks}>
+        <Button
+          label={t('sellerProfile.terms', 'Terms & Conditions')}
+          variant="ghost"
+          size="sm"
+          icon="document-text-outline"
+          onPress={() => openLegal(LEGAL_URLS.terms)}
+          accessibilityHint={opensBrowser}
+        />
+        <Button
+          label={t('sellerProfile.privacy', 'Privacy Policy')}
+          variant="ghost"
+          size="sm"
+          icon="lock-closed-outline"
+          onPress={() => openLegal(LEGAL_URLS.privacy)}
+          accessibilityHint={opensBrowser}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -981,4 +1071,11 @@ const b = StyleSheet.create({
   exitTxt: { ...T.caption, color: C.textMuted, flexShrink: 1 },
 
   notice: { marginBottom: SP.lg },
+
+  consent: { marginTop: SP.lg },
+  // Field's own bottom margin would open a gap between the box and its links.
+  consentField: { marginBottom: SP.xs },
+  consentRowError: { borderColor: C.danger, backgroundColor: C.dangerPale },
+  // Wraps: the two buttons do not fit side by side on a 320dp screen.
+  consentLinks: { flexDirection: 'row', flexWrap: 'wrap', columnGap: SP.xs },
 });

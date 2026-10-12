@@ -117,7 +117,7 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
     <View>
       {/* ── Read-only field chips ── */}
       <View style={S.fieldRow}>
-        <TouchableOpacity style={S.chip} onPress={openModal} activeOpacity={0.8}>
+        <TouchableOpacity style={S.chip} onPress={openModal} activeOpacity={0.8} accessibilityRole="button">
           <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
           <View style={{ flex: 1 }}>
             <Text style={S.chipLabel}>{t('rent.fromDate')}</Text>
@@ -126,7 +126,7 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
             </Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={S.chip} onPress={openModal} activeOpacity={0.8}>
+        <TouchableOpacity style={S.chip} onPress={openModal} activeOpacity={0.8} accessibilityRole="button">
           <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
           <View style={{ flex: 1 }}>
             <Text style={S.chipLabel}>{t('rent.toDate')}</Text>
@@ -142,7 +142,7 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
       </Text>
 
       {hasValue ? (
-        <TouchableOpacity onPress={() => onChange({ from: '', to: '' })} style={S.clearLink}>
+        <TouchableOpacity onPress={() => onChange({ from: '', to: '' })} style={S.clearLink} accessibilityRole="button">
           <Ionicons name="close-circle-outline" size={14} color={COLORS.error} />
           <Text style={S.clearLinkTxt}>{t('rent.clearDates', 'Clear dates')}</Text>
         </TouchableOpacity>
@@ -154,7 +154,7 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
           <View style={S.card}>
             <View style={S.cardHead}>
               <Text style={S.cardTitle}>{t('rent.availabilityDates')}</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
                 <Ionicons name="close" size={22} color={COLORS.charcoal} />
               </TouchableOpacity>
             </View>
@@ -172,11 +172,11 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
 
             {/* Month nav */}
             <View style={S.calHead}>
-              <TouchableOpacity onPress={prevMonth} disabled={!canPrev} style={[S.navBtn, !canPrev && { opacity: 0.3 }]}>
+              <TouchableOpacity onPress={prevMonth} disabled={!canPrev} style={[S.navBtn, !canPrev && { opacity: 0.3 }]} accessibilityRole="button" accessibilityLabel={t('a11y.previousMonth', 'Previous month')}>
                 <Ionicons name="chevron-back" size={20} color={COLORS.charcoal} />
               </TouchableOpacity>
               <Text style={S.monthTxt}>{t('weatherHome.' + MONTH_KEYS[calMonth])} {calYear}</Text>
-              <TouchableOpacity onPress={nextMonth} style={S.navBtn}>
+              <TouchableOpacity onPress={nextMonth} style={S.navBtn} accessibilityRole="button" accessibilityLabel={t('a11y.nextMonth', 'Next month')}>
                 <Ionicons name="chevron-forward" size={20} color={COLORS.charcoal} />
               </TouchableOpacity>
             </View>
@@ -209,6 +209,9 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
                       isToday && !isStart && !isEnd && { borderWidth: 1.5, borderColor: COLORS.primary }]}
                     disabled={past}
                     onPress={() => handleDayPress(dk)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isStart || isEnd }}
+                    accessibilityLabel={`${day} ${t('weatherHome.' + MONTH_KEYS[calMonth])} ${calYear}`}
                   >
                     <Text style={[S.cellTxt, { color: col }]}>{day}</Text>
                   </TouchableOpacity>
@@ -218,17 +221,17 @@ export default function RentAvailabilityPicker({ from, to, onChange, t }) {
 
             {/* Secondary actions */}
             <View style={S.actRow}>
-              <TouchableOpacity style={S.ghostBtn} onPress={setOngoing} disabled={!selStart}>
+              <TouchableOpacity style={S.ghostBtn} onPress={setOngoing} disabled={!selStart} accessibilityRole="button">
                 <Ionicons name="infinite" size={15} color={selStart ? COLORS.primary : COLORS.grayLightMid} />
                 <Text style={[S.ghostTxt, !selStart && { color: COLORS.grayLightMid }]}>{t('rent.markOngoing', 'No end date')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={S.ghostBtn} onPress={clearAll} disabled={!selStart && !selEnd}>
+              <TouchableOpacity style={S.ghostBtn} onPress={clearAll} disabled={!selStart && !selEnd} accessibilityRole="button">
                 <Ionicons name="refresh-outline" size={15} color={(selStart || selEnd) ? COLORS.error : COLORS.grayLightMid} />
                 <Text style={[S.ghostTxt, { color: (selStart || selEnd) ? COLORS.error : COLORS.grayLightMid }]}>{t('rent.clear', 'Clear')}</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={S.doneBtn} onPress={commit} activeOpacity={0.85}>
+            <TouchableOpacity style={S.doneBtn} onPress={commit} activeOpacity={0.85} accessibilityRole="button">
               <Ionicons name="checkmark" size={18} color={COLORS.white} />
               <Text style={S.doneTxt}>{t('rent.done')}</Text>
             </TouchableOpacity>

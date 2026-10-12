@@ -40,6 +40,7 @@ export function anonymizedUserFields(userId) {
     // frees the real number for re-registration, and cannot be logged into.
     phone:                  `deleted_${userId}`,
     name:                   ANON_NAME,
+    email:                  null,
     avatar:                 null,
     statusQuote:            null,
     // location
@@ -63,6 +64,7 @@ export function anonymizedUserFields(userId) {
     familySize:             null,
     education:              null,
     gender:                 null,
+    farmingExperienceYrs:   null,
     preferredContactMethod: null,
     preferredMandi:         null,
     businessType:           null,

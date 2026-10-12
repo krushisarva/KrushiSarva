@@ -50,6 +50,8 @@ export default function ActivityChip({
         pressed && { transform: [{ scale: 0.97 }] },
         style,
       ]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityState={{ selected: active }}
     >
       <View style={[styles.iconWrap, { width: sz.icon + 12, height: sz.icon + 12 }]}>
         <ActivityIcon type={type} size={sz.icon + 12} />
@@ -79,6 +81,7 @@ ActivityChip.Tile = function ActivityTile({ type, label, onPress, style }) {
         pressed && { transform: [{ scale: 0.96 }], backgroundColor: meta.color + '30' },
         style,
       ]}
+      accessibilityRole="button"
     >
       <PhotoIcon
         set="activity" name={type} size={48} radius={10}

@@ -96,7 +96,7 @@ function CategoryDrawer({ visible, categories, selectedCat, language, onSelect, 
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={onClose}>
+      <TouchableWithoutFeedback onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
         <RNAnimated.View style={[DR.backdrop, { opacity: bgOpacity }]} />
       </TouchableWithoutFeedback>
 
@@ -107,7 +107,7 @@ function CategoryDrawer({ visible, categories, selectedCat, language, onSelect, 
             <Text style={DR.headerSub}>{t('store.browse')}</Text>
             <Text style={DR.headerTitle}>{t('store.shopName')}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={DR.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity onPress={onClose} style={DR.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
             <Ionicons name="close" size={22} color={GREEN} />
           </TouchableOpacity>
         </View>
@@ -118,6 +118,8 @@ function CategoryDrawer({ visible, categories, selectedCat, language, onSelect, 
             style={[DR.allRow, selectedCat === '__all__' && DR.allRowActive]}
             onPress={() => { onSelect('__all__', null); onClose(); }}
             activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectedCat === '__all__' }}
           >
             <Text style={[DR.allRowTxt, selectedCat === '__all__' && DR.allRowTxtActive]}>{t('store.allProducts')}</Text>
             <Ionicons name="chevron-forward" size={18} color={selectedCat === '__all__' ? GREEN : COLORS.grayMedium} />
@@ -137,6 +139,8 @@ function CategoryDrawer({ visible, categories, selectedCat, language, onSelect, 
                 style={[DR.catRow, active && DR.catRowActive]}
                 onPress={() => { onSelect(cat.id, null); onClose(); }}
                 activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
               >
                 <PhotoIcon
                   set="cat" name={cat.icon || cat.name} size={34} radius={8}
@@ -166,6 +170,8 @@ function LangItem({ lang, active, onSelect }) {
         onPressIn={() => { sc.value = withSpring(0.97, SPRINGS.snappy); }}
         onPressOut={() => { sc.value = withSpring(1, SPRINGS.snappy); }}
         onPress={() => { Haptics.selection(); onSelect(lang.code); }}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: active }}
       >
         <View style={[S.lpFlagWrap, active && { backgroundColor: GREEN + '14' }]}>
           <Text style={S.lpFlag}>{lang.flag}</Text>
@@ -207,6 +213,8 @@ function CategoryPills({ categories, selected, onSelect, language, t }) {
           style={[S.pill, selected === '__all__' && S.pillActive]}
           onPress={() => onSelect('__all__', null)}
           activeOpacity={0.82}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selected === '__all__' }}
         >
           <View style={[S.pillIcon, { backgroundColor: selected === '__all__' ? 'rgba(255,255,255,0.25)' : GREEN_L }]}>
             <Ionicons name="storefront" size={14} color={selected === '__all__' ? COLORS.white : GREEN} />
@@ -226,6 +234,8 @@ function CategoryPills({ categories, selected, onSelect, language, t }) {
               style={[S.pill, active && S.pillActive, active && { borderColor: color, backgroundColor: color }]}
               onPress={() => onSelect(cat.id, null)}
               activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
             >
               <View style={[S.pillIcon, { backgroundColor: active ? 'rgba(255,255,255,0.25)' : hexToRgba(color, 0.14) }]}>
                 <PhotoIcon
@@ -265,6 +275,18 @@ function StockBadge({ stock }) {
   return null;
 }
 
+// What a product card says to a screen reader: the rating and stock state are
+// otherwise only a star glyph and a coloured badge.
+function cardA11yLabel(item, t) {
+  return [
+    item.name,
+    inr(item.price),
+    item.rating > 0 ? t('a11y.rated', { rating: item.rating, defaultValue: 'Rated {{rating}} out of 5' }) : null,
+    item.stock === 0 ? t('product.outOfStock') : null,
+    item.stock > 0 && item.stock <= 5 ? t('store.onlyLeft', { stock: item.stock }) : null,
+  ].filter(Boolean).join(', ');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Best Seller card — web prototype: image + discount top-left, price, circle add
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,7 +297,7 @@ function BestSellerCard({ item, onPress }) {
   const imageUrl = thumbUrl(item.images?.[0], 320);
 
   return (
-    <AnimatedCard style={S.bsCard} onPress={() => onPress(item)} scaleValue={0.96}>
+    <AnimatedCard style={S.bsCard} onPress={() => onPress(item)} scaleValue={0.96} accessibilityLabel={cardA11yLabel(item, t)}>
       <View>
         <View style={S.bsImgWrap}>
           {imageUrl
@@ -335,7 +357,7 @@ const ProductCard = memo(function ProductCard({ item, onPress, t, index }) {
       onPress={() => onPress(item)}
       index={index}
       scaleValue={0.97}
-      accessibilityLabel={`${item.name} ${item.price} rupees`}
+      accessibilityLabel={cardA11yLabel(item, t)}
     >
         <View style={S.gridImgWrap}>
           {imageUrl
@@ -673,8 +695,17 @@ export default function AgriStoreHome({ navigation }) {
   // `products.slice(0, 8)` under a "Best Sellers" heading was the first 8 rows of
   // whatever the current sort happened to be — which under a price sort is "the
   // 8 cheapest", presented as what other farmers buy most.
+  //
+  // Filtering alone was not enough: it kept the first 8 RATED rows in list order,
+  // so a 3.1 could sit ahead of a 4.8. Sort by rating, then by how many ratings
+  // back it. `.filter()` returns a new array, so `products` itself is not
+  // reordered and the grid below keeps the sort the farmer chose.
   const topRated = products
     .filter((p) => Number(p.rating) > 0 && Number(p.ratingCount) > 0)
+    .sort((a, b) => (
+      (Number(b.rating) - Number(a.rating))
+      || (Number(b.ratingCount) - Number(a.ratingCount))
+    ))
     .slice(0, 8);
 
   // Sort chips and the result count only apply to a grid that has rows. While the
@@ -708,7 +739,7 @@ export default function AgriStoreHome({ navigation }) {
         <View style={[S.header, { paddingTop: 10, paddingBottom: 10 }]}>
           <View style={S.headerTop}>
             <View style={S.headerSide}>
-              <TouchableOpacity style={S.hamburger} onPress={() => setDrawerOpen(true)} activeOpacity={0.7}>
+              <TouchableOpacity style={S.hamburger} onPress={() => setDrawerOpen(true)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.openMenu', 'Open menu')}>
                 <View style={S.hamLine} />
                 <View style={[S.hamLine, { width: 18 }]} />
                 <View style={S.hamLine} />
@@ -721,11 +752,11 @@ export default function AgriStoreHome({ navigation }) {
               />
             </View>
             <View style={S.headerRight}>
-              <TouchableOpacity style={S.langBtn} onPress={openLangPicker} activeOpacity={0.8}>
+              <TouchableOpacity style={S.langBtn} onPress={openLangPicker} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('languageSub', 'Change app language')}>
                 <Ionicons name="globe-outline" size={14} color={GREEN} />
                 <Text style={S.langBtnTxt}>{language.toUpperCase()}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={S.cartBtn} onPress={() => navigation.navigate('Cart')} activeOpacity={0.8}>
+              <TouchableOpacity style={S.cartBtn} onPress={() => navigation.navigate('Cart')} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={cartCount > 0 ? `${t('cart.myCart')}, ${t(cartCount !== 1 ? 'cart.itemCountPlural' : 'cart.itemCount', { count: cartCount })}` : t('cart.myCart')}>
                 <Ionicons name="cart-outline" size={22} color={COLORS.charcoal} />
                 {cartCount > 0 && <View style={S.cartBadge}><Text style={S.cartBadgeTxt}>{cartCount}</Text></View>}
               </TouchableOpacity>
@@ -752,9 +783,10 @@ export default function AgriStoreHome({ navigation }) {
             onBlur={() => setSearchFocused(false)}
             returnKeyType="search"
             selectionColor={KHET.primary}
+            accessibilityLabel={t('search', 'Search')}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('rent.clearSearch', 'Clear search')}>
               <Ionicons name="close-circle" size={18} color={KHET.mutedForeground} />
             </TouchableOpacity>
           )}
@@ -823,7 +855,7 @@ export default function AgriStoreHome({ navigation }) {
                 <Text style={S.noticeTxt} numberOfLines={2}>
                   {t('shop.showingSaved', 'Showing saved results')} · {formatCacheAge(fromCache.ageMs, t)}
                 </Text>
-                <TouchableOpacity onPress={() => loadFirstPage({ isRefresh: true })} hitSlop={8}>
+                <TouchableOpacity onPress={() => loadFirstPage({ isRefresh: true })} hitSlop={8} accessibilityRole="button">
                   <Text style={S.noticeAction}>{t('retry', 'Retry')}</Text>
                 </TouchableOpacity>
               </View>
@@ -834,8 +866,8 @@ export default function AgriStoreHome({ navigation }) {
             {error && products.length > 0 ? (
               <View style={[S.noticeBar, S.noticeBarWarn]}>
                 <Ionicons name="warning-outline" size={15} color={COLORS.error} />
-                <Text style={[S.noticeTxt, { color: COLORS.error }]} numberOfLines={2}>{error.message}</Text>
-                <TouchableOpacity onPress={() => loadFirstPage({ isRefresh: true })} hitSlop={8}>
+                <Text style={[S.noticeTxt, { color: COLORS.error }]} numberOfLines={2} accessibilityLiveRegion="polite">{error.message}</Text>
+                <TouchableOpacity onPress={() => loadFirstPage({ isRefresh: true })} hitSlop={8} accessibilityRole="button">
                   <Text style={S.noticeAction}>{t('retry', 'Retry')}</Text>
                 </TouchableOpacity>
               </View>
@@ -851,7 +883,7 @@ export default function AgriStoreHome({ navigation }) {
               <View style={S.section}>
                 <View style={S.sectionRow}>
                   <Text style={S.sectionTitle}>{t('store.topRated', 'Top rated')}</Text>
-                  <TouchableOpacity style={S.seeAllBtn} onPress={() => { setSort('rating'); setSelectedCategory(ALL_ID); }}>
+                  <TouchableOpacity style={S.seeAllBtn} onPress={() => { setSort('rating'); setSelectedCategory(ALL_ID); }} accessibilityRole="button">
                     <Text style={S.seeAllTxt}>{t('store.viewAll')}</Text>
                     <Ionicons name="chevron-forward" size={14} color={GREEN} />
                   </TouchableOpacity>
@@ -937,7 +969,7 @@ export default function AgriStoreHome({ navigation }) {
                     : t('shop.errorTitle', 'Could not load products')}
                 </Text>
                 <Text style={S.emptyTxt}>{error.message}</Text>
-                <TouchableOpacity style={S.emptyBtn} onPress={() => loadFirstPage({ isRefresh: true })}>
+                <TouchableOpacity style={S.emptyBtn} onPress={() => loadFirstPage({ isRefresh: true })} accessibilityRole="button">
                   <Ionicons name="refresh" size={16} color={COLORS.white} />
                   <Text style={S.emptyBtnTxt}>{t('retry', 'Try again')}</Text>
                 </TouchableOpacity>
@@ -958,6 +990,7 @@ export default function AgriStoreHome({ navigation }) {
                 <TouchableOpacity
                   style={S.emptyBtn}
                   onPress={() => { setSearchQuery(''); setSelectedCategory(ALL_ID); setSelectedSubcategory(null); }}
+                  accessibilityRole="button"
                 >
                   <Ionicons name="close-circle-outline" size={16} color={COLORS.white} />
                   <Text style={S.emptyBtnTxt}>{t('shop.clearFilters', 'Clear filters')}</Text>
@@ -1000,7 +1033,7 @@ export default function AgriStoreHome({ navigation }) {
         onRequestClose={closeLangPicker}
         statusBarTranslucent
       >
-        <TouchableWithoutFeedback onPress={closeLangPicker}>
+        <TouchableWithoutFeedback onPress={closeLangPicker} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
           <RNAnimated.View style={[S.lpBackdrop, { opacity: sheetBg }]} />
         </TouchableWithoutFeedback>
 

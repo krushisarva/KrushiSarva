@@ -121,6 +121,14 @@ describe('initialFormFromUser', () => {
   test('no GST number on file starts as opted out', () => {
     expect(initialFormFromUser({ gstNumber: '', gstOptOut: false }).gstOptOut).toBe(true);
   });
+  // The tick is consent, so only the person may put it there: not the stored
+  // account, and not a field of that name arriving from the server.
+  test('the seller-consent box never starts ticked', () => {
+    expect(initialFormFromUser({ role: 'FARMER', sellerProfile: null }).sellerConsent).toBe(false);
+    expect(initialFormFromUser(storedSeller).sellerConsent).toBe(false);
+    const fromServer = { role: 'FARMER', sellerConsent: true, sellerProfile: { sellerConsent: true } };
+    expect(initialFormFromUser(fromServer).sellerConsent).toBe(false);
+  });
 });
 
 describe('district and taluka', () => {
@@ -188,6 +196,13 @@ describe('applyFieldChange', () => {
     const typed = { ...base, bankAccountNumber: '123456789', bankAccountConfirm: '123456789' };
     expect(applyFieldChange(typed, 'bankAccountNumber', '').bankAccountConfirm).toBe('');
   });
+  test('the consent box is ticked by a real true and by nothing else', () => {
+    const ticked = applyFieldChange(base, 'sellerConsent', true);
+    expect(ticked.sellerConsent).toBe(true);
+    expect(applyFieldChange(ticked, 'sellerConsent', false).sellerConsent).toBe(false);
+    expect(applyFieldChange(base, 'sellerConsent', 'true').sellerConsent).toBe(false);
+    expect(applyFieldChange(base, 'sellerConsent', undefined).sellerConsent).toBe(false);
+  });
 });
 
 describe('hasUnsavedChanges', () => {
@@ -199,6 +214,11 @@ describe('hasUnsavedChanges', () => {
     expect(hasUnsavedChanges({ ...base, village: 'Lonikand' }, base)).toBe(true);
     expect(hasUnsavedChanges({ ...base, gstOptOut: true }, base)).toBe(true);
     expect(hasUnsavedChanges({ ...base, aadharNumber: '2' }, base)).toBe(true);
+  });
+  // The form drops its values for a fresher copy of the account unless it has
+  // unsaved changes, so a tick that did not count would vanish on a refresh.
+  test('ticking the consent box is a change', () => {
+    expect(hasUnsavedChanges({ ...base, sellerConsent: true }, base)).toBe(true);
   });
 });
 
@@ -283,6 +303,38 @@ describe('validateBusinessProfile', () => {
     });
   });
 
+  describe('seller consent', () => {
+    test('an account that is not a seller yet cannot save without the tick', () => {
+      const errors = validateBusinessProfile(validNewSeller, { requireConsent: true });
+      expect(errors).toEqual({ sellerConsent: 'Tick this box to open your seller account.' });
+      expect(firstErrorKey(errors)).toBe('sellerConsent');
+    });
+    test('ticked, it passes', () => {
+      expect(validateBusinessProfile({ ...validNewSeller, sellerConsent: true }, { requireConsent: true })).toEqual({});
+    });
+    test.each([undefined, null, 'true', 1])('%p is not a tick', (sellerConsent) => {
+      const errors = validateBusinessProfile({ ...validNewSeller, sellerConsent }, { requireConsent: true });
+      expect(errors.sellerConsent).toBeTruthy();
+    });
+    test('a seller, who is shown no box, is not asked for it', () => {
+      const form = initialFormFromUser(storedSeller);
+      expect(form.sellerConsent).toBe(false);
+      expect(validateBusinessProfile(form, { onFile })).toEqual({});
+      expect(validateBusinessProfile(form, { onFile, requireConsent: false })).toEqual({});
+    });
+    // The box is the last thing on the form, so every other error is reached first.
+    test('it is the last stop when scrolling to the first error', () => {
+      const errors = validateBusinessProfile({ ...validNewSeller, village: '' }, { requireConsent: true });
+      expect(Object.keys(errors).sort()).toEqual(['sellerConsent', 'village']);
+      expect(firstErrorKey(errors)).toBe('village');
+    });
+    test('its message comes from t()', () => {
+      const t = (key) => `«${key}»`;
+      expect(validateBusinessProfile(validNewSeller, { t, requireConsent: true }).sellerConsent)
+        .toBe('«sellerBizProfile.consentRequired»');
+    });
+  });
+
   test('messages come from t()', () => {
     const t = (key) => `«${key}»`;
     expect(validateBusinessProfile({ ...validNewSeller, name: '' }, { t }).name).toBe('«sellerBizProfile.nameRequired»');
@@ -292,14 +344,46 @@ describe('validateBusinessProfile', () => {
 describe('buildBusinessProfilePayload', () => {
   test('an unchanged seller sends no sensitive field (so no PII budget is used)', () => {
     const payload = buildBusinessProfilePayload({ ...initialFormFromUser(storedSeller), village: 'Lonikand' }, storedSeller);
+    // No `sellerConsent` either: a seller is shown no box, so none is sent.
     expect(payload).toEqual({
-      sellerConsent: true,
       businessType: 'krushi_kendra',
       district: 'Pune',
       taluka: 'Haveli',
       village: 'Lonikand',
       state: 'Maharashtra',
       gstOptOut: false,
+    });
+  });
+
+  // The API promotes the account and writes a consent record on this flag. It
+  // used to be a hard-coded `true`, so every save recorded a consent the person
+  // was never shown.
+  describe('sellerConsent', () => {
+    const farmer = { role: 'FARMER', sellerProfile: null };
+
+    test('a ticked box sends true', () => {
+      const payload = buildBusinessProfilePayload({ ...validNewSeller, sellerConsent: true }, farmer);
+      expect(payload.sellerConsent).toBe(true);
+    });
+    test('an un-ticked box sends no flag at all', () => {
+      expect(validNewSeller.sellerConsent).toBe(false);
+      expect(buildBusinessProfilePayload(validNewSeller, farmer)).not.toHaveProperty('sellerConsent');
+    });
+    test.each([undefined, null, 'true', 1])('%p on the form is not sent as consent', (sellerConsent) => {
+      const payload = buildBusinessProfilePayload({ ...validNewSeller, sellerConsent }, farmer);
+      expect(payload).not.toHaveProperty('sellerConsent');
+    });
+    test('a seller saving an edit sends none', () => {
+      const payload = buildBusinessProfilePayload({ ...initialFormFromUser(storedSeller), name: 'Patil Agro' }, storedSeller);
+      expect(payload).not.toHaveProperty('sellerConsent');
+    });
+    // After a save the screen rebuilds the form from the saved account. If the
+    // account was not promoted, the next attempt has to be agreed to again.
+    test('the form rebuilt after a save is un-ticked', () => {
+      const ticked = applyFieldChange(validNewSeller, 'sellerConsent', true);
+      expect(buildBusinessProfilePayload(ticked, farmer).sellerConsent).toBe(true);
+      const rebuilt = initialFormFromUser({ ...farmer, name: 'Ramesh Patil', businessType: 'individual_farmer' });
+      expect(buildBusinessProfilePayload(rebuilt, farmer)).not.toHaveProperty('sellerConsent');
     });
   });
 

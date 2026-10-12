@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COSMIC, CT } from '../theme/cosmicTheme';
 import { Haptics } from '@krushisarva/shared/utils/haptics';
+import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 
 export default function CosmicHeader({
   title,
@@ -28,6 +29,7 @@ export default function CosmicHeader({
 }) {
   const nav = useNavigation();
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
 
   const handleBack = () => {
     Haptics.light?.();
@@ -42,12 +44,14 @@ export default function CosmicHeader({
           onPress={handleBack}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.55 }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.goBack', 'Go back')}
         >
           <Ionicons name="chevron-back" size={22} color={COSMIC.TEXT} />
         </Pressable>
 
         <View style={styles.titleWrap}>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">{title}</Text>
           {!!subtitle && <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>}
         </View>
 
@@ -67,6 +71,7 @@ CosmicHeader.IconButton = function HeaderIconButton({ icon, onPress, accessibili
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.55 }]}
+      accessibilityRole="button"
     >
       <Ionicons name={icon} size={18} color={COSMIC.TEXT} />
       {badge != null && (

@@ -69,6 +69,8 @@ export default function FarmListScreen({ navigation }) {
         onPress={() => goDetail(farm)}
         onLongPress={() => handleLongPress(farm)}
         style={({ pressed }) => [{ marginBottom: 8 }, pressed && { opacity: 0.88 }]}
+        accessibilityRole="button"
+        accessibilityHint={t('farmList.longPressEdit', 'long-press to edit')}
       >
         <GlassCard variant={isActive ? 'bordered' : 'plain'} padding={0}>
           <View style={styles.row}>
@@ -165,6 +167,7 @@ function AddFab({ onPress, t }) {
         GLOW.gold,
         pressed && { transform: [{ scale: 0.96 }] },
       ]}
+      accessibilityRole="button"
     >
       <LinearGradient
         colors={GRADIENT.accent}

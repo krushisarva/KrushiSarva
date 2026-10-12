@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 875 keys.
 
 export default {
   "aiChat.attachHint": "వేగంగా వ్యాధి నిర్ధారణ కోసం మీ పంట ఫోటో పంచుకోండి.",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} డెలివరీ",
   "cart.freeDeliveryPrefix": "చేర్చండి",
   "cart.freeDeliverySuffix": "ఉచిత డెలివరీ కోసం మరింత!",
-  "cart.savedOnDelivery": "డెలివరీపై మీరు ₹49 ఆదా చేశారు!",
+  "cart.savedOnDelivery": "ఈ ఆర్డర్‌పై ఉచిత డెలివరీ",
   "celebrationSheet.loggedTitle": "నమోదు చేయబడింది!",
   "close": "మూసివేయి",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "రోజులు",
   "diagReport.detection": "గుర్తింపు",
   "diagReport.diagnosePrompt": "నిర్ధారణ ప్రాంప్ట్",
-  "diagReport.diagnosingPathologist": "నిర్ధారణ చేసే పాథాలజిస్ట్",
+  "diagReport.diagnosingPathologist": "AI నిర్ధారణ వ్యవస్థ",
   "diagReport.diagnosisModel": "నిర్ధారణ మోడల్",
   "diagReport.differentialDiagnosis": "డిఫరెన్షియల్ నిర్ధారణ",
   "diagReport.disclaimer": "ఈ నివేదిక AI సహాయక సలహా వ్యవస్థ ద్వారా రూపొందించబడింది. ఇది నిర్ణయ-సహాయక పత్రం, అధికారిక ప్రిస్క్రిప్షన్ కాదు. తీవ్రమైన, అసాధారణ, లేదా నిరంతర కేసుల కోసం, ధృవీకృత అగ్రోనమిస్ట్‌ను లేదా మీకు దగ్గరలోని కృషి విజ్ఞాన కేంద్రాన్ని (KVK) సంప్రదించండి. సిఫార్సు చేసిన పురుగుమందులను CIB&RC-ఆమోదిత లేబుల్‌ల ప్రకారం మాత్రమే వాడాలి.",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "నీటిపారుదల",
   "diagReport.kisanCallCentre": "కిసాన్ కాల్ సెంటర్:",
   "diagReport.kvkLocator": "KVK లొకేటర్:",
-  "diagReport.labSub": "ప్లాంట్ పాథాలజీ · డయాగ్నాస్టిక్ ల్యాబ్",
+  "diagReport.labSub": "AI పంట ఆరోగ్య సలహా",
   "diagReport.labTag": "AI సహాయంతో పంట ఆరోగ్య నిర్ధారణ సేవ",
   "diagReport.language": "భాష:",
   "diagReport.leafWetness": "ఆకు తడి",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "మొత్తం రిస్క్",
   "diagReport.passed": "పాస్ అయింది",
   "diagReport.pathogenType": "వ్యాధికారక రకం",
-  "diagReport.pathologistAi": "పాథాలజిస్ట్ (AI):",
+  "diagReport.pathologistAi": "AI వ్యవస్థ:",
   "diagReport.patientSummary": "పేషెంట్ సారాంశం",
   "diagReport.perAcre": "ఎకరానికి",
   "diagReport.phone": "ఫోన్",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "పంట వ్యాధి గుర్తింపు నివేదిక",
   "diagReport.requiredPpe": "అవసరమైన PPE:",
   "diagReport.resistanceSafetyNotes": "నిరోధకత & భద్రత నోట్‌లు",
-  "diagReport.reviewingAuthority": "సమీక్షించే అధికారి",
+  "diagReport.reviewingAuthority": "సమీక్ష కోసం సూచించబడింది — సమీక్షించబడలేదు",
   "diagReport.rotation": "రొటేషన్",
   "diagReport.ruledOut": "తోసిపుచ్చబడింది",
   "diagReport.schedule": "షెడ్యూల్",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "చికిత్స విండో",
   "diagReport.triggeringConditions": "ట్రిగ్గర్ చేసే పరిస్థితులు",
   "diagReport.unverifiedLabel": "ధృవీకరించబడలేదు:",
-  "diagReport.verified": "ధృవీకరించబడింది",
+  "diagReport.verified": "AI రూపొందించినది",
   "diagReport.verifiedLabel": "ధృవీకరించబడింది:",
   "diagReport.vision": "విజన్",
   "diagReport.visionModel": "విజన్ మోడల్:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "అందుబాటు",
   "product.countryOfOrigin": "మూల దేశం",
-  "product.cropSetuVerified": "KrushiSarva ధృవీకరించబడింది",
   "product.customerSupport": "కస్టమర్ సపోర్ట్",
   "product.deliveryAddressSub": "లైవ్ షిప్పింగ్ అంచనాలు, సేవ్ చేసిన చిరునామాలు త్వరలో రానున్నాయి.",
   "product.deliveryAddressTitle": "డెలివరీ & చిరునామా",

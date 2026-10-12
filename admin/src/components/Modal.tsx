@@ -3,6 +3,33 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui';
 
+/**
+ * Open/close behaviour shared by Modal and Drawer: Escape closes, and focus moves
+ * into the panel so the keyboard lands where the eye does and Tab walks the
+ * panel rather than the page behind it.
+ *
+ * `onClose` is read through a ref so the effect runs only when `open` changes.
+ * Most callers pass an inline `onClose`; with it in the dependency list the
+ * effect re-ran on every parent render — every keystroke, where the parent holds
+ * the field's state — and pulled focus out of the field being typed in.
+ */
+function useDialogPanel(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };
+    document.addEventListener('keydown', onKey);
+    // An autoFocus field inside the panel has already taken focus; leave it there.
+    if (!ref.current?.contains(document.activeElement)) ref.current?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  return ref;
+}
+
 export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
   open: boolean;
   onClose: () => void;
@@ -11,15 +38,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    ref.current?.focus();
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const ref = useDialogPanel(open, onClose);
 
   if (!open) return null;
   const width = size === 'sm' ? 'max-w-md' : size === 'lg' ? 'max-w-3xl' : 'max-w-lg';
@@ -30,7 +49,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
       <div ref={ref} tabIndex={-1} className={`card relative z-10 w-full ${width} max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -45,17 +64,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
 export function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; width?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    // Same as Modal: move focus into the panel so the keyboard lands where the
-    // eye does, and so Tab walks the panel rather than the page behind it.
-    ref.current?.focus();
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const ref = useDialogPanel(open, onClose);
 
   if (!open) return null;
   return (

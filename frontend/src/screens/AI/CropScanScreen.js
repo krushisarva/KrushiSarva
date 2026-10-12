@@ -309,8 +309,9 @@ function StepDot({ step, current }) {
 }
 
 function StepBar({ current }) {
+  const { t } = useLanguage();
   return (
-    <View style={SC.stepBar}>
+    <View style={SC.stepBar} accessible accessibilityLabel={t('a11y.stepOf', { n: current, total: 3, defaultValue: 'Step {{n}} of {{total}}' })}>
       {[1, 2, 3].map((s, i) => (
         <View key={s} style={{ flexDirection: 'row', alignItems: 'center', flex: i < 2 ? 1 : 0 }}>
           <StepDot step={s} current={current} />
@@ -328,12 +329,12 @@ function SectionLabel({ children }) {
 }
 
 /** Chip/button with spring press scale effect */
-function AnimChip({ chipStyle, onPress, children }) {
+function AnimChip({ chipStyle, onPress, children, accessibilityRole = 'button', accessibilityState }) {
   const scale = useRef(new Animated.Value(1)).current;
   const onIn  = () => Animated.spring(scale, { toValue: 0.93, useNativeDriver: true, damping: CHIP_PRESS_DAMPING, stiffness: CHIP_PRESS_STIFFNESS }).start();
   const onOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, damping: 12, stiffness: 120 }).start();
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} accessibilityRole={accessibilityRole} accessibilityState={accessibilityState}>
       <Animated.View style={[chipStyle, { transform: [{ scale }] }]}>
         {children}
       </Animated.View>
@@ -347,7 +348,7 @@ function GradientBtn({ onPress, disabled, colors = [COLORS.greenBright, COLORS.g
   const onIn  = () => !disabled && Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, damping: CHIP_PRESS_DAMPING, stiffness: CHIP_PRESS_STIFFNESS }).start();
   const onOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 120 }).start();
   return (
-    <Pressable onPress={disabled ? null : onPress} onPressIn={onIn} onPressOut={onOut}>
+    <Pressable onPress={disabled ? null : onPress} onPressIn={onIn} onPressOut={onOut} accessibilityRole="button" accessibilityState={{ disabled: !!disabled }}>
       <Animated.View style={{ transform: [{ scale }] }}>
         <LinearGradient
           colors={disabled ? [COLORS.gray175, COLORS.gray175] : colors}
@@ -886,6 +887,8 @@ export default function CropScanScreen({ navigation }) {
                       style={SC.farmBarMain}
                       activeOpacity={useFarmHistory ? 0.7 : 1}
                       onPress={() => useFarmHistory && setFarmPickerOpen(o => !o)}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: farmPickerOpen, disabled: !useFarmHistory }}
                     >
                       <View style={[SC.farmBarIcon, useFarmHistory && SC.farmBarIconOn]}>
                         <Ionicons name="leaf" size={KICON.base} color={useFarmHistory ? COLORS.white : COLORS.gray350} />
@@ -912,6 +915,9 @@ export default function CropScanScreen({ navigation }) {
                       style={[SC.farmBarToggle, useFarmHistory && SC.farmBarToggleOn]}
                       onPress={() => { setUseFarmHistory(v => !v); setFarmPickerOpen(false); }}
                       activeOpacity={0.8}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: useFarmHistory }}
+                      accessibilityLabel={t('a11y.useFarmRecords', 'Use my farm records')}
                     >
                       {/* A11Y: the ON ink was greenBright on its own 12% tint — 2.79:1.
                           COLORS.primary is the darker step of the same hue (5.52:1) and is
@@ -932,7 +938,9 @@ export default function CropScanScreen({ navigation }) {
                           <Text style={SC.farmDropLabel}>{t('cropScan.farmLabel', 'FARM')}</Text>
                           {farms.map(f => (
                             <TouchableOpacity key={f.id} style={[SC.farmDropItem, selectedFarmId === f.id && SC.farmDropItemOn]}
-                              onPress={() => { setSelectedFarmId(f.id); setSelectedCycleId(null); }} activeOpacity={0.7}>
+                              onPress={() => { setSelectedFarmId(f.id); setSelectedCycleId(null); }} activeOpacity={0.7}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: selectedFarmId === f.id }}>
                               <Ionicons name={selectedFarmId === f.id ? 'radio-button-on' : 'radio-button-off'} size={KICON.base}
                                 color={selectedFarmId === f.id ? COLORS.greenBright : COLORS.gray350} />
                               <View style={{ flex: 1, marginLeft: KSPACE.s8 }}>
@@ -951,7 +959,9 @@ export default function CropScanScreen({ navigation }) {
                       ) : (
                         cycleOptions.map(c => (
                           <TouchableOpacity key={c.id} style={[SC.farmDropItem, selectedCycleId === c.id && SC.farmDropItemOn]}
-                            onPress={() => { applyCycle(c); setFarmPickerOpen(false); }} activeOpacity={0.7}>
+                            onPress={() => { applyCycle(c); setFarmPickerOpen(false); }} activeOpacity={0.7}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: selectedCycleId === c.id }}>
                             <Ionicons name={selectedCycleId === c.id ? 'radio-button-on' : 'radio-button-off'} size={KICON.base}
                               color={selectedCycleId === c.id ? COLORS.greenBright : COLORS.gray350} />
                             <View style={{ flex: 1, marginLeft: KSPACE.s8 }}>
@@ -978,6 +988,8 @@ export default function CropScanScreen({ navigation }) {
                       style={[SC.cropTile, active && SC.cropTileSel]}
                       onPress={() => { setSelectedCrop(k); setShowCustomCrop(false); }}
                       activeOpacity={0.8}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
                     >
                       {/* Use the lowercase key directly via cropIconLabel
                           so we never depend on COMMON_CROPS[i] alignment. */}
@@ -1003,6 +1015,8 @@ export default function CropScanScreen({ navigation }) {
                   style={[SC.cropTile, showCustomCrop && SC.cropTileSel]}
                   onPress={() => { setShowCustomCrop(true); setSelectedCrop(''); }}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: showCustomCrop }}
                 >
                   <Ionicons name="add-circle-outline" size={40} color={showCustomCrop ? COLORS.primary : COLORS.textMedium} />
                   <Text style={[SC.cropTileLabel, showCustomCrop && SC.cropTileLabelSel]} numberOfLines={1}>
@@ -1019,6 +1033,7 @@ export default function CropScanScreen({ navigation }) {
                   value={customCrop}
                   onChangeText={setCustomCrop}
                   autoFocus
+                  accessibilityLabel={t('cropScan.enterCropName', 'Enter crop name')}
                 />
               )}
 
@@ -1032,6 +1047,7 @@ export default function CropScanScreen({ navigation }) {
                   keyboardType="number-pad"
                   value={cropAge}
                   onChangeText={v => setCropAge(v.replace(/[^0-9]/g, ''))}
+                  accessibilityLabel={t('cropScan.cropAgeDays', 'Crop age (days since planting)')}
                 />
                 <Text style={SC.inputUnit}>{t('cropScan.days')}</Text>
               </View>
@@ -1049,6 +1065,8 @@ export default function CropScanScreen({ navigation }) {
                       style={SC.soilCard}
                       onPress={() => setSoilType(active ? '' : s.key)}
                       activeOpacity={0.8}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
                     >
                       <LinearGradient
                         colors={bg}
@@ -1090,6 +1108,8 @@ export default function CropScanScreen({ navigation }) {
                       ]}
                       onPress={() => setIrrigation(active ? '' : ir.key)}
                       activeOpacity={0.8}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
                     >
                       <View style={[SC.irrTileIcon, { backgroundColor: theme.bg }]}>
                         <PhotoIcon
@@ -1119,6 +1139,7 @@ export default function CropScanScreen({ navigation }) {
                 placeholderTextColor={COLORS.gray350}
                 value={previousCrop}
                 onChangeText={setPreviousCrop}
+                accessibilityLabel={t('cropScan.previousCropLabel', 'Previous crop (grown last season)')}
               />
 
               <View style={{ height: KSPACE.s16 }} />
@@ -1160,6 +1181,8 @@ export default function CropScanScreen({ navigation }) {
                           return next;
                         });
                       }}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: active }}
                     >
                       <SymptomImage symptom={sym.key} size={34} />
                       <Text style={[SC.symptomChipText, active && SC.symptomChipTextActive]}>
@@ -1181,6 +1204,8 @@ export default function CropScanScreen({ navigation }) {
                     style={[SC.optionBtn, firstNoticed === o.key && SC.optionBtnActive]}
                     onPress={() => setFirstNoticed(firstNoticed === o.key ? '' : o.key)}
                     activeOpacity={0.8}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: firstNoticed === o.key }}
                   >
                     <Text style={[SC.optionBtnText, firstNoticed === o.key && SC.optionBtnTextActive]} numberOfLines={2}>
                       {t(`cropScan.${o.tKey}`)}
@@ -1200,6 +1225,8 @@ export default function CropScanScreen({ navigation }) {
                     style={[SC.areaBtn, affectedArea === o.key && SC.areaBtnActive]}
                     onPress={() => setAffectedArea(affectedArea === o.key ? '' : o.key)}
                     activeOpacity={0.8}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: affectedArea === o.key }}
                   >
                     <Text style={[SC.areaBtnPct, affectedArea === o.key && SC.areaBtnPctActive]}>
                       {t(`cropScan.${o.tLabel}`)}
@@ -1227,6 +1254,7 @@ export default function CropScanScreen({ navigation }) {
                 multiline
                 value={additionalText}
                 onChangeText={setAdditionalText}
+                accessibilityLabel={t('cropScan.additionalDesc', 'Additional description (optional)')}
               />
 
               <View style={{ height: KSPACE.s16 }} />
@@ -1302,7 +1330,7 @@ export default function CropScanScreen({ navigation }) {
               <View>
                 {/* Single full-width preview with a remove button. */}
                 <View style={SC.previewWrap}>
-                  <Image source={{ uri: imageUri }} style={SC.previewImg} resizeMode="cover" />
+                  <Image source={{ uri: imageUri }} style={SC.previewImg} resizeMode="cover" accessible accessibilityRole="image" accessibilityLabel={t('a11y.photoOf', { name: showCustomCrop ? cropName : t('crops.' + cropName, cropName), defaultValue: 'Photo of {{name}}' })} />
                   <View style={SC.previewOverlay}>
                     <View style={SC.previewBadge}>
                       {/* A11Y: this badge sits on a 65% BLACK scrim over the photo, and it
@@ -1406,7 +1434,7 @@ export default function CropScanScreen({ navigation }) {
             {!analysisError && (
               <>
                 {/* Animated brain icon */}
-                <View style={SC.analysisIconWrap}>
+                <View style={SC.analysisIconWrap} accessibilityLiveRegion="polite">
                   <Animated.View style={[SC.analysisIconBg]}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
                   </Animated.View>
@@ -1448,7 +1476,7 @@ export default function CropScanScreen({ navigation }) {
                     const isDone    = i < analysisStep;
                     const isActive  = i === analysisStep;
                     return (
-                      <View key={i} style={SC.progressRow}>
+                      <View key={i} style={SC.progressRow} accessible accessibilityLabel={isDone ? `${t(`cropScan.${key}`)}, ${t('rent.statusCompleted', 'Completed')}` : t(`cropScan.${key}`)}>
                         <View style={[
                           SC.progressDot,
                           isDone  && SC.progressDotDone,

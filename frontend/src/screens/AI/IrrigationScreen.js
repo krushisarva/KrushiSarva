@@ -102,7 +102,7 @@ export default function IrrigationScreen({ navigation }) {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -114,7 +114,7 @@ export default function IrrigationScreen({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={S.scroll}>
 
         {/* Crop selector */}
-        <TouchableOpacity style={S.cropSelect} onPress={openCropModal}>
+        <TouchableOpacity style={S.cropSelect} onPress={openCropModal} accessibilityRole="button">
           <Ionicons name="leaf-outline" size={16} color={COLORS.primary} />
           <Text style={[S.cropSelectTxt, selectedCrop && { color: COLORS.textDark }]}>
             {selectedCrop || t('irrigation.selectCrop')}
@@ -158,8 +158,8 @@ export default function IrrigationScreen({ navigation }) {
         {error && !loading && (
           <View style={S.centered}>
             <Ionicons name="cloud-offline-outline" size={48} color={COLORS.grayMid2} />
-            <Text style={S.errorTxt}>{error}</Text>
-            <TouchableOpacity style={S.retryBtn} onPress={() => fetchRecommendation(selectedCrop)}>
+            <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text>
+            <TouchableOpacity style={S.retryBtn} onPress={() => fetchRecommendation(selectedCrop)} accessibilityRole="button">
               <Text style={S.retryTxt}>{t('irrigation.retry')}</Text>
             </TouchableOpacity>
           </View>
@@ -199,9 +199,9 @@ export default function IrrigationScreen({ navigation }) {
 
               {/* ET0 / Kc / Rainfall stats */}
               <View style={S.heroGrid}>
-                {today.et0    != null && <View style={S.heroGridItem}><Text style={S.heroGridVal}>{Number(today.et0).toFixed(1)}</Text><Text style={S.heroGridLabel}>ET₀ mm</Text></View>}
-                {today.kc     != null && <View style={S.heroGridItem}><Text style={S.heroGridVal}>{today.kc}</Text><Text style={S.heroGridLabel}>Kc</Text></View>}
-                {today.rainfall != null && <View style={S.heroGridItem}><Text style={S.heroGridVal}>{today.rainfall}</Text><Text style={S.heroGridLabel}>{t('irrigation.rainMm')}</Text></View>}
+                {today.et0    != null && <View style={S.heroGridItem} accessible><Text style={S.heroGridVal}>{Number(today.et0).toFixed(1)}</Text><Text style={S.heroGridLabel}>ET₀ mm</Text></View>}
+                {today.kc     != null && <View style={S.heroGridItem} accessible><Text style={S.heroGridVal}>{today.kc}</Text><Text style={S.heroGridLabel}>Kc</Text></View>}
+                {today.rainfall != null && <View style={S.heroGridItem} accessible><Text style={S.heroGridVal}>{today.rainfall}</Text><Text style={S.heroGridLabel}>{t('irrigation.rainMm')}</Text></View>}
               </View>
 
               {/* Mark action */}
@@ -211,6 +211,7 @@ export default function IrrigationScreen({ navigation }) {
                     style={[S.actionBtn, { backgroundColor: 'rgba(52,152,219,0.20)', borderColor: 'rgba(52,152,219,0.25)' }]}
                     onPress={() => markAction('irrigated')}
                     disabled={logging}
+                    accessibilityRole="button"
                   >
                     <Ionicons name="water" size={16} color={COLORS.blue} />
                     <Text style={[S.actionTxt, { color: COLORS.blue }]}>
@@ -221,6 +222,7 @@ export default function IrrigationScreen({ navigation }) {
                     style={[S.actionBtn, { backgroundColor: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.25)' }]}
                     onPress={() => markAction('skipped')}
                     disabled={logging}
+                    accessibilityRole="button"
                   >
                     <Ionicons name="close-circle-outline" size={16} color={COLORS.gray550} />
                     <Text style={[S.actionTxt, { color: COLORS.textMedium }]}>
@@ -230,7 +232,7 @@ export default function IrrigationScreen({ navigation }) {
                 </View>
               )}
               {loggedAction && (
-                <View style={S.loggedBadge}>
+                <View style={S.loggedBadge} accessibilityLiveRegion="polite">
                   <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
                   <Text style={S.loggedTxt}>
                     {loggedAction === 'irrigated'
@@ -251,13 +253,14 @@ export default function IrrigationScreen({ navigation }) {
                   {weekly.map((day, i) => {
                     const d = new Date(day.date);
                     return (
-                      <View key={i} style={[S.dayCard, day.shouldIrrigate && S.dayCardNeedsWater]}>
+                      <View key={i} style={[S.dayCard, day.shouldIrrigate && S.dayCardNeedsWater]} accessible>
                         <Text style={S.dayLabel}>{WEEKDAYS[d.getDay()]}</Text>
                         <Text style={S.dayDate}>{d.getDate()}</Text>
                         <Ionicons
                           name={day.shouldIrrigate ? 'water' : 'checkmark-circle-outline'}
                           size={20}
                           color={day.shouldIrrigate ? COLORS.blue : COLORS.primary}
+                          accessibilityLabel={day.shouldIrrigate ? t('aiHome.tools.irrigation.label', 'Irrigation') : t('irrigation.noIrrigationNeeded', 'No Irrigation Needed')}
                         />
                         {day.rainfall > 0 && (
                           <View style={S.rainRow}>
@@ -298,7 +301,7 @@ export default function IrrigationScreen({ navigation }) {
                 data={crops}
                 keyExtractor={(item) => item.id || item.name}
                 renderItem={({ item }) => (
-                  <TouchableOpacity style={S.modalItem} onPress={() => selectCrop(item.name)}>
+                  <TouchableOpacity style={S.modalItem} onPress={() => selectCrop(item.name)} accessibilityRole="button" accessibilityState={{ selected: item.name === selectedCrop }}>
                     <CropIcon crop={item.name} size={32} />
                     <View style={{ flex: 1 }}>
                       <Text style={[S.modalItemTxt, item.name === selectedCrop && { color: COLORS.primary }]}>{item.name}</Text>
@@ -308,7 +311,7 @@ export default function IrrigationScreen({ navigation }) {
                 )}
               />
             )}
-            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)}>
+            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)} accessibilityRole="button">
               <Text style={S.modalCloseTxt}>{t('irrigation.cancel')}</Text>
             </TouchableOpacity>
           </View>

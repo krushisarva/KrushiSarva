@@ -1,0 +1,116 @@
+<!--
+  DRAFT for legal review. Written from what the code does (see the audit notes in
+  docs/); it is NOT legal advice. Every highlighted `owner-todo` is a fact or a
+  decision only the owner can supply. The page is not served in production until
+  those are resolved and LEGAL_DOCS_APPROVED=true (backend/src/routes/legal.routes.js).
+  When this text changes materially, bump CONSENT_POLICY_VERSION
+  (backend/src/constants/consent.js) so existing users are asked again.
+-->
+<h1>Privacy Policy</h1>
+<p class="meta">Version {{version}} · Effective from {{effectiveDate}}</p>
+
+<p>This policy explains what personal data the KrushiSarva farmer app, the KrushiSarva Seller app and the admin panel collect, why, who receives it, how long it is kept, and how you can see, correct or erase it. KrushiSarva is operated by {{entityName}}, {{registeredAddress}} ("we", "us").</p>
+
+<h2>1. What we collect</h2>
+<table>
+  <thead><tr><th>Data</th><th>When</th><th>Why we need it</th></tr></thead>
+  <tbody>
+    <tr><td>Mobile number</td><td>Sign-in</td><td>To verify it is you with a one-time code, to identify your account, and so a buyer, seller or owner you deal with can reach you.</td></tr>
+    <tr><td>Name, profile photo, language, email (optional)</td><td>Profile</td><td>To show your name on orders, listings and messages and to show the app in your language.</td></tr>
+    <tr><td>State, district, taluka, village and PIN code</td><td>Profile, addresses, listings</td><td>Delivery, nearby sellers and listings, local weather and mandi prices.</td></tr>
+    <tr><td>Precise location (GPS)</td><td>Only if you allow the location permission</td><td>Weather for your field, nearby sellers and mandis, and farm records. The coordinates are saved to your account.</td></tr>
+    <tr><td>Farm records: farms, crops, crop cycles, soil and irrigation data, 7/12 extract image</td><td>When you add them</td><td>Farm planning and advice.</td></tr>
+    <tr><td>Crop and soil photos</td><td>When you scan a crop or soil sample</td><td>To diagnose the problem and produce the report. The report includes your name, mobile number and the field location you supplied.</td></tr>
+    <tr><td>AI chat messages and voice recordings</td><td>When you use AI chat or voice</td><td>To answer your question. Voice is converted to text.</td></tr>
+    <tr><td>Listings, orders, bookings, cart, delivery addresses, reviews</td><td>When you buy, sell or rent</td><td>To carry out the transaction and show it to the other party.</td></tr>
+    <tr><td>Community posts, comments and messages</td><td>When you post or chat</td><td>To deliver them to the people you send them to.</td></tr>
+    <tr><td>Seller details: business type, GSTIN, bank account, IFSC, Aadhaar number, PAN, licence documents</td><td>Seller onboarding (KYC)</td><td>To verify sellers, to meet licensing rules for regulated farm inputs, and to pay sellers.</td></tr>
+    <tr><td>Payment references</td><td>When you pay online</td><td>Payments are taken by Razorpay. We receive the payment status, reference numbers and amount. We do not receive or store your card number, UPI PIN or net-banking password.</td></tr>
+    <tr><td>Device and technical data: push notification token, app version, operating system, IP address, a device identifier, crash reports</td><td>While you use the app</td><td>To send notifications, keep accounts secure, detect misuse and fix crashes.</td></tr>
+  </tbody>
+</table>
+
+<h2>2. Permissions the apps ask for</h2>
+<ul>
+  <li><strong>Camera and photos</strong> — to photograph or pick images of crops, soil, products, animals, machinery and documents.</li>
+  <li><strong>Microphone</strong> (farmer app) — only for AI voice chat.</li>
+  <li><strong>Location</strong> (farmer app) — see "Precise location" above. You can refuse; type your PIN code instead.</li>
+  <li><strong>Notifications</strong> — order, booking, message and safety alerts. You can switch them off in the app or in your phone settings.</li>
+</ul>
+
+<h2>3. Who receives your data</h2>
+<p>We do not sell your personal data. We share only what each task needs.</p>
+<h3>Other people on KrushiSarva</h3>
+<ul>
+  <li>A seller receives the buyer's name, mobile number and delivery address for an order.</li>
+  <li>Your mobile number on an animal, machinery or labour listing can be revealed to a signed-in user who asks for it.</li>
+  <li>Your public listings, posts, comments and reviews are visible to other users under your name.</li>
+</ul>
+<h3>Service providers that process data for us</h3>
+<table>
+  <thead><tr><th>Provider</th><th>What it does</th><th>Data it receives</th></tr></thead>
+  <tbody>
+    <tr><td>Google Firebase Authentication</td><td>Sign-in by SMS code</td><td>Mobile number, device and app identifiers, IP address</td></tr>
+    <tr><td>MSG91</td><td>Sending SMS codes</td><td>Mobile number</td></tr>
+    <tr><td>Razorpay</td><td>Online payments and refunds</td><td>Name, mobile number, order reference, amount; the payment details you type are given to Razorpay directly</td></tr>
+    <tr><td>Cloudinary</td><td>Storing photos, videos and documents</td><td>Product, listing and profile images, crop-scan photos, KYC and licence documents (in private storage)</td></tr>
+    <tr><td>Google Gemini</td><td>AI crop diagnosis, chat and advice</td><td>Your questions, crop and soil photos, your state and district, field location and soil data</td></tr>
+    <tr><td>Sarvam AI</td><td>Speech-to-text, text-to-speech, translation</td><td>Voice recordings and text</td></tr>
+    <tr><td>Expo and Google Firebase Cloud Messaging</td><td>Delivering notifications and app updates</td><td>Notification token, notification content, app version, IP address</td></tr>
+    <tr><td>Open-Meteo, OpenWeatherMap, OpenStreetMap Nominatim, India Post PIN code service</td><td>Weather and place names</td><td>Coordinates or PIN code (not your name or number)</td></tr>
+  </tbody>
+</table>
+<p class="owner-todo"><strong>Owner to confirm:</strong> the code can also send AI requests to OpenAI, Groq and Anthropic as fallbacks. List here only the ones that are switched on in production, and state the plan or tier in use for each AI provider (some free tiers allow the provider to use submitted content).</p>
+<p class="owner-todo"><strong>Owner to confirm with counsel:</strong> which of these providers process data outside India, and the wording required for that.</p>
+<h3>Authorities</h3>
+<p>We disclose data when the law requires it, for example in response to a valid legal order.</p>
+
+<h2>4. How we protect it</h2>
+<ul>
+  <li>Aadhaar number, PAN, bank account details, GSTIN and saved coordinates are encrypted before they are stored, and are masked when shown back to you.</li>
+  <li>KYC and licence documents are kept in private storage and opened only through short-lived links. Every time staff view a seller's KYC details, it is recorded.</li>
+  <li>Connections between the apps and our servers are encrypted.</li>
+</ul>
+
+<h2>5. How long we keep it</h2>
+<table>
+  <thead><tr><th>Data</th><th>Kept for</th></tr></thead>
+  <tbody>
+    <tr><td>One-time sign-in codes</td><td>1 day</td></tr>
+    <tr><td>Expired sign-in sessions</td><td>7 days after expiry</td></tr>
+    <tr><td>In-app notifications</td><td>90 days</td></tr>
+    <tr><td>Voice sessions (transcripts and audio)</td><td>90 days</td></tr>
+    <tr><td>Error logs</td><td>90 days</td></tr>
+    <tr><td>AI usage records</td><td>180 days</td></tr>
+    <tr><td>Crop-scan diagnoses</td><td>365 days</td></tr>
+    <tr><td>Security and audit logs</td><td>365 days</td></tr>
+    <tr><td>Your profile, farms, listings and messages</td><td>Until you delete them or your account</td></tr>
+  </tbody>
+</table>
+<p class="owner-todo"><strong>Owner decision needed:</strong> how long orders, bookings, payment records and seller KYC are kept after an account is closed (tax and other laws set minimum periods), and whether proof of consent is kept after erasure. Today consent records are deleted with the account.</p>
+
+<h2>6. Your choices and rights</h2>
+<ul>
+  <li><strong>See and correct</strong> your data on the profile, farm and business-profile screens.</li>
+  <li><strong>Withdraw consent</strong> for optional uses such as location and notifications from your phone or app settings.</li>
+  <li><strong>Delete your account</strong> in the app: Profile → Delete my account. We confirm it is you with a fresh SMS code.</li>
+  <li><strong>Complain</strong> to our Grievance Officer (below). You may also complain to the Data Protection Board of India.</li>
+  <li><strong>Nominate</strong> another person to exercise these rights if you die or become unable to.</li>
+</ul>
+<h3>What deletion erases, and what stays</h3>
+<p><strong>Erased:</strong> your profile, mobile number and photo; farms, crop cycles, soil and irrigation records; AI chats, voice sessions and crop scans; saved addresses and cart; seller bank and KYC details; the photos and documents stored with them.</p>
+<p><strong>Kept, but no longer linked to you:</strong> past orders and bookings, which tax law and the other party require, with your delivery address removed; and your listings, community posts, comments, reviews and the messages you sent to other users, which stay visible to them under the name "Deleted User".</p>
+<p class="owner-todo"><strong>Owner decision needed:</strong> whether messages, posts, comments, reviews and listing photos should instead be deleted with the account. The paragraph above describes what the app does today.</p>
+
+<h2>7. Children</h2>
+<p class="owner-todo"><strong>Owner decision needed:</strong> either "KrushiSarva is for people aged 18 and over" or the parental-consent process for under-18s. The app does not currently ask for age. Whichever is chosen, people under 18 cannot become sellers and are not sent promotional messages.</p>
+
+<h2>8. Cookies</h2>
+<p>The mobile apps do not use cookies. The admin panel uses two that are needed to sign in; see the <a href="/legal/cookies">Cookie Policy</a>.</p>
+
+<h2>9. Changes to this policy</h2>
+<p>If we change this policy in a way that affects how your data is used, we will show the new version in the app and ask you to accept it before you continue.</p>
+
+<h2>10. Contact and Grievance Officer</h2>
+<p>Questions or requests about your data: {{supportEmail}}.</p>
+<p>Grievance Officer: {{grievanceName}}, {{grievanceEmail}}. <span class="owner-todo">[the time within which complaints are acknowledged and resolved]</span></p>

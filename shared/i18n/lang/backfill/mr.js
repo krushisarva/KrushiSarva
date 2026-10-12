@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 877 keys.
+// 876 keys.
 
 export default {
   "aiChat.attachHint": "झटपट निदानासाठी तुमच्या पिकाचा फोटो शेअर करा.",
@@ -28,7 +28,7 @@ export default {
   "cart.deliveryCharge": "+₹{{amount}} डिलिव्हरी",
   "cart.freeDeliveryPrefix": "आणखी",
   "cart.freeDeliverySuffix": "जोडा आणि मोफत डिलिव्हरी मिळवा!",
-  "cart.savedOnDelivery": "तुम्ही डिलिव्हरीवर ₹49 वाचवले!",
+  "cart.savedOnDelivery": "या ऑर्डरवर मोफत डिलिव्हरी",
   "celebrationSheet.loggedTitle": "Logged Title",
   "close": "बंद करा",
   "common.back": "Back",
@@ -142,7 +142,7 @@ export default {
   "diagReport.days": "दिवस",
   "diagReport.detection": "ओळख",
   "diagReport.diagnosePrompt": "निदान प्रॉम्प्ट",
-  "diagReport.diagnosingPathologist": "निदान करणारे रोगतज्ज्ञ",
+  "diagReport.diagnosingPathologist": "AI निदान प्रणाली",
   "diagReport.diagnosisModel": "निदान मॉडेल",
   "diagReport.differentialDiagnosis": "विभेदक निदान",
   "diagReport.disclaimer": "हा अहवाल AI-सहाय्यित सल्ला प्रणालीद्वारे तयार केला आहे. हा निर्णयासाठी मदत करणारा दस्तऐवज आहे, औपचारिक प्रिस्क्रिप्शन नाही. गंभीर, असामान्य किंवा कायम राहणाऱ्या प्रकरणांसाठी कृपया प्रमाणित कृषीतज्ज्ञ किंवा जवळच्या कृषी विज्ञान केंद्राचा (KVK) सल्ला घ्या. शिफारस केलेली कीटकनाशके CIB&RC-मान्य लेबलनुसारच वापरावीत.",
@@ -180,7 +180,7 @@ export default {
   "diagReport.irrigation": "सिंचन",
   "diagReport.kisanCallCentre": "किसान कॉल सेंटर:",
   "diagReport.kvkLocator": "KVK लोकेटर:",
-  "diagReport.labSub": "वनस्पती रोगशास्त्र · निदान प्रयोगशाळा",
+  "diagReport.labSub": "AI पीक आरोग्य सल्ला",
   "diagReport.labTag": "AI-सहाय्यित पीक आरोग्य निदान सेवा",
   "diagReport.language": "भाषा:",
   "diagReport.leafWetness": "पानांचा ओलावा",
@@ -197,7 +197,7 @@ export default {
   "diagReport.overallRisk": "एकूण धोका",
   "diagReport.passed": "उत्तीर्ण",
   "diagReport.pathogenType": "रोगजंतूचा प्रकार",
-  "diagReport.pathologistAi": "रोगतज्ज्ञ (AI):",
+  "diagReport.pathologistAi": "AI प्रणाली:",
   "diagReport.patientSummary": "रुग्ण सारांश",
   "diagReport.perAcre": "प्रति एकर",
   "diagReport.phone": "फोन",
@@ -225,7 +225,7 @@ export default {
   "diagReport.reportTitle": "पीक रोग निदान अहवाल",
   "diagReport.requiredPpe": "आवश्यक PPE:",
   "diagReport.resistanceSafetyNotes": "प्रतिकारशक्ती आणि सुरक्षा सूचना",
-  "diagReport.reviewingAuthority": "पुनरावलोकन प्राधिकरण",
+  "diagReport.reviewingAuthority": "पुनरावलोकनासाठी सुचवले — पुनरावलोकन झालेले नाही",
   "diagReport.rotation": "फेरपालट",
   "diagReport.ruledOut": "वगळले",
   "diagReport.schedule": "वेळापत्रक",
@@ -261,7 +261,7 @@ export default {
   "diagReport.treatmentWindow": "उपचाराची वेळ",
   "diagReport.triggeringConditions": "कारक परिस्थिती",
   "diagReport.unverifiedLabel": "अपडताळित:",
-  "diagReport.verified": "पडताळणी केली",
+  "diagReport.verified": "AI द्वारे तयार",
   "diagReport.verifiedLabel": "पडताळले:",
   "diagReport.vision": "व्हिजन",
   "diagReport.visionModel": "व्हिजन मॉडेल:",
@@ -509,7 +509,6 @@ export default {
   "product.addedToCartMsg": "{{qty}}× {{name}}",
   "product.availability": "उपलब्धता",
   "product.countryOfOrigin": "मूळ देश",
-  "product.cropSetuVerified": "KrushiSarva प्रमाणित",
   "product.customerSupport": "ग्राहक सहाय्य",
   "product.deliveryAddressSub": "थेट शिपिंग अंदाज आणि सेव्ह केलेले पत्ते लवकरच येत आहेत.",
   "product.deliveryAddressTitle": "डिलिव्हरी आणि पत्ता",

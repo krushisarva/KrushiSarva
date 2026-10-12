@@ -1,8 +1,8 @@
 /** Lightweight shadcn-style UI primitives (Tailwind, no runtime UI dep). */
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, cloneElement, isValidElement, useEffect, useId, useRef, useState } from 'react';
 import { Check, Copy, Loader2 } from 'lucide-react';
-import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { AriaAttributes, ButtonHTMLAttributes, ReactElement, ReactNode, SelectHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 const cn = clsx;
 
@@ -28,7 +28,7 @@ export function Card({ className, children }: { className?: string; children: Re
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn('h-5 w-5 animate-spin text-slate-400', className)} />;
+  return <Loader2 className={cn('h-5 w-5 animate-spin text-slate-500', className)} />;
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
@@ -44,20 +44,49 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 }
 
 export function EmptyState({ message = 'Nothing to show.' }: { message?: string }) {
-  return <div className="py-12 text-center text-sm text-slate-400">{message}</div>;
+  return <div className="py-12 text-center text-sm text-slate-500">{message}</div>;
 }
 
 export function ErrorState({ message }: { message: string }) {
   return <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</div>;
 }
 
+type ControlProps = { id?: string } & Pick<AriaAttributes, 'aria-invalid' | 'aria-describedby'>;
+
+/** The one child a label can point at: a form component, or a native control. */
+function asControl(node: ReactNode): ReactElement<ControlProps> | null {
+  if (!isValidElement<ControlProps>(node) || node.type === Fragment) return null;
+  if (typeof node.type === 'string') return ['input', 'select', 'textarea'].includes(node.type) ? node : null;
+  return node;
+}
+
+/**
+ * A label bound to its control. Wrap exactly ONE control (Input / Select /
+ * Textarea, or a native one) and Field gives it the id the label points at,
+ * plus `aria-describedby` for the hint/error and `aria-invalid` on error.
+ *
+ * A wrapper element cannot be labelled, so when the control sits inside other
+ * markup pass `htmlFor` and put that id on the control yourself; the hint/error
+ * paragraph is then `${htmlFor}-desc` for the control's `aria-describedby`.
+ * A group of controls is a `<fieldset>` + `<legend>`, not a Field.
+ */
 export function Field({ label, htmlFor, error, hint, children }: { label: ReactNode; htmlFor?: string; error?: string; hint?: string; children: ReactNode }) {
+  const autoId = useId();
+  const control = asControl(children);
+  const id = htmlFor ?? control?.props.id ?? autoId;
+  const descId = error || hint ? `${id}-desc` : undefined;
   return (
     <div>
-      <label className="label" htmlFor={htmlFor}>{label}</label>
-      {children}
-      {hint && !error && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      <label className="label" htmlFor={control || htmlFor ? id : undefined}>{label}</label>
+      {control
+        ? cloneElement(control, {
+            id,
+            'aria-invalid': error ? true : control.props['aria-invalid'],
+            'aria-describedby': [control.props['aria-describedby'], descId].filter(Boolean).join(' ') || undefined,
+          })
+        : children}
+      {hint && !error && <p id={descId} className="mt-1 text-xs text-slate-500">{hint}</p>}
+      {error && <p id={descId} role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
 }
@@ -107,7 +136,7 @@ const STATUS_TONE: Record<string, keyof typeof TONE> = {
  * must not print a raw enum at the user (e.g. payment-intent gateway status).
  */
 export function StatusBadge({ value, label }: { value?: string | null; label?: string }) {
-  if (!value) return <span className="text-slate-400">—</span>;
+  if (!value) return <span className="text-slate-500">—</span>;
   return <Badge tone={STATUS_TONE[value] ?? 'slate'}>{label ?? value}</Badge>;
 }
 
@@ -139,7 +168,7 @@ export function CopyValue({ value, label, mono = true, className }: {
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  if (!value) return <span className="text-slate-400">—</span>;
+  if (!value) return <span className="text-slate-500">—</span>;
 
   const flash = (next: 'copied' | 'failed') => {
     setState(next);
@@ -167,7 +196,7 @@ export function CopyValue({ value, label, mono = true, className }: {
         title={state === 'failed' ? 'Copy blocked by the browser — select the text instead' : `Copy ${label ?? 'value'}`}
         className={cn(
           'shrink-0 rounded p-1 transition-colors',
-          state === 'copied' ? 'text-green-600' : state === 'failed' ? 'text-red-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600',
+          state === 'copied' ? 'text-green-600' : state === 'failed' ? 'text-red-600' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700',
         )}
       >
         {state === 'copied' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

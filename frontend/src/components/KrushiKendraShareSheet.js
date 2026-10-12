@@ -104,7 +104,7 @@ export default function KrushiKendraShareSheet({
                 </Text>
               ) : null}
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
               <Ionicons name="close" size={24} color={COLORS.textMedium} />
             </TouchableOpacity>
           </View>
@@ -119,7 +119,7 @@ export default function KrushiKendraShareSheet({
             <View style={S.emptyBox}>
               <Ionicons name="cloud-offline-outline" size={42} color={COLORS.textLight} />
               <Text style={S.emptyTitle}>{error}</Text>
-              <TouchableOpacity style={S.retryBtn} onPress={fetchSellers}>
+              <TouchableOpacity style={S.retryBtn} onPress={fetchSellers} accessibilityRole="button">
                 <Text style={S.retryText}>{t('retry', 'Retry')}</Text>
               </TouchableOpacity>
             </View>
@@ -151,6 +151,8 @@ export default function KrushiKendraShareSheet({
                       style={[S.sellerCard, isActive && S.sellerCardActive]}
                       onPress={() => setSelected(seller)}
                       activeOpacity={0.85}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: isActive }}
                     >
                       <View style={[S.sellerIcon, { backgroundColor: COLORS.primary + '15' }]}>
                         <Ionicons name="storefront" size={20} color={COLORS.primary} />
@@ -202,6 +204,7 @@ export default function KrushiKendraShareSheet({
                     placeholderTextColor={COLORS.textLight}
                     multiline
                     maxLength={500}
+                    accessibilityLabel={t('share.messageLabel', 'Add a note (optional)')}
                   />
                 </View>
               ) : null}
@@ -211,6 +214,11 @@ export default function KrushiKendraShareSheet({
                 onPress={handleSend}
                 disabled={!selected || sending}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityState={{ busy: sending }}
+                accessibilityLabel={selected
+                  ? t('share.sendCta', { name: selected.name || `+91 ${selected.phone}`, defaultValue: 'Send to {{name}}' })
+                  : t('share.pickFirst', 'Pick a Krushi Kendra')}
               >
                 {sending ? (
                   <ActivityIndicator color={COLORS.white} size="small" />

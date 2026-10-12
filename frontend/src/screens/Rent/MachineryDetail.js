@@ -11,7 +11,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, Alert, ActivityIndicator, Dimensions,
-  StatusBar, Modal, TextInput, Animated,
+  StatusBar, Modal, TextInput, Animated, Linking,
 } from 'react-native';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import { fs } from '../../utils/responsive';
@@ -30,6 +30,7 @@ import { SkeletonDetail } from '../../components/ui/Skeleton';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import useRentBooking from './components/useRentBooking';
 import { noticeText } from './components/rentBookingFlow';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { inr } from '../AgriStore/shopUtils';
 
 // Machinery icon registry keys — fall back to 'tractor' so the hero is never blank.
@@ -108,6 +109,9 @@ function AvailCalendar({ year, month, bookedRanges, selStart, selEnd, onDayPress
                 today && !isStart && !isEnd && { borderWidth: 1.5, borderColor: COLORS.primary }]}
               onPress={() => !blocked && onDayPress(dk)}
               disabled={blocked}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isStart || isEnd }}
+              accessibilityLabel={`${day} ${t('weatherHome.' + MONTH_KEYS[month])} ${year}${booked ? `, ${t('rent.bookedNow', 'Booked')}` : ''}`}
             >
               <Text style={[C.calDayTxt, { color: txtColor }]}>{day}</Text>
               {booked && <Text style={C.calBookedDot}>●</Text>}
@@ -154,7 +158,7 @@ function SpecRow({ icon, label, value, color = COLORS.grayDark2 }) {
 // (CDN down, stale asset, flaky network) makes RN's <Image> render a blank box
 // with no recovery — onError swaps in the machinery icon so the slide is never
 // a silent white screen.
-function GalleryImage({ uri, fallbackType }) {
+function GalleryImage({ uri, fallbackType, label }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
@@ -169,6 +173,9 @@ function GalleryImage({ uri, fallbackType }) {
       style={D.galleryImg}
       resizeMode="cover"
       onError={() => setFailed(true)}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={label}
     />
   );
 }
@@ -506,7 +513,7 @@ export default function MachineryDetail({ route, navigation }) {
                             isLooping={false}
                           />
                         )
-                        : <GalleryImage uri={uri} fallbackType={MACH_ICON_KEYS.includes(m.category) ? m.category : 'tractor'} />
+                        : <GalleryImage uri={uri} fallbackType={MACH_ICON_KEYS.includes(m.category) ? m.category : 'tractor'} label={t('a11y.photoOf', { name: m.name, defaultValue: 'Photo of {{name}}' })} />
                       }
                     </View>
                   );
@@ -539,7 +546,7 @@ export default function MachineryDetail({ route, navigation }) {
 
           {/* Back & actions overlay */}
           <View style={[D.galleryNav, { paddingTop: insets.top + 8 }]}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={D.navBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
               <Ionicons name="arrow-back" size={22} color={COLORS.white} />
             </TouchableOpacity>
             <TouchableOpacity onPress={callOwner} disabled={revealing} style={D.navBtn} accessibilityRole="button" accessibilityLabel={t('rent.callOwner')}>
@@ -573,7 +580,7 @@ export default function MachineryDetail({ route, navigation }) {
 
           {/* Rating */}
           {m.rating > 0 && (
-            <View style={D.ratingRow}>
+            <View style={D.ratingRow} accessible accessibilityLabel={`${t('a11y.rated', { rating: m.rating.toFixed(1), defaultValue: 'Rated {{rating}} out of 5' })}, ${m.ratingCount ?? 0} ${t('rent.reviewsCount')}`}>
               {[1,2,3,4,5].map(s => (
                 <Ionicons key={s} name={s <= Math.round(m.rating) ? 'star' : 'star-outline'} size={15} color={COLORS.yellowDark2} />
               ))}
@@ -680,11 +687,11 @@ export default function MachineryDetail({ route, navigation }) {
           ) : null}
           <View style={D.calCard}>
             <View style={D.calHeader}>
-              <TouchableOpacity onPress={prevMonth} style={D.calNavBtn}>
+              <TouchableOpacity onPress={prevMonth} style={D.calNavBtn} accessibilityRole="button" accessibilityLabel={t('a11y.previousMonth', 'Previous month')}>
                 <Ionicons name="chevron-back" size={20} color={COLORS.charcoal} />
               </TouchableOpacity>
               <Text style={D.calMonthTxt}>{t('weatherHome.' + MONTH_KEYS[calMonth])} {calYear}</Text>
-              <TouchableOpacity onPress={nextMonth} style={D.calNavBtn}>
+              <TouchableOpacity onPress={nextMonth} style={D.calNavBtn} accessibilityRole="button" accessibilityLabel={t('a11y.nextMonth', 'Next month')}>
                 <Ionicons name="chevron-forward" size={20} color={COLORS.charcoal} />
               </TouchableOpacity>
             </View>
@@ -727,7 +734,18 @@ export default function MachineryDetail({ route, navigation }) {
                     onChangeText={setNotes}
                     multiline
                     numberOfLines={2}
+                    accessibilityLabel={t('rent.notesPlaceholder')}
                   />
+                  {rentBooking.payOnline ? (
+                    <TouchableOpacity
+                      style={D.policyLink}
+                      onPress={() => Linking.openURL(LEGAL_URLS.refunds).catch(() => {})}
+                      hitSlop={{ top: 8, bottom: 8 }}
+                      accessibilityRole="link"
+                    >
+                      <Text style={D.policyLinkTxt}>{t('a11y.refundPolicyLink', 'Refund, Cancellation & Return Policy')}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </>
               )}
             </View>
@@ -773,6 +791,7 @@ export default function MachineryDetail({ route, navigation }) {
           <TouchableOpacity
             style={[D.bookBtn2, { flex: 1 }]}
             onPress={() => navigation.navigate('AddMachinery', { listing: m, editMode: true })}
+            accessibilityRole="button"
           >
             <Ionicons name="create-outline" size={20} color={COLORS.white} />
             <Text style={D.bookBtn2Txt} numberOfLines={1}>{t('rent.editListing')}</Text>
@@ -804,6 +823,7 @@ export default function MachineryDetail({ route, navigation }) {
                 style={[D.bookBtn2, (!selStart || !selEnd || rentBooking.busy) && { opacity: 0.5 }]}
                 onPress={handleBook}
                 disabled={!selStart || !selEnd || rentBooking.busy}
+                accessibilityRole="button"
               >
                 {rentBooking.busy
                   ? <ActivityIndicator size="small" color={COLORS.white} />
@@ -839,12 +859,12 @@ export default function MachineryDetail({ route, navigation }) {
             </View>
             <Text style={D.bkTitle}>
               {bookingDone?.paid
-                ? t('payments.bookingConfirmed', 'Booking confirmed')
+                ? t('payments.bookingConfirmed', 'Payment received')
                 : t('rent.bookingSentTitle', 'Booking request sent!')}
             </Text>
             <Text style={D.bkBody}>
               {bookingDone?.paid
-                ? t('payments.bookingConfirmedMsg', 'Your booking is confirmed. You can see it under My Bookings.')
+                ? t('payments.bookingConfirmedMsg', 'Your payment is received and your request has been sent to the owner. The booking is confirmed once the owner accepts. You can see it under My Bookings.')
                 : t('rent.bookingSentMsg', 'The owner will review your request and confirm it shortly. You’ll be notified once it’s approved.')}
             </Text>
             {bookingDone?.paidAmount ? (
@@ -863,7 +883,7 @@ export default function MachineryDetail({ route, navigation }) {
                 </Text>
               </View>
             ) : null}
-            <TouchableOpacity style={D.bkBtn} onPress={() => { setBookingDone(null); navigation.goBack(); }} activeOpacity={0.85}>
+            <TouchableOpacity style={D.bkBtn} onPress={() => { setBookingDone(null); navigation.goBack(); }} activeOpacity={0.85} accessibilityRole="button">
               <Text style={D.bkBtnTxt}>{t('rent.done')}</Text>
             </TouchableOpacity>
           </View>
@@ -968,6 +988,8 @@ const D = StyleSheet.create({
   totalLabel:{ fontSize: 14, color: COLORS.textDark, fontWeight: '700', flex: 1 },
   totalAmt: { fontSize: 18, fontWeight: '900', color: COLORS.primary },
   notesInput: { marginTop: 10, backgroundColor: COLORS.white, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.border, padding: 10, fontSize: 13, color: COLORS.textDark, minHeight: 50 },
+  policyLink:    { alignSelf: 'flex-start', paddingTop: 10, paddingBottom: 2 },
+  policyLinkTxt: { fontSize: 12, color: COLORS.textBody, textDecorationLine: 'underline' },
 
   ownerNotice:    { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.primaryPale, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1.5, borderColor: COLORS.primary + '40' },
   ownerNoticeTxt: { flex: 1, fontSize: 13, color: COLORS.primary, fontWeight: '700', lineHeight: 18 },

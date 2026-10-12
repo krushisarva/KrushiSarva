@@ -298,6 +298,9 @@ export function FilterBar({ children, style, contentStyle, accessibilityRole = '
 
 // ── Checkbox row ─────────────────────────────────────────────────────────────
 
+// How far a finger may drift between touch-down and release and still be a tap.
+const TAP_SLOP = 16;
+
 export function CheckboxRow({
   checked,
   onToggle,
@@ -307,9 +310,30 @@ export function CheckboxRow({
   style,
   testID,
 }) {
+  // A press whose finger travelled is the tail of a scroll, not a tap. Flicking
+  // repeatedly at the end of a long form reaches Pressable as a press on the
+  // last row — press-in from one flick, release from a later one, hundreds of dp
+  // away — and this row is where the seller consent box sits. A tick nobody
+  // made is not consent. Screen-reader activation carries no coordinates and is
+  // always let through.
+  const downRef = useRef(null);
+  const handlePressIn = useCallback((e) => {
+    const at = e?.nativeEvent;
+    downRef.current = at && Number.isFinite(at.pageY) ? { x: at.pageX, y: at.pageY } : null;
+  }, []);
+  const handlePress = useCallback((e) => {
+    const down = downRef.current;
+    const up = e?.nativeEvent;
+    downRef.current = null;
+    if (down && up && Number.isFinite(up.pageY)
+      && Math.hypot(up.pageX - down.x, up.pageY - down.y) > TAP_SLOP) return;
+    onToggle?.();
+  }, [onToggle]);
+
   return (
     <Pressable
-      onPress={onToggle}
+      onPressIn={handlePressIn}
+      onPress={handlePress}
       disabled={disabled}
       testID={testID}
       accessibilityRole="checkbox"

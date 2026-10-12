@@ -26,7 +26,7 @@ const W = Dimensions.get('window').width;
 const GREEN_BG = 'rgba(23,107,67,0.08)';
 
 // ── Press scale wrapper ───────────────────────────────────────────────────────
-function PressScale({ onPress, style, down = 0.88, children }) {
+function PressScale({ onPress, style, down = 0.88, children, ...a11y }) {
   const sc = useRef(new Animated.Value(1)).current;
   return (
     <Animated.View style={[style, { transform: [{ scale: sc }] }]}>
@@ -35,6 +35,8 @@ function PressScale({ onPress, style, down = 0.88, children }) {
         onPressIn={() => Animated.spring(sc, { toValue: down, useNativeDriver: true, friction: 8, tension: 150 }).start()}
         onPressOut={() => Animated.spring(sc, { toValue: 1, useNativeDriver: true, friction: 5, tension: 80 }).start()}
         activeOpacity={1}
+        accessibilityRole="button"
+        {...a11y}
       >
         {children}
       </TouchableOpacity>
@@ -174,7 +176,7 @@ function CartItem({ item, onQtyChange, onRemove, index, t }) {
             </View>
 
             {/* Trash */}
-            <PressScale onPress={confirmRemove} down={0.8}>
+            <PressScale onPress={confirmRemove} down={0.8} accessibilityLabel={t('a11y.removeItem', { name: product.name, defaultValue: 'Remove {{name}}' })}>
               <View style={S.trashBtn}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.error} />
               </View>
@@ -192,12 +194,13 @@ function CartItem({ item, onQtyChange, onRemove, index, t }) {
               <PressScale
                 onPress={() => onQtyChange(rowKey, item.quantity - 1 < minQty ? 0 : item.quantity - 1)}
                 down={0.8}
+                accessibilityLabel={t('a11y.decreaseQty', 'Decrease quantity')}
               >
                 <View style={S.qPillBtn}>
                   <Ionicons name="remove" size={15} color={COLORS.charcoal} />
                 </View>
               </PressScale>
-              <Animated.Text style={[S.qNum, { transform: [{ scale: qtyAnim }] }]}>
+              <Animated.Text style={[S.qNum, { transform: [{ scale: qtyAnim }] }]} accessibilityLiveRegion="polite" accessibilityLabel={`${t('product.quantity')}: ${item.quantity}`}>
                 {item.quantity}
               </Animated.Text>
               {(() => {
@@ -206,6 +209,8 @@ function CartItem({ item, onQtyChange, onRemove, index, t }) {
                   <PressScale
                     onPress={() => { if (!atMax) onQtyChange(rowKey, item.quantity + 1); }}
                     down={atMax ? 1 : 0.8}
+                    accessibilityState={{ disabled: atMax }}
+                    accessibilityLabel={t('a11y.increaseQty', 'Increase quantity')}
                   >
                     <View style={[S.qPillBtn, atMax && { opacity: 0.4 }]}>
                       <Ionicons name="add" size={15} color={COLORS.charcoal} />
@@ -408,7 +413,7 @@ export default function CartScreen({ navigation }) {
       <SafeAreaView style={S.container}>
         {/* Header */}
         <View style={S.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.headerBack}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={S.headerBack} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
           </TouchableOpacity>
           <View>
@@ -437,7 +442,7 @@ export default function CartScreen({ navigation }) {
     <SafeAreaView style={S.container} edges={['top', 'left', 'right']}>
       {/* ── Header ── */}
       <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.headerBack}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.headerBack} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={22} color={COLORS.charcoal} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -453,14 +458,14 @@ export default function CartScreen({ navigation }) {
 
       {/* A failed refresh keeps the cart on screen and explains itself. */}
       {error ? (
-        <View style={[S.banner, S.bannerError]}>
+        <View style={[S.banner, S.bannerError]} accessibilityLiveRegion="polite">
           <Ionicons
             name={error.code === SHOP_ERRORS.OFFLINE ? 'cloud-offline-outline' : 'warning-outline'}
             size={16}
             color={COLORS.error}
           />
           <Text style={S.bannerTxt} numberOfLines={2}>{error.message}</Text>
-          <TouchableOpacity onPress={handleRefresh} hitSlop={10} style={S.bannerBtn}>
+          <TouchableOpacity onPress={handleRefresh} hitSlop={10} style={S.bannerBtn} accessibilityRole="button">
             <Text style={S.bannerAction}>{t('retry', 'Retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -471,7 +476,7 @@ export default function CartScreen({ navigation }) {
           change. Each issue carries a code the backend defined, so the wording
           is never a guess about what happened. */}
       {blockingIssues.length > 0 ? (
-        <View style={[S.banner, S.bannerWarn, { flexDirection: 'column', alignItems: 'stretch', gap: 6 }]}>
+        <View style={[S.banner, S.bannerWarn, { flexDirection: 'column', alignItems: 'stretch', gap: 6 }]} accessibilityLiveRegion="polite">
           {blockingIssues.slice(0, 4).map((issue, i) => (
             <View key={`${issue.code}-${issue.listingId || i}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
               <Ionicons name="alert-circle-outline" size={15} color={COLORS.yellowDark} style={{ marginTop: 1 }} />
@@ -536,8 +541,11 @@ export default function CartScreen({ navigation }) {
             )}
 
             {/* Free-delivery progress, driven by the SERVER's threshold and the
-                server's per-shipment shortfall — not a hard-coded 999. */}
-            {delivery > 0 && quote?.shipments?.[0]?.freeDeliveryShortfall ? (
+                server's per-shipment shortfall — not a hard-coded 999.
+                Single-shipment carts only: the shortfall is per shipment, so on
+                a cart spanning two Kendras "add ₹X more for free delivery"
+                would only make the first delivery free, not the order. */}
+            {delivery > 0 && quote?.shipmentCount === 1 && quote?.shipments?.[0]?.freeDeliveryShortfall ? (
               <DeliveryProgress
                 current={Number(quote.shipments[0].goodsSubtotal)}
                 threshold={Number(quote.shipments[0].goodsSubtotal) + Number(quote.shipments[0].freeDeliveryShortfall)}

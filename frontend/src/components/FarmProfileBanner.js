@@ -84,6 +84,7 @@ export default function FarmProfileBanner({ onEdit, compact = false, style }) {
         style={[S.wrapper, S.emptyWrapper, style]}
         onPress={onEdit}
         activeOpacity={0.75}
+        accessibilityRole="button"
       >
         <Ionicons name="leaf-outline" size={15} color={GREEN} />
         <Text style={S.emptyText}>{t('farmProfile.bannerEmptyPrompt')}</Text>
@@ -174,7 +175,7 @@ export default function FarmProfileBanner({ onEdit, compact = false, style }) {
 
       {/* ── Edit button — floats right, outside scroll ────────────────── */}
       {onEdit && (
-        <TouchableOpacity style={S.editBtn} onPress={onEdit} activeOpacity={0.7}>
+        <TouchableOpacity style={S.editBtn} onPress={onEdit} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('nav.editFarm', 'Edit Farm')}>
           <Ionicons name="pencil-outline" size={13} color={GREEN} />
         </TouchableOpacity>
       )}

@@ -22,6 +22,19 @@ function generateOtp() {
  * Returns { sessionId } on success.
  */
 export async function sendOtp(phone) {
+  // No SMS provider outside development means there is no way to deliver the
+  // code to the phone's owner. The fallback below hands the code back to the
+  // CALLER and prints it to the log — fine on a developer's machine, a complete
+  // sign-in bypass anywhere else (anyone could request a code for any number and
+  // read it from the response). Fail closed before a session is even created.
+  if (!ENV.MSG91_AUTH_KEY && !ENV.IS_DEV) {
+    const err = new Error('SMS sign-in is not available right now. Please try again later.');
+    err.statusCode = 503;
+    err.expose = true;
+    err.code = 'OTP_DELIVERY_UNAVAILABLE';
+    throw err;
+  }
+
   const otp = generateOtp();
   // [FIX #20] Increase bcrypt rounds from 8 to 10 for OTP hashing
   const hashed = await bcrypt.hash(otp, 10);
@@ -42,10 +55,10 @@ export async function sendOtp(phone) {
     return { sessionId: session.id };
   }
 
-  // Development fallback — no SMS key configured
+  // Development fallback — no SMS key configured. Unreachable in production:
+  // the guard at the top of this function throws first.
   console.log(`[OTP DEV] Phone: ${phone} | OTP: ${otp}`);
   // Return the OTP in the response so the dev app can auto-fill it.
-  // NEVER do this in production (guarded by MSG91_AUTH_KEY check above).
   return { sessionId: session.id, devOtp: otp };
 }
 

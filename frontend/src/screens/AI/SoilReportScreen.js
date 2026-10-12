@@ -122,7 +122,7 @@ export default function SoilReportScreen({ navigation, route }) {
         <View style={S.empty}>
           <FileText size={46} color={MUTED} strokeWidth={1.6} />
           <Text style={S.emptyTxt}>{t('soilHub.report.empty', 'No soil test yet')}</Text>
-          <TouchableOpacity style={S.emptyBtn} activeOpacity={0.9} onPress={() => navigation.navigate('SoilForm')}>
+          <TouchableOpacity style={S.emptyBtn} activeOpacity={0.9} onPress={() => navigation.navigate('SoilForm')} accessibilityRole="button">
             <Text style={S.emptyBtnTxt}>{t('soilHub.report.startTest', 'Start a test')}</Text>
           </TouchableOpacity>
         </View>
@@ -140,7 +140,7 @@ export default function SoilReportScreen({ navigation, route }) {
               </Text>
             </View>
             {score != null && (
-              <View style={S.scoreBubble}>
+              <View style={S.scoreBubble} accessible>
                 <Text style={[S.scoreVal, { color: scoreColor }]}>{score}%</Text>
                 <Text style={S.scoreLabel}>{t('soilHub.report.health', 'health')}</Text>
               </View>
@@ -148,13 +148,13 @@ export default function SoilReportScreen({ navigation, route }) {
           </View>
 
           {/* Ask AI advisor */}
-          <TouchableOpacity style={S.askBtn} activeOpacity={0.9} onPress={() => askSoilAdvisor(navigation, report, language, t)}>
+          <TouchableOpacity style={S.askBtn} activeOpacity={0.9} onPress={() => askSoilAdvisor(navigation, report, language, t)} accessibilityRole="button">
             <Sparkles size={16} color={BG} strokeWidth={2.4} />
             <Text style={S.askBtnTxt}>{t('soilHub.report.askAdvisor', 'Ask Soil AI Advisor')}</Text>
           </TouchableOpacity>
 
           {/* Parameter ratings */}
-          <Text style={S.sectionLabel}>{t('soilHub.report.ratings', 'PARAMETER RATINGS')}</Text>
+          <Text style={S.sectionLabel} accessibilityRole="header">{t('soilHub.report.ratings', 'PARAMETER RATINGS')}</Text>
           {PARAM_FIELDS.map(f => {
             const r = report.ratings?.[f.key];
             const val = report[f.key];
@@ -163,8 +163,8 @@ export default function SoilReportScreen({ navigation, route }) {
           })}
 
           {/* Fertilizer recommendation */}
-          <Text style={S.sectionLabel}>{t('soilHub.report.fertilizer', 'FERTILIZER PLAN')}</Text>
-          <TouchableOpacity style={S.cropSelect} activeOpacity={0.85} onPress={() => setCropModal(true)}>
+          <Text style={S.sectionLabel} accessibilityRole="header">{t('soilHub.report.fertilizer', 'FERTILIZER PLAN')}</Text>
+          <TouchableOpacity style={S.cropSelect} activeOpacity={0.85} onPress={() => setCropModal(true)} accessibilityRole="button">
             <Leaf size={16} color={P_LIGHT} />
             <Text style={[S.cropSelectTxt, targetCrop && { color: TEXT }]}>
               {targetCrop || t('soilHub.report.selectCrop', 'Select your crop')}
@@ -212,7 +212,7 @@ export default function SoilReportScreen({ navigation, route }) {
             </View>
           ))}
 
-          {error ? <Text style={S.errorTxt}>{error}</Text> : null}
+          {error ? <Text style={S.errorTxt} accessibilityLiveRegion="polite">{error}</Text> : null}
 
           <Text style={S.disclaimer}>
             {t('soilHub.report.disclaimer', 'Guidance based on ICAR Soil Health Card norms. Please also consult your local agriculture officer.')}
@@ -221,13 +221,15 @@ export default function SoilReportScreen({ navigation, route }) {
           {/* History strip */}
           {history.length > 1 && (
             <>
-              <Text style={S.sectionLabel}>{t('soilHub.report.past', 'PAST TESTS')}</Text>
+              <Text style={S.sectionLabel} accessibilityRole="header">{t('soilHub.report.past', 'PAST TESTS')}</Text>
               {history.map(item => (
                 <TouchableOpacity
                   key={item.id}
                   style={[S.histRow, item.id === report.id && S.histRowActive]}
                   activeOpacity={0.85}
                   onPress={() => switchReport(item)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: item.id === report.id }}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={S.histField}>{item.fieldName || t('soilHub.summary.myField', 'My field')}</Text>
@@ -259,13 +261,14 @@ export default function SoilReportScreen({ navigation, route }) {
                 <TouchableOpacity
                   style={S.modalItem}
                   onPress={() => { setTargetCrop(item.name); setCropModal(false); loadRecommendation(item.name); }}
+                  accessibilityRole="button"
                 >
                   <CropIcon crop={item.name} size={30} />
                   <Text style={S.modalItemTxt}>{item.name}</Text>
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)}>
+            <TouchableOpacity style={S.modalClose} onPress={() => setCropModal(false)} accessibilityRole="button">
               <Text style={S.modalCloseTxt}>{t('soilHub.report.cancel', 'Cancel')}</Text>
             </TouchableOpacity>
           </View>
@@ -280,7 +283,7 @@ function HealthBar({ field, value, rating, language, t }) {
   const color = ratingColor(rating?.rating);
   const ratingLabel = (language === 'hi' && rating?.ratingHi) ? rating.ratingHi : (rating?.rating || '');
   return (
-    <View style={S.barCard}>
+    <View style={S.barCard} accessible>
       <View style={S.barTop}>
         <Text style={S.barLabel}>
           {fieldLabel(field, language)}

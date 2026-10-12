@@ -81,13 +81,13 @@ export default function ScoutLogScreen({ navigation, route }) {
       <TileGrid items={issueTypes} value={issueType} onChange={(v) => setIssueType(v || '')} columns={3} photoSet="scout" />
 
       <SectionHeader icon="pricetag-outline" tint={COSMIC.SCOUT} title={t('scoutLog.sectionTarget')} optional />
-      <Card><LabeledInput value={target} onChangeText={setTarget} placeholder={t('scoutLog.targetPlaceholder')} /></Card>
+      <Card><LabeledInput value={target} onChangeText={setTarget} placeholder={t('scoutLog.targetPlaceholder')} accessibilityLabel={t('scoutLog.sectionTarget')} /></Card>
 
       <SectionHeader icon="speedometer-outline" tint={COSMIC.SCOUT} title={t('scoutLog.sectionSeverity')} />
       <TileGrid items={severities} value={severity} onChange={(v) => setSeverity(v || 'moderate')} columns={2} />
 
       <SectionHeader icon="pie-chart-outline" tint={COSMIC.SCOUT} title={t('scoutLog.sectionAffected')} optional />
-      <Card><BigNumberInput value={affected} onChange={setAffected} unit="%" tint={COSMIC.SCOUT} /></Card>
+      <Card><BigNumberInput value={affected} onChange={setAffected} unit="%" tint={COSMIC.SCOUT} accessibilityLabel={t('scoutLog.sectionAffected')} /></Card>
 
       <SectionHeader icon="create-outline" tint={COSMIC.TEXT_3} title={t('scoutLog.sectionNotes')} optional />
       <Card><NotesField value={notes} onChange={setNotes} /></Card>

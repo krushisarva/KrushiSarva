@@ -31,13 +31,13 @@ function DeliveryAddress({ addr }: { addr: Record<string, unknown> | null }) {
     <div>
       <h4 className="mb-2 text-sm font-medium text-slate-700">
         Delivery address{view.type ? ` · ${view.type.toLowerCase()}` : ''}
-        <span className="ml-1 font-normal text-slate-400">(phone masked)</span>
+        <span className="ml-1 font-normal text-slate-500">(phone masked)</span>
       </h4>
       <div className="space-y-0.5 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
         {view.redacted && <p className="text-slate-500">Erased under a DPDP erasure request.</p>}
         {view.lines.map((l) => <p key={l.key} className={lineClass(l.key)}>{l.text}</p>)}
         {view.extras.length > 0 && <p className="text-xs text-slate-500">{view.extras.join(' · ')}</p>}
-        {view.empty && <p className="text-slate-400">No address recorded on this order.</p>}
+        {view.empty && <p className="text-slate-500">No address recorded on this order.</p>}
       </div>
     </div>
   );
@@ -120,10 +120,10 @@ export default function OrdersPage() {
             <div className="space-y-3 border-t border-slate-100 pt-4">
               <h4 className="text-sm font-medium text-slate-700">Update</h4>
               <div className="flex items-center gap-2">
-                <Select defaultValue={d.status} onChange={(e) => patch.mutate({ data: { status: e.target.value } })} className="flex-1">
+                <Select defaultValue={d.status} onChange={(e) => patch.mutate({ data: { status: e.target.value } })} className="flex-1" aria-label="Order status">
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
-                <Select defaultValue={d.paymentStatus} onChange={(e) => patch.mutate({ data: { paymentStatus: e.target.value } })} className="flex-1">
+                <Select defaultValue={d.paymentStatus} onChange={(e) => patch.mutate({ data: { paymentStatus: e.target.value } })} className="flex-1" aria-label="Payment status">
                   {PAYMENTS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </div>
@@ -133,7 +133,7 @@ export default function OrdersPage() {
             <div className="border-t border-slate-100 pt-4">
               <h4 className="mb-2 text-sm font-medium text-slate-700">Status timeline</h4>
               {timeline.isLoading && <div className="flex justify-center py-3"><Spinner /></div>}
-              {!timeline.isLoading && (timeline.data?.length ?? 0) === 0 && <p className="text-sm text-slate-400">No recorded changes.</p>}
+              {!timeline.isLoading && (timeline.data?.length ?? 0) === 0 && <p className="text-sm text-slate-500">No recorded changes.</p>}
               <ol className="space-y-2">
                 {timeline.data?.map((t) => (
                   <li key={t.id} className="flex items-start justify-between gap-3 text-sm">
@@ -142,7 +142,7 @@ export default function OrdersPage() {
                       {t.after?.paymentStatus && <StatusBadge value={t.after.paymentStatus} />}
                       {t.metadata?.reason && <span className="text-slate-500">· {t.metadata.reason}</span>}
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400">{formatDateTime(t.createdAt)}</span>
+                    <span className="shrink-0 text-xs text-slate-500">{formatDateTime(t.createdAt)}</span>
                   </li>
                 ))}
               </ol>

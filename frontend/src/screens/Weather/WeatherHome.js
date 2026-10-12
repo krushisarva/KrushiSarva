@@ -168,12 +168,12 @@ function sunProgress(sunriseIso, sunsetIso) {
 
 // ── Section header ────────────────────────────────────────────────────────────
 function SectionHeader({ title }) {
-  return <Text style={S.sectionHeader}>{title}</Text>;
+  return <Text style={S.sectionHeader} accessibilityRole="header">{title}</Text>;
 }
 
 // ── Hourly item (memoised for FlatList perf) ──────────────────────────────────
-const HourlyItem = memo(({ item, nowLabel }) => (
-  <View style={[S.hourlyItem, item.isNow && S.hourlyItemNow]}>
+const HourlyItem = memo(({ item, nowLabel, rainLabel }) => (
+  <View style={[S.hourlyItem, item.isNow && S.hourlyItemNow]} accessible accessibilityLabel={[item.isNow ? nowLabel : item.time, item.condition, `${item.temperature}°`, item.precipitationProbability > 0 && `${rainLabel} ${item.precipitationProbability}%`].filter(Boolean).join(', ')}>
     <Text style={[S.hourlyTime, item.isNow && S.hourlyTimeNow]}>{item.isNow ? nowLabel : item.time}</Text>
     <WeatherIcon condition={item.conditionIcon} size={26} animated={false} />
     <Text style={[S.hourlyTemp, item.isNow && S.hourlyTempNow]}>{item.temperature}°</Text>
@@ -189,10 +189,10 @@ const HourlyItem = memo(({ item, nowLabel }) => (
 ));
 
 // ── Daily row (memoised) ──────────────────────────────────────────────────────
-const DailyRow = memo(({ item, isToday }) => {
+const DailyRow = memo(({ item, isToday, rainLabel }) => {
   const range = item.maxTemp - item.minTemp || 1;
   return (
-    <View style={[S.dailyRow, isToday && S.dailyRowToday]}>
+    <View style={[S.dailyRow, isToday && S.dailyRowToday]} accessible accessibilityLabel={[item.dateLabel, item.condition, `${item.minTemp}° – ${item.maxTemp}°`, `${rainLabel} ${item.precipitationProbability}%`].filter(Boolean).join(', ')}>
       <Text style={[S.dailyDay, isToday && S.dailyDayToday]}>{item.dateLabel}</Text>
       <WeatherIcon condition={item.conditionIcon} size={26} animated={false} />
       <View style={S.dailyTempWrap}>
@@ -223,7 +223,7 @@ function MoistureBar({ label, value }) {
     : t('weatherHome.moistureWet');
 
   return (
-    <View style={S.moistureRow}>
+    <View style={S.moistureRow} accessible>
       <Text style={S.moistureLabel}>{label}</Text>
       <View style={S.moistureTrack}>
         <Animated.View style={[S.moistureFill, { width: `${pct}%`, backgroundColor: color }]} />
@@ -236,7 +236,7 @@ function MoistureBar({ label, value }) {
 // ── Soil temperature row ──────────────────────────────────────────────────────
 function SoilTempRow({ label, value }) {
   return (
-    <View style={S.soilTempRow}>
+    <View style={S.soilTempRow} accessible>
       <Ionicons name="thermometer-outline" size={14} color={COLORS.amber} />
       <Text style={S.soilTempLabel}>{label}</Text>
       <Text style={S.soilTempVal}>{value != null ? `${value}°C` : '—'}</Text>
@@ -434,9 +434,9 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
       <View style={[S.root, S.center]}>
         <StatusBar barStyle="dark-content" />
         <Ionicons name="alert-circle-outline" size={48} color={COLORS.textLight} />
-        <Text style={S.errTxt}>{error}</Text>
+        <Text style={S.errTxt} accessibilityLiveRegion="polite">{error}</Text>
         <Text style={S.errSub}>{t('weatherHome.connectInternet')}</Text>
-        <TouchableOpacity style={S.retryBtn} onPress={load}>
+        <TouchableOpacity style={S.retryBtn} onPress={load} accessibilityRole="button">
           <Text style={S.retryTxt}>{t('weatherHome.retry')}</Text>
         </TouchableOpacity>
       </View>
@@ -457,14 +457,14 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
       {/* ── Standalone header (hidden inside AIWeatherHub) ─────────────── */}
       {!embeddedInHub && (
         <View style={[S.header, { paddingTop: Platform.OS === 'ios' ? 52 : 14 }]}>
-          <TouchableOpacity onPress={() => navigation?.goBack()}>
+          <TouchableOpacity onPress={() => navigation?.goBack()} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="arrow-back" size={22} color={COLORS.textDark} />
           </TouchableOpacity>
           <View style={S.headerCenter}>
             <Ionicons name="location" size={14} color={COLORS.primary} />
             <Text style={S.headerTitle}>{t('weatherHome.fieldMonitor')}</Text>
           </View>
-          <TouchableOpacity onPress={load}>
+          <TouchableOpacity onPress={load} accessibilityRole="button" accessibilityLabel={t('market.refresh', 'Refresh')}>
             <Ionicons name="refresh-outline" size={22} color={COLORS.textDark} />
           </TouchableOpacity>
         </View>
@@ -514,12 +514,12 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               <Text style={S.heroStatTxt}>{t('weatherHome.feelsLike')} {current.feelsLike}°C</Text>
             </View>
             <View style={S.heroStatDivider} />
-            <View style={S.heroStat}>
+            <View style={S.heroStat} accessible accessibilityLabel={`${t('weatherHome.humidity', 'Humidity')} ${current.humidity}%`}>
               <Ionicons name="water-outline" size={13} color="rgba(255,255,255,0.70)" />
               <Text style={S.heroStatTxt}>{current.humidity}%</Text>
             </View>
             <View style={S.heroStatDivider} />
-            <View style={S.heroStat}>
+            <View style={S.heroStat} accessible accessibilityLabel={`${t('weatherHome.wind', 'Wind')} ${current.windSpeed} km/h ${current.windCompass || ''}`}>
               <Ionicons name="navigate-outline" size={13} color="rgba(255,255,255,0.70)" />
               <Text style={S.heroStatTxt}>{current.windSpeed} km/h {current.windCompass}</Text>
             </View>
@@ -554,7 +554,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               </Text>
               <Text style={S.alertDesc} numberOfLines={2}>{visibleAlerts[0].description}</Text>
             </View>
-            <TouchableOpacity onPress={() => setDismissed(true)}>
+            <TouchableOpacity onPress={() => setDismissed(true)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
               <Ionicons name="close" size={18} color={COLORS.textMedium} />
             </TouchableOpacity>
           </View>
@@ -568,7 +568,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               {advisories.map((adv, i) => {
                 const col = ADVISORY_COLORS[adv.color] || ADVISORY_COLORS.green;
                 return (
-                  <View key={i} style={[S.advisoryCard, { backgroundColor: col.bg, borderColor: col.border }]}>
+                  <View key={i} style={[S.advisoryCard, { backgroundColor: col.bg, borderColor: col.border }]} accessible>
                     <Ionicons name={`${adv.icon}-outline`} size={22} color={col.icon} />
                     <Text style={[S.advisoryTitle, { color: col.icon }]}>{adv.title}</Text>
                     <Text style={S.advisoryDesc}>{adv.desc}</Text>
@@ -586,7 +586,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
             <View style={S.card}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.hourlyRow}>
                 {hourly.slice(0, 24).map((item, i) => (
-                  <HourlyItem key={i} item={item} nowLabel={t('weatherHome.now')} />
+                  <HourlyItem key={i} item={item} nowLabel={t('weatherHome.now')} rainLabel={t('aiHome.rain', 'Rain')} />
                 ))}
               </ScrollView>
             </View>
@@ -600,7 +600,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
             <View style={S.card}>
               {daily.map((item, i) => (
                 <React.Fragment key={i}>
-                  <DailyRow item={item} isToday={i === 0} />
+                  <DailyRow item={item} isToday={i === 0} rainLabel={t('aiHome.rain', 'Rain')} />
                   {i < daily.length - 1 && <View style={S.divider} />}
                 </React.Fragment>
               ))}
@@ -617,7 +617,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               <View style={S.alertsHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Ionicons name="notifications" size={15} color={COLORS.textDark} />
-                  <Text style={S.sectionHeader}>
+                  <Text style={S.sectionHeader} accessibilityRole="header">
                     {t('weatherHome.weatherAlerts')}
                   </Text>
                 </View>
@@ -645,7 +645,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                 wxAlerts.map((al, i) => {
                   const col = ALERT_COLORS[al.color] || ALERT_COLORS.yellow;
                   return (
-                    <View key={i} style={[S.alertCard, { backgroundColor: col.bg, borderColor: col.border }]}>
+                    <View key={i} style={[S.alertCard, { backgroundColor: col.bg, borderColor: col.border }]} accessible>
                       <View style={[S.alertBar, { backgroundColor: col.border }]} />
                       <View style={[S.alertIcon, { backgroundColor: col.border + '20' }]}>
                         <Ionicons name={al.icon} size={20} color={col.icon} />
@@ -746,28 +746,28 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               <View style={S.atmoGrid}>
 
                 {/* Visibility */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="eye-outline" size={20} color={COLORS.indigo} />
                   <Text style={S.atmoVal}>{current.visibility != null ? `${current.visibility} km` : '—'}</Text>
                   <Text style={S.atmoLabel}>{t('weatherHome.visibility')}</Text>
                 </View>
 
                 {/* Dew Point */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="thermometer-outline" size={20} color={COLORS.skyBright} />
                   <Text style={S.atmoVal}>{current.dewPoint != null ? `${current.dewPoint}°C` : '—'}</Text>
                   <Text style={S.atmoLabel}>{t('weatherHome.dewPoint')}</Text>
                 </View>
 
                 {/* Wind Gusts */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="navigate-outline" size={20} color={COLORS.gold} />
                   <Text style={S.atmoVal}>{current.windGusts != null ? `${current.windGusts} km/h` : '—'}</Text>
                   <Text style={S.atmoLabel}>{t('weatherHome.windGusts')}</Text>
                 </View>
 
                 {/* Leaf Wetness */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="leaf-outline" size={20} color={COLORS.greenBright} />
                   <Text style={[S.atmoVal, { color: (current.leafWetness ?? 0) > 60 ? COLORS.error : COLORS.textDark }]}>
                     {current.leafWetness != null ? `${Math.round(current.leafWetness)}%` : '—'}
@@ -776,7 +776,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                 </View>
 
                 {/* VPD */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="water-outline" size={20} color={COLORS.cta} />
                   <Text style={[S.atmoVal, { color: (current.vapourPressureDeficit ?? 0) > 2 ? COLORS.error : COLORS.textDark }]}>
                     {current.vapourPressureDeficit != null ? `${current.vapourPressureDeficit} kPa` : '—'}
@@ -785,7 +785,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                 </View>
 
                 {/* CAPE */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="flash-outline" size={20} color={(current.cape ?? 0) > 1000 ? COLORS.error : COLORS.indigoPale} />
                   <Text style={[S.atmoVal, { color: (current.cape ?? 0) > 1000 ? COLORS.error : COLORS.textDark }]}>
                     {current.cape != null ? `${current.cape} J/kg` : '—'}
@@ -794,14 +794,14 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                 </View>
 
                 {/* Solar Radiation */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="sunny-outline" size={20} color={COLORS.goldMid} />
                   <Text style={S.atmoVal}>{current.solarRadiation != null ? `${current.solarRadiation} W/m²` : '—'}</Text>
                   <Text style={S.atmoLabel}>{t('weatherHome.solarRad')}</Text>
                 </View>
 
                 {/* Pressure */}
-                <View style={S.atmoItem}>
+                <View style={S.atmoItem} accessible>
                   <Ionicons name="speedometer-outline" size={20} color={COLORS.gray550} />
                   <Text style={S.atmoVal}>{current.pressure} hPa</Text>
                   <Text style={S.atmoLabel}>{t('weatherHome.pressure')}</Text>
@@ -825,7 +825,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
               </View>
               {daily.slice(0, 7).map((d, i) => (
                 d.growingDegreeDays != null && (
-                  <View key={i} style={S.gddRow}>
+                  <View key={i} style={S.gddRow} accessible>
                     <Text style={S.gddDay}>{d.dateLabel}</Text>
                     <View style={S.gddBarTrack}>
                       <View style={[S.gddBarFill, {

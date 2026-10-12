@@ -95,6 +95,33 @@ describe('POST /api/v1/auth/send-otp', () => {
 
     expect(res.status).toBe(400);
   });
+
+  // With no SMS provider the dev fallback returns the code to the CALLER. Outside
+  // development that is a sign-in bypass for any phone number, so it must fail
+  // closed: no code in the response, and no session a guessed code could match.
+  test('503 — no SMS provider outside development never returns or stores a code', async () => {
+    const phone = '9876500123';
+    const before = { isDev: ENV.IS_DEV, key: ENV.MSG91_AUTH_KEY };
+    ENV.IS_DEV = false;
+    ENV.MSG91_AUTH_KEY = '';
+    try {
+      const res = await request(app).post('/api/v1/auth/send-otp').send({ phone });
+
+      expect(res.status).toBe(503);
+      expect(JSON.stringify(res.body)).not.toMatch(/devOtp|sessionId/);
+      expect(await prisma.otpSession.count({ where: { phone } })).toBe(0);
+    } finally {
+      ENV.IS_DEV = before.isDev;
+      ENV.MSG91_AUTH_KEY = before.key;
+    }
+  });
+
+  test('200 — the development fallback still returns the code for auto-fill', async () => {
+    const res = await request(app).post('/api/v1/auth/send-otp').send({ phone: '9876500124' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.devOtp).toMatch(/^\d{6}$/);
+  });
 });
 
 describe('POST /api/v1/auth/verify-otp', () => {

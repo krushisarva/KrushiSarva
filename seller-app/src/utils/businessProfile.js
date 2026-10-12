@@ -47,11 +47,15 @@ export const ID_INPUT_MAX = {
   gstNumber: 19,
 };
 
-/** Top-to-bottom order of the form, used to scroll to the first error. */
+/**
+ * Top-to-bottom order of the form, used to scroll to the first error.
+ * `sellerConsent` is the tick box under the last section; only an account that
+ * is not a seller yet is shown it.
+ */
 export const FIELD_ORDER = [
   'name', 'businessType', 'pincode', 'district', 'taluka', 'village', 'gstNumber',
   'bankHolderName', 'bankName', 'bankAccountNumber', 'bankAccountConfirm', 'bankIfsc',
-  'aadharNumber', 'panNumber',
+  'aadharNumber', 'panNumber', 'sellerConsent',
 ];
 
 const FORM_KEYS = [...FIELD_ORDER, 'gstOptOut'];
@@ -199,6 +203,10 @@ export function initialFormFromUser(user) {
     bankAccountConfirm: '',
     aadharNumber: '',
     panNumber: '',
+    // The "open a seller account" tick. Never read from the account and never
+    // carried over from an earlier visit or save: agreeing is something the
+    // person does, so the box starts empty every time the form is built.
+    sellerConsent: false,
   };
 }
 
@@ -214,6 +222,9 @@ export function applyFieldChange(prev, key, raw, initial) {
     value = alphanumericUpper(raw, ID_LENGTH[key]);
   } else if (key === 'pincode') {
     value = sanitizePincode(raw);
+  } else if (key === 'sellerConsent') {
+    // Only a real `true` is a tick.
+    value = raw === true;
   }
 
   const next = { ...prev, [key]: value };
@@ -246,8 +257,12 @@ export function hasUnsavedChanges(form, initial) {
  *
  * `pincode` is the PIN lookup's outcome for the typed PIN code:
  * `{ status, state }` from usePincodeAutofill. The PIN itself is optional.
+ *
+ * `requireConsent` is true for an account that is not a seller yet. Its save is
+ * the one that opens the seller account, so the consent box must be ticked. A
+ * seller is never shown the box and is never asked for it.
  */
-export function validateBusinessProfile(form, { onFile = {}, t = passthroughT, pincode = null } = {}) {
+export function validateBusinessProfile(form, { onFile = {}, t = passthroughT, pincode = null, requireConsent = false } = {}) {
   const e = {};
 
   if (clean(form.name).length < NAME_MIN) {
@@ -322,6 +337,10 @@ export function validateBusinessProfile(form, { onFile = {}, t = passthroughT, p
     e.panNumber = t('sellerBizProfile.invalidPan', 'Invalid PAN format (e.g. ABCDE1234F)');
   }
 
+  if (requireConsent && form.sellerConsent !== true) {
+    e.sellerConsent = t('sellerBizProfile.consentRequired', 'Tick this box to open your seller account.');
+  }
+
   return e;
 }
 
@@ -344,13 +363,16 @@ export function firstErrorKey(errors) {
  *
  * Aadhaar, PAN and the account number are sent only when typed. An empty string
  * there would be encrypted and replace what is on file.
+ *
+ * `sellerConsent` is sent only when the box on the form was ticked. The API
+ * promotes the account to SELLER and writes a consent record on that flag, so
+ * it must never go out for someone who was not asked. It used to be a
+ * hard-coded `true`, which recorded a consent nobody had given. A seller's form
+ * has no box, so their saves leave the flag out.
  */
 export function buildBusinessProfilePayload(form, user) {
   const sp = user?.sellerProfile || {};
   const payload = {
-    // Submitting this form is the explicit opt-in that authorises a
-    // FARMER → SELLER promotion; the backend records it as consent.
-    sellerConsent: true,
     businessType: form.businessType,
     district: districtForPayload(form.district, user?.district),
     taluka: form.taluka,
@@ -358,6 +380,7 @@ export function buildBusinessProfilePayload(form, user) {
     state: 'Maharashtra',
     gstOptOut: !!form.gstOptOut,
   };
+  if (form.sellerConsent === true) payload.sellerConsent = true;
 
   const name = clean(form.name);
   if (name !== clean(user?.name)) payload.name = name;

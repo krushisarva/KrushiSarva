@@ -21,6 +21,7 @@ import { openSellerApp } from '../../utils/sellerApp';
 import { getWeatherImage } from '../../utils/weatherBackground';
 import { EntrySlide, D } from '../../components/ui/ImmersiveKit';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { isSellerAccount, isKycVerified } from '@krushisarva/shared/utils/roles';
 import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
@@ -116,7 +117,7 @@ function RowItem({ icon, iconColor, label, subtitle, onPress, showArrow = true, 
 function QuickTile({ icon, label, color, onPress, index = 0 }) {
   return (
     <EntrySlide delay={index * 80} fromY={20} style={{ flex: 1 }}>
-      <TouchableOpacity style={S.quickTile} onPress={onPress} activeOpacity={0.7}>
+      <TouchableOpacity style={S.quickTile} onPress={onPress} activeOpacity={0.7} accessibilityRole="button">
         <View style={[S.quickIcon, { backgroundColor: color + '18' }]}>
           <Ionicons name={icon} size={24} color={color} />
         </View>
@@ -233,12 +234,12 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={S.editKav}
       >
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
         <View style={S.editSheet}>
           <View style={S.sheetHandle} />
           <View style={S.editHeader}>
             <Text style={S.sheetTitle}>{t('editProfile')}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
               <Ionicons name="close" size={22} color={KHET.mutedForeground} />
             </TouchableOpacity>
           </View>
@@ -266,6 +267,7 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
                     keyboardType={f.keyboard || 'default'}
                     autoCapitalize={f.autoCap || 'sentences'}
                     autoCorrect={f.autoCap !== 'none'}
+                    accessibilityLabel={f.label}
                   />
                 </View>
                 {f.key === 'pincode' ? (
@@ -282,6 +284,9 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
             onPress={handleSave}
             disabled={saving}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ busy: saving }}
+            accessibilityLabel={t('profile.saveChanges')}
           >
             <LinearGradient
               colors={KHET.gradPrimary}
@@ -550,7 +555,7 @@ export default function ProfileScreen({ navigation }) {
       t('profile.privacyBody'),
       [
         { text: t('profile.privacyReadPolicy', 'Read full policy'),
-          onPress: () => openExternal('https://cropsetu.app/privacy') },
+          onPress: () => openExternal(LEGAL_URLS.privacy) },
         { text: t('profile.privacyClose', 'Close'), style: 'cancel' },
       ],
     );
@@ -869,7 +874,7 @@ export default function ProfileScreen({ navigation }) {
             <SectionHeader title={t('profile.feedbackInfo')} icon="chatbubbles-outline" iconColor={D.gold} />
             <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => Alert.alert(t('profile.thankYou'), t('profile.thankYouMsg'))} />
             <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => Alert.alert(t('profile.support'), t('profile.callUs'))} />
-            <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal('https://cropsetu.app/terms')} />
+            <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal(LEGAL_URLS.terms)} />
             <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} isLast />
           </SectionCard>
 
@@ -979,18 +984,18 @@ export default function ProfileScreen({ navigation }) {
 
       {/* Logout confirmation — custom in-app popup (not a native Alert). */}
       <Modal visible={showLogoutConfirm} transparent animationType="fade" onRequestClose={() => setShowLogoutConfirm(false)}>
-        <TouchableOpacity style={S.confirmBackdrop} activeOpacity={1} onPress={() => setShowLogoutConfirm(false)}>
-          <TouchableOpacity style={S.confirmCard} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity style={S.confirmBackdrop} activeOpacity={1} onPress={() => setShowLogoutConfirm(false)} accessible={false} importantForAccessibility="no">
+          <TouchableOpacity style={S.confirmCard} activeOpacity={1} onPress={() => {}} accessible={false} importantForAccessibility="no">
             <View style={S.confirmIconWrap}>
               <Ionicons name="log-out-outline" size={26} color={D.red} />
             </View>
             <Text style={S.confirmTitle}>{t('logout')}</Text>
             <Text style={S.confirmMsg}>{t('logoutConfirm')}</Text>
             <View style={S.confirmBtnRow}>
-              <TouchableOpacity style={[S.confirmBtn, S.confirmCancel]} onPress={() => setShowLogoutConfirm(false)} activeOpacity={0.8}>
+              <TouchableOpacity style={[S.confirmBtn, S.confirmCancel]} onPress={() => setShowLogoutConfirm(false)} activeOpacity={0.8} accessibilityRole="button">
                 <Text style={S.confirmCancelTxt}>{t('cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[S.confirmBtn, S.confirmDanger]} onPress={confirmLogout} activeOpacity={0.85}>
+              <TouchableOpacity style={[S.confirmBtn, S.confirmDanger]} onPress={confirmLogout} activeOpacity={0.85} accessibilityRole="button">
                 <Text style={S.confirmDangerTxt}>{t('logout')}</Text>
               </TouchableOpacity>
             </View>
@@ -1000,7 +1005,7 @@ export default function ProfileScreen({ navigation }) {
 
       <Modal visible={showStateModal} transparent animationType="slide" onRequestClose={() => setShowStateModal(false)}>
         <View style={S.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowStateModal(false)} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowStateModal(false)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
           <View style={S.stateSheet}>
             <View style={S.sheetHandle} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4, paddingHorizontal: 4 }}>
@@ -1008,7 +1013,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={{ fontSize: 17, fontFamily: KFONT.displaySemi, color: KHET.foreground, flex: 1, letterSpacing: -0.3 }}>
                 {t('profile.selectState')}
               </Text>
-              <TouchableOpacity onPress={() => { setShowStateModal(false); setShowLangModal(true); }}>
+              <TouchableOpacity onPress={() => { setShowStateModal(false); setShowLangModal(true); }} accessibilityRole="button">
                 <Text style={{ fontSize: 12, color: KHET.primary, fontFamily: KFONT.sansSemi }}>{t('profile.manualLang')}</Text>
               </TouchableOpacity>
             </View>
@@ -1030,6 +1035,8 @@ export default function ProfileScreen({ navigation }) {
                           style={[S.stateOption, isSelected && { borderColor: KHET.primary, backgroundColor: KHET.accent }]}
                           onPress={() => { setLanguageByState(state.name, state.lang); setShowStateModal(false); }}
                           activeOpacity={0.75}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: isSelected }}
                         >
                           <View style={{ flex: 1 }}>
                             <Text style={[S.stateName, isSelected && { color: KHET.primary }]}>{state.name}</Text>
@@ -1052,7 +1059,7 @@ export default function ProfileScreen({ navigation }) {
       </Modal>
 
       <Modal visible={showLangModal} transparent animationType="slide" onRequestClose={() => setShowLangModal(false)}>
-        <TouchableOpacity style={S.modalOverlay} activeOpacity={1} onPress={() => setShowLangModal(false)}>
+        <TouchableOpacity style={S.modalOverlay} activeOpacity={1} onPress={() => setShowLangModal(false)} accessible={false} importantForAccessibility="no">
           <View style={S.langSheet}>
             <View style={S.sheetHandle} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -1067,6 +1074,8 @@ export default function ProfileScreen({ navigation }) {
                 style={[S.langOption, language === lang.code && { borderColor: KHET.primary, backgroundColor: KHET.accent }]}
                 onPress={() => { setLanguage(lang.code); setShowLangModal(false); }}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: language === lang.code }}
               >
                 <Text style={{ fontSize: 28 }}>{lang.flag}</Text>
                 <View style={{ flex: 1 }}>

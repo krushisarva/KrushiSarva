@@ -62,7 +62,7 @@ function Collapsible({ title, icon, children, defaultOpen = false }) {
 
   return (
     <View style={S.collapseCard}>
-      <TouchableOpacity style={S.collapseHead} onPress={toggle} activeOpacity={0.85}>
+      <TouchableOpacity style={S.collapseHead} onPress={toggle} activeOpacity={0.85} accessibilityRole="button" accessibilityState={{ expanded: open }}>
         <View style={S.collapseLeft}>
           <View style={S.collapseIconCircle}>
             <Ionicons name={icon} size={16} color={COLORS.primary} />
@@ -338,11 +338,11 @@ function DeliveryCheck({ productId, defaultPincode }) {
       </View>
 
       {err
-        ? <Text style={S.pinError}>{err}</Text>
+        ? <Text style={S.pinError} accessibilityLiveRegion="polite">{err}</Text>
         : <PincodeLocationStatus lookup={place} showPicker={false} />}
 
       {result?.serviceable ? (
-        <View style={S.pinResultOk}>
+        <View style={S.pinResultOk} accessibilityLiveRegion="polite">
           <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
           <Text style={S.pinResultTxt}>
             {t('product.deliversIn', {
@@ -355,7 +355,7 @@ function DeliveryCheck({ productId, defaultPincode }) {
       ) : null}
 
       {result && result.serviceable === false ? (
-        <View style={S.pinResultBad}>
+        <View style={S.pinResultBad} accessibilityLiveRegion="polite">
           <Ionicons name="close-circle" size={16} color={COLORS.error} />
           <Text style={[S.pinResultTxt, { color: COLORS.error }]}>
             {result.reason === 'NO_SELLERS'
@@ -370,6 +370,7 @@ function DeliveryCheck({ productId, defaultPincode }) {
 
 // ── Similar product card ──────────────────────────────────────────────────────
 function SimilarCard({ item, onPress }) {
+  const { t } = useLanguage();
   const sc   = useRef(new Animated.Value(1)).current;
   const disc = discountPct(item.mrp, item.price);
   return (
@@ -379,6 +380,8 @@ function SimilarCard({ item, onPress }) {
         onPressIn={() => Animated.spring(sc, { toValue: 0.95, useNativeDriver: true, tension: 300, friction: 10 }).start()}
         onPressOut={() => Animated.spring(sc, { toValue: 1,    useNativeDriver: true, tension: 300, friction: 10 }).start()}
         onPress={() => onPress(item)}
+        accessibilityRole="button"
+        accessibilityLabel={[item.name, inr(item.price), item.rating > 0 ? t('a11y.rated', { rating: item.rating, defaultValue: 'Rated {{rating}} out of 5' }) : null].filter(Boolean).join(', ')}
       >
         <View style={S.simImgBox}>
           {item.images?.[0]
@@ -686,11 +689,11 @@ export default function ProductDetail({ route, navigation }) {
       {/* ── Top Safe Area + Header ─────────────────────────────────────────── */}
       <SafeAreaView edges={['top']} style={{ backgroundColor: COLORS.surface, ...SHADOWS.medium }}>
         <View style={S.header}>
-          <TouchableOpacity style={S.headerIconBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={S.headerIconBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="arrow-back" size={22} color={COLORS.textDark} />
           </TouchableOpacity>
           <Text style={S.headerTitle} numberOfLines={1}>{product.name}</Text>
-          <TouchableOpacity style={S.headerIconBtn} onPress={() => navigation.navigate('Cart')}>
+          <TouchableOpacity style={S.headerIconBtn} onPress={() => navigation.navigate('Cart')} accessibilityRole="button" accessibilityLabel={cartCount > 0 ? `${t('cart.myCart')}, ${t(cartCount !== 1 ? 'cart.itemCountPlural' : 'cart.itemCount', { count: cartCount })}` : t('cart.myCart')}>
             <Ionicons name="cart-outline" size={23} color={COLORS.textDark} />
             {cartCount > 0 && (
               <View style={S.cartBadge}>
@@ -725,7 +728,7 @@ export default function ProductDetail({ route, navigation }) {
           {/* Main image — fixed height, overlays inside */}
           <View style={S.imgBox}>
             {product.images?.[imgIdx]
-              ? <Image source={{ uri: detailImageUrl(product.images[imgIdx]) }} style={S.mainImg} resizeMode="contain" />
+              ? <Image source={{ uri: detailImageUrl(product.images[imgIdx]) }} style={S.mainImg} resizeMode="contain" accessible accessibilityRole="image" accessibilityLabel={t('a11y.photoOf', { name: product.name, defaultValue: 'Photo of {{name}}' })} />
               : (
                 <View style={S.imgPlaceholder}>
                   <MockImagePlaceholder category={product.category || product.categoryId} size={160} />
@@ -761,7 +764,7 @@ export default function ProductDetail({ route, navigation }) {
             <View style={S.imgBottomBar}>
               {/* Rating pill — left side */}
               {product.rating > 0 && (
-                <View style={S.ratingPill}>
+                <View style={S.ratingPill} accessible accessibilityLabel={t('a11y.rated', { rating: product.rating, defaultValue: 'Rated {{rating}} out of 5' })}>
                   <Text style={S.ratingPillTxt}>{product.rating}</Text>
                   <Ionicons name="star" size={11} color={COLORS.white} />
                   {reviews > 0 && (
@@ -777,7 +780,7 @@ export default function ProductDetail({ route, navigation }) {
               {product.images?.length > 1 && (
                 <View style={S.thumbRow}>
                   {product.images.map((url, i) => (
-                    <TouchableOpacity key={i} onPress={() => setImgIdx(i)} activeOpacity={0.8}>
+                    <TouchableOpacity key={i} onPress={() => setImgIdx(i)} activeOpacity={0.8} accessibilityRole="button" accessibilityState={{ selected: i === imgIdx }} accessibilityLabel={t('a11y.photoNumber', { n: i + 1, total: product.images.length, defaultValue: 'Photo {{n}} of {{total}}' })}>
                       <Image
                         source={{ uri: thumbUrl(url, 120) }}
                         style={[S.thumb, i === imgIdx && S.thumbActive]}
@@ -820,7 +823,7 @@ export default function ProductDetail({ route, navigation }) {
           {/* Inline rating — show ratings count only; review count was a bogus
               derivation from rating count, removed. */}
           {product.rating > 0 && (
-            <View style={S.ratingRow}>
+            <View style={S.ratingRow} accessible accessibilityLabel={`${t('a11y.rated', { rating: product.rating, defaultValue: 'Rated {{rating}} out of 5' })}${reviews > 0 ? `, ${t('product.ratingsLabel', { count: reviews.toLocaleString() })}` : ''}`}>
               <View style={S.ratingChip}>
                 <Text style={S.ratingChipTxt}>{product.rating}</Text>
                 <Ionicons name="star" size={11} color={COLORS.white} />
@@ -847,7 +850,7 @@ export default function ProductDetail({ route, navigation }) {
                       onPress={() => selectVariant(v)}
                       style={[S.variantChip, selected && S.variantChipOn]}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected }}
+                      accessibilityState={{ selected, checked: selected }}
                     >
                       <Text style={[S.variantChipTxt, selected && S.variantChipTxtOn]}>{label}</Text>
                       {v.lowestPrice != null && (
@@ -869,7 +872,7 @@ export default function ProductDetail({ route, navigation }) {
               <View style={S.priceMeta}>
                 <View style={S.discRow}>
                   <Text style={S.discPct}>↓{discount}%</Text>
-                  <Text style={S.mrpTxt}>{inr(mrp)}</Text>
+                  <Text style={S.mrpTxt} accessibilityLabel={`${t('product.mrpLabel', 'MRP')} ${inr(mrp)}`}>{inr(mrp)}</Text>
                 </View>
                 <View style={S.savePill}>
                   <Text style={S.savePillTxt}>{t('product.youSave', { amount: saving.toLocaleString('en-IN') })}</Text>
@@ -896,14 +899,18 @@ export default function ProductDetail({ route, navigation }) {
                   style={[S.qPillBtn, quantity <= minOrder && { opacity: 0.4 }]}
                   onPress={() => setQuantity(q => Math.max(minOrder, q - 1))}
                   disabled={quantity <= minOrder}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('a11y.decreaseQty', 'Decrease quantity')}
                 >
                   <Ionicons name="remove" size={18} color={COLORS.textDark} />
                 </TouchableOpacity>
-                <Text style={S.qtyNum}>{quantity}</Text>
+                <Text style={S.qtyNum} accessibilityLiveRegion="polite" accessibilityLabel={`${t('product.quantity')}: ${quantity}`}>{quantity}</Text>
                 <TouchableOpacity
                   style={[S.qPillBtn, quantity >= stock && { opacity: 0.4 }]}
                   onPress={() => setQuantity(q => Math.min(q + 1, stock || q + 1))}
                   disabled={quantity >= stock}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('a11y.increaseQty', 'Increase quantity')}
                 >
                   <Ionicons name="add" size={18} color={COLORS.textDark} />
                 </TouchableOpacity>
@@ -947,7 +954,7 @@ export default function ProductDetail({ route, navigation }) {
               {offer ? (
                 <View style={S.sellerMetaRow}>
                   {offer.sellerRatingCount > 0 ? (
-                    <View style={S.sellerRatingChip}>
+                    <View style={S.sellerRatingChip} accessible accessibilityLabel={t('a11y.rated', { rating: Number(offer.sellerRating).toFixed(1), defaultValue: 'Rated {{rating}} out of 5' })}>
                       <Ionicons name="star" size={10} color={COLORS.white} />
                       <Text style={S.sellerRatingTxt}>{Number(offer.sellerRating).toFixed(1)}</Text>
                     </View>
@@ -1066,6 +1073,8 @@ export default function ProductDetail({ route, navigation }) {
                   <TouchableOpacity
                     style={[S.tabBtn, activeTab === 'spec' && S.tabBtnActive]}
                     onPress={() => setActiveTab('spec')}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: activeTab === 'spec' }}
                   >
                     <Text style={[S.tabBtnTxt, activeTab === 'spec' && S.tabBtnTxtActive]}>
                       {t('product.specifications')}
@@ -1076,6 +1085,8 @@ export default function ProductDetail({ route, navigation }) {
                   <TouchableOpacity
                     style={[S.tabBtn, activeTab === 'mfr' && S.tabBtnActive]}
                     onPress={() => setActiveTab('mfr')}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: activeTab === 'mfr' }}
                   >
                     <Text style={[S.tabBtnTxt, activeTab === 'mfr' && S.tabBtnTxtActive]}>
                       {t('product.manufacturer')}
@@ -1124,6 +1135,9 @@ export default function ProductDetail({ route, navigation }) {
           style={[S.addCartBtn, (!inStock || addingAction === 'cart') && { opacity: 0.45 }]}
           onPress={handleAddToCart}
           disabled={adding || !inStock}
+          accessibilityRole="button"
+          accessibilityState={{ busy: addingAction === 'cart' }}
+          accessibilityLabel={t('addToCart')}
         >
           {addingAction === 'cart'
             ? <ActivityIndicator size="small" color={COLORS.primary} />
@@ -1141,6 +1155,9 @@ export default function ProductDetail({ route, navigation }) {
           onPress={handleBuyNow}
           disabled={adding || !inStock}
           activeOpacity={0.82}
+          accessibilityRole="button"
+          accessibilityState={{ busy: addingAction === 'buy' }}
+          accessibilityLabel={t('product.buyAt', { price: price.toLocaleString('en-IN') })}
         >
           {addingAction === 'buy'
             ? <ActivityIndicator size="small" color={COLORS.yellowDark} />

@@ -11,7 +11,7 @@ import { SkeletonList } from '../../components/ui/Skeleton';
 
 function CropCard({ crop, onPress, t }) {
   return (
-    <TouchableOpacity style={styles.cropCard} onPress={() => onPress(crop)} activeOpacity={0.88}>
+    <TouchableOpacity style={styles.cropCard} onPress={() => onPress(crop)} activeOpacity={0.88} accessibilityRole="button">
       <View style={styles.cropCardInner}>
         <Text style={styles.cropIcon}>{crop.icon}</Text>
         <View style={{ flex: 1 }}>
@@ -110,21 +110,21 @@ export default function CropCalendar({ navigation }) {
 
             {/* Seasonal Guide */}
             <View style={styles.seasonSection}>
-              <Text style={styles.sectionTitle}>{t('cropCalendar.currentSeasonGuide')}</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">{t('cropCalendar.currentSeasonGuide')}</Text>
               <View style={styles.seasonCards}>
-                <View style={[styles.seasonCard, { backgroundColor: COLORS.greenPale }]}>
+                <View style={[styles.seasonCard, { backgroundColor: COLORS.greenPale }]} accessible>
                   <Text style={styles.seasonEmoji}>🌧️</Text>
                   <Text style={styles.seasonName}>{t('cropCalendar.kharif')}</Text>
                   <Text style={styles.seasonMonths}>{t('cropCalendar.kharifMonths')}</Text>
                   <Text style={styles.seasonCrops}>{t('cropCalendar.kharifCrops')}</Text>
                 </View>
-                <View style={[styles.seasonCard, { backgroundColor: COLORS.yellowWarm }]}>
+                <View style={[styles.seasonCard, { backgroundColor: COLORS.yellowWarm }]} accessible>
                   <Text style={styles.seasonEmoji}>☀️</Text>
                   <Text style={styles.seasonName}>{t('cropCalendar.rabi')}</Text>
                   <Text style={styles.seasonMonths}>{t('cropCalendar.rabiMonths')}</Text>
                   <Text style={styles.seasonCrops}>{t('cropCalendar.rabiCrops')}</Text>
                 </View>
-                <View style={[styles.seasonCard, { backgroundColor: COLORS.lightSky }]}>
+                <View style={[styles.seasonCard, { backgroundColor: COLORS.lightSky }]} accessible>
                   <Text style={styles.seasonEmoji}>🌸</Text>
                   <Text style={styles.seasonName}>{t('cropCalendar.zaid')}</Text>
                   <Text style={styles.seasonMonths}>{t('cropCalendar.zaidMonths')}</Text>
@@ -133,7 +133,7 @@ export default function CropCalendar({ navigation }) {
               </View>
             </View>
 
-            <Text style={styles.sectionTitle}>{t('cropCalendar.selectYourCrop')}</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{t('cropCalendar.selectYourCrop')}</Text>
           </>
         }
         renderItem={({ item }) => (

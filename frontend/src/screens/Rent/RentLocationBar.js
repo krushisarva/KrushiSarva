@@ -290,7 +290,7 @@ export function RentLocationSheet({
       animationType={isReducedMotion() ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
+      <TouchableWithoutFeedback onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
         <View style={S.backdrop} />
       </TouchableWithoutFeedback>
 

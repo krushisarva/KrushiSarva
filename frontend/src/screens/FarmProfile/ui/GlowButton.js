@@ -71,6 +71,9 @@ export default function GlowButton({
         pressed && { transform: [{ scale: 0.98 }] },
         style,
       ]}
+      accessibilityRole="button"
+      accessibilityState={{ busy: loading }}
+      accessibilityLabel={label}
     >
       {v.gradient ? (
         <View style={[styles.fill, { borderRadius: sz.radius }]}>

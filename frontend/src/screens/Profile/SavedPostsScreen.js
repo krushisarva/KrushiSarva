@@ -126,7 +126,7 @@ export default function SavedPostsScreen({ navigation }) {
       // not shift down by insets.top + header height when the posts land.
       <SafeAreaView style={styles.root} edges={['bottom']}>
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('savedPosts')}</Text>
@@ -152,7 +152,7 @@ export default function SavedPostsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('savedPosts')}</Text>
@@ -163,7 +163,7 @@ export default function SavedPostsScreen({ navigation }) {
         <View style={styles.center}>
           <Ionicons name="alert-circle-outline" size={48} color={COLORS.error} />
           <Text style={styles.errorTxt}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => fetchPosts(1)}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => fetchPosts(1)} accessibilityRole="button">
             <Text style={styles.retryTxt}>{t('profile.retry')}</Text>
           </TouchableOpacity>
         </View>

@@ -64,7 +64,12 @@ export default function useProfileSync({ maxAgeMs = 30_000 } = {}) {
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Re-armed in the body: effects re-run without a remount (Fast Refresh,
+  // StrictMode), and a flag stuck at `false` would leave `syncing` on forever.
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const sync = useCallback(async ({ force = false } = {}) => {
     if (!force && hydratedRef.current && Date.now() - lastSyncAt < maxAgeMs) return;

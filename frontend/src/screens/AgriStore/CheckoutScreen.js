@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, KeyboardAvoidingView,
-  Platform, Animated, Image, StatusBar, Dimensions, Easing, Modal,
+  Platform, Animated, Image, StatusBar, Dimensions, Easing, Modal, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoIcon from '../../components/PhotoIcon';
@@ -26,6 +26,7 @@ import {
   classifyError, paymentStatusNotice, confirmFailureNotice, inr, thumbUrl,
 } from './shopClient';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
+import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 
 /**
  * A fresh idempotency key per order ATTEMPT.
@@ -68,7 +69,7 @@ const TYPE_ICON  = { HOME: 'home-outline', OFFICE: 'business-outline', OTHER: 'l
 const TYPE_COLOR = { HOME: COLORS.primary, OFFICE: COLORS.vibrantPurple, OTHER: COLORS.coral };
 
 // ─── Press scale helper ───────────────────────────────────────────────────────
-function PressScale({ onPress, style, down = 0.94, children }) {
+function PressScale({ onPress, style, down = 0.94, children, ...a11y }) {
   const sc = useRef(new Animated.Value(1)).current;
   return (
     <Animated.View style={[style, { transform: [{ scale: sc }] }]}>
@@ -77,6 +78,8 @@ function PressScale({ onPress, style, down = 0.94, children }) {
         onPressIn={() => Animated.spring(sc, { toValue: down, useNativeDriver: true, friction: 8, tension: 200 }).start()}
         onPressOut={() => Animated.spring(sc, { toValue: 1, useNativeDriver: true, friction: 5, tension: 80 }).start()}
         activeOpacity={1}
+        accessibilityRole="button"
+        {...a11y}
       >
         {children}
       </TouchableOpacity>
@@ -116,17 +119,22 @@ function StepDot({ stepNum, currentStep, label }) {
 
 // ─── Step Stepper Header ──────────────────────────────────────────────────────
 function StepHeader({ step, onBack }) {
+  const { t } = useLanguage();
   const STEPS = ['Address', 'Summary', 'Payment'];
 
   return (
     <View style={SH.root}>
       {/* Back button */}
-      <TouchableOpacity onPress={onBack} style={SH.back} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+      <TouchableOpacity onPress={onBack} style={SH.back} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
         <Ionicons name="arrow-back" size={20} color={COLORS.charcoal} />
       </TouchableOpacity>
 
       {/* Steps */}
-      <View style={SH.stepsRow}>
+      <View
+        style={SH.stepsRow}
+        accessible
+        accessibilityLabel={`${t('a11y.stepOf', { n: step, total: STEPS.length, defaultValue: 'Step {{n}} of {{total}}' })}, ${STEPS[step - 1]}`}
+      >
         {STEPS.map((label, i) => (
           <View key={i} style={SH.stepItem}>
             {i > 0 && <View style={[SH.connector, i < step && { backgroundColor: COLORS.primary }]} />}
@@ -226,6 +234,7 @@ function FInput({ label, req, style, ...props }) {
         placeholderTextColor={COLORS.silver}
         returnKeyType="next"
         autoCorrect={false}
+        accessibilityLabel={label}
         {...props}
       />
     </View>
@@ -274,6 +283,8 @@ function AddrCard({ addr, selected, onSelect, onDelete, delay = 0, t }) {
           AC.card,
           selected && { borderColor: col, shadowColor: col, shadowOpacity: 0.15 },
         ]}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: selected }}
       >
         {/* Left color stripe */}
         {selected && <View style={[AC.stripe, { backgroundColor: col }]} />}
@@ -304,6 +315,8 @@ function AddrCard({ addr, selected, onSelect, onDelete, delay = 0, t }) {
               onPress={() => onDelete(addr.id)}
               hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
               style={AC.deleteBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('a11y.deleteItem', { name: addr.name, defaultValue: 'Delete {{name}}' })}
             >
               <Ionicons name="trash-outline" size={16} color={COLORS.error} />
             </TouchableOpacity>
@@ -364,6 +377,8 @@ function PayOption({ id, name, nameHi, desc, icon, iconBg, iconColor, selected, 
         onPress={() => onSelect(id)}
         activeOpacity={0.9}
         style={[PO.row, selected && { borderColor: COLORS.primary, backgroundColor: GREEN_BG }]}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: selected }}
       >
         {/* Colored icon box */}
         <View style={[PO.iconBox, { backgroundColor: iconBg }]}>
@@ -874,7 +889,7 @@ export default function CheckoutScreen({ route, navigation }) {
               {/* Add new address card (dashed) */}
               {!showForm && (
                 <SlideCard delay={addresses.length * 80} style={{ borderStyle: 'dashed', borderWidth: 2, borderColor: COLORS.primary + '50', backgroundColor: GREEN_CARD_BG }}>
-                  <TouchableOpacity onPress={() => setShowForm(true)} activeOpacity={0.85}>
+                  <TouchableOpacity onPress={() => setShowForm(true)} activeOpacity={0.85} accessibilityRole="button">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <IconCircle name="add" size={20} color={COLORS.primary} bg={GREEN_B} />
                       <View style={{ flex: 1 }}>
@@ -892,7 +907,7 @@ export default function CheckoutScreen({ route, navigation }) {
                 <SlideCard>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.textDark }}>{t('checkout.newAddress')}</Text>
-                    <TouchableOpacity onPress={() => setShowForm(false)}>
+                    <TouchableOpacity onPress={() => setShowForm(false)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
                       <Ionicons name="close-circle" size={22} color={COLORS.textMedium} />
                     </TouchableOpacity>
                   </View>
@@ -904,6 +919,8 @@ export default function CheckoutScreen({ route, navigation }) {
                         key={tp}
                         onPress={() => upd('type', tp)}
                         style={[ST.typeChip, form.type === tp && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: form.type === tp }}
                       >
                         <Ionicons name={TYPE_ICON[tp]} size={13} color={form.type === tp ? COLORS.white : COLORS.textMedium} />
                         <Text style={[ST.typeChipTxt, form.type === tp && { color: COLORS.white }]}>{tp}</Text>
@@ -953,7 +970,8 @@ export default function CheckoutScreen({ route, navigation }) {
                 <CardHead icon="location-outline" title={t('checkout.deliverTo')}
                   right={
                     <TouchableOpacity onPress={() => setAddrSheet(true)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}>
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}
+                      accessibilityRole="button">
                       <Ionicons name="create-outline" size={13} color={COLORS.primary} />
                       <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>{t('checkout.change')}</Text>
                     </TouchableOpacity>
@@ -1052,7 +1070,7 @@ export default function CheckoutScreen({ route, navigation }) {
                 ) : null}
 
                 {quoteError ? (
-                  <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 8 }}>
+                  <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 8 }} accessibilityLiveRegion="polite">
                     {t('checkout.quoteStale', 'Could not refresh the total. It will be confirmed when you place the order.')}
                   </Text>
                 ) : null}
@@ -1072,7 +1090,8 @@ export default function CheckoutScreen({ route, navigation }) {
                     <Text style={{ fontSize: 12, color: COLORS.textMedium, marginTop: 1 }} numberOfLines={1}>{addrLine(selectedAddrObj)?.substring(0, 32)}...</Text>
                   </View>
                   <TouchableOpacity onPress={() => setAddrSheet(true)}
-                    style={{ borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    style={{ borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 }}
+                    accessibilityRole="button">
                     <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>{t('checkout.change')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -1109,6 +1128,7 @@ export default function CheckoutScreen({ route, navigation }) {
                     fontSize: 14, color: COLORS.textDark, minHeight: 80, textAlignVertical: 'top',
                   }}
                   keyboardShouldPersistTaps="always"
+                  accessibilityLabel={t('checkout.orderNotes')}
                 />
               </SlideCard>
 
@@ -1125,11 +1145,22 @@ export default function CheckoutScreen({ route, navigation }) {
         </ScrollView>
       </View>
 
+      {step === 3 && (
+        <TouchableOpacity
+          style={BOT.policyLink}
+          onPress={() => Linking.openURL(LEGAL_URLS.refunds).catch(() => {})}
+          hitSlop={{ top: 8, bottom: 8 }}
+          accessibilityRole="link"
+        >
+          <Text style={BOT.policyLinkTxt}>{t('a11y.refundPolicyLink', 'Refund, Cancellation & Return Policy')}</Text>
+        </TouchableOpacity>
+      )}
+
       {/* ── Bottom action bar ── */}
       <View style={[BOT.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {/* Delivering to / total */}
         {step === 1 && !showForm && selectedAddrObj && (
-          <TouchableOpacity onPress={() => setAddrSheet(true)} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => setAddrSheet(true)} activeOpacity={0.7} accessibilityRole="button">
             <Text style={{ fontSize: 11, color: COLORS.textMedium }}>Delivering to  ›</Text>
             <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textDark }} numberOfLines={1}>{selectedAddrObj.name}</Text>
           </TouchableOpacity>
@@ -1144,7 +1175,7 @@ export default function CheckoutScreen({ route, navigation }) {
         )}
         {step === 1 && showForm && <View />}
 
-        <PressScale onPress={handleContinue} down={0.96} style={BOT.ctaWrap}>
+        <PressScale onPress={handleContinue} down={0.96} style={BOT.ctaWrap} accessibilityLabel={ctaLabel} accessibilityState={{ busy: placing || savingAddr }}>
           <View style={BOT.ctaGrad}>
             {placing || savingAddr
               ? <ActivityIndicator size="small" color={COLORS.white} />
@@ -1204,6 +1235,8 @@ export default function CheckoutScreen({ route, navigation }) {
             style={SH2.backdrop}
             activeOpacity={1}
             onPress={() => setAddrSheet(false)}
+            accessibilityRole="button"
+            accessibilityLabel={t('close', 'Close')}
           />
           <View style={SH2.sheet}>
             <View style={SH2.handle} />
@@ -1215,6 +1248,8 @@ export default function CheckoutScreen({ route, navigation }) {
                   style={[SH2.addrCard, selectedAddr === addr.id && SH2.addrCardActive]}
                   onPress={() => { setSelectedAddr(addr.id); setAddrSheet(false); }}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selectedAddr === addr.id }}
                 >
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -1246,6 +1281,7 @@ export default function CheckoutScreen({ route, navigation }) {
                   if (step !== 1) setStep(1);
                 }}
                 activeOpacity={0.8}
+                accessibilityRole="button"
               >
                 <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
                 <Text style={SH2.addNewTxt}>{t('checkout.addNewAddress')}</Text>
@@ -1279,6 +1315,8 @@ const BOT = StyleSheet.create({
   ctaWrap: { borderRadius: 14, overflow: 'hidden' },
   ctaGrad: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 14, backgroundColor: COLORS.primary },
   ctaTxt:  { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+  policyLink:    { alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 8 },
+  policyLinkTxt: { fontSize: 12, color: COLORS.textBody, textAlign: 'center', textDecorationLine: 'underline' },
 });
 
 const SH2 = StyleSheet.create({

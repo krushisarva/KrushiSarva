@@ -91,7 +91,7 @@ function ChatHeader({ insets, onMenuPress, onNewChatPress }) {
   return (
     <BlurView intensity={30} tint="dark" style={[H.wrap, { paddingTop: insets.top + 10 }]}>
       <View style={H.row}>
-        <TouchableOpacity onPress={onMenuPress} style={H.iconBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={onMenuPress} style={H.iconBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.openMenu', 'Open menu')}>
           <Menu size={22} color={TEXT} strokeWidth={2.2} />
         </TouchableOpacity>
 
@@ -111,7 +111,7 @@ function ChatHeader({ insets, onMenuPress, onNewChatPress }) {
 
         <LanguageSelector />
 
-        <TouchableOpacity onPress={onNewChatPress} style={H.iconBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={onNewChatPress} style={H.iconBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('aiChat.newChat', 'New Chat')}>
           <PenSquare size={18} color={TEXT} strokeWidth={2.2} />
         </TouchableOpacity>
       </View>
@@ -173,7 +173,7 @@ function DiagnosisCard({ data, onBuyMedicine }) {
         </View>
       ))}
       {!!note && <View style={S.diagTip}><ShieldCheck size={12} color={ACCENT} strokeWidth={2.2} /><Text style={S.diagTipText}>{note}</Text></View>}
-      <TouchableOpacity style={S.buyBtn} onPress={onBuyMedicine} activeOpacity={0.8}>
+      <TouchableOpacity style={S.buyBtn} onPress={onBuyMedicine} activeOpacity={0.8} accessibilityRole="button">
         <LinearGradient colors={[USER_A, USER_B]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.buyBtnGrad}>
           <ShoppingCart size={14} color={COLORS.white} strokeWidth={2.4} />
           <Text style={S.buyBtnText}>{t('aiChat.buyProducts', 'Buy Recommended Products')}</Text>
@@ -252,13 +252,14 @@ function FormattedAIText({ text }) {
       </View>
     );
   }
-  return <View>{elements}</View>;
+  return <View accessible>{elements}</View>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ── MessageBubble: user = gradient pill / AI = glass pill with Listen button
 // ─────────────────────────────────────────────────────────────────────────────
 function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
+  const { t } = useLanguage();
   const isUser = msg.role === 'user';
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(8)).current;
@@ -407,7 +408,7 @@ function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
               <Text style={S.voiceTagText}>voice</Text>
             </View>
           )}
-          {msg.imageUri ? <Image source={{ uri: msg.imageUri }} style={S.userImage} /> : null}
+          {msg.imageUri ? <Image source={{ uri: msg.imageUri }} style={S.userImage} accessible accessibilityRole="image" accessibilityLabel={t('aiChat.photoAttached', 'Photo attached')} /> : null}
           {msg.text ? <Text style={S.userBubbleText}>{msg.transcribing ? '…' : msg.text}</Text> : null}
         </View>
       </Animated.View>
@@ -428,7 +429,8 @@ function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
                 activeOpacity={0.7}
                 disabled={ttsLoading}
                 accessibilityRole="button"
-                accessibilityLabel={ttsPlaying ? 'Stop listening' : 'Listen to reply'}
+                accessibilityLabel={ttsPlaying ? t('a11y.stopReading', 'Stop reading aloud') : t('speakerButton.readAloud', 'Read aloud')}
+                accessibilityState={{ busy: ttsLoading }}
               >
                 {ttsLoading
                   ? <ActivityIndicator size="small" color={ACCENT} />
@@ -442,7 +444,7 @@ function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
                 onPress={handleCopy}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={copied ? 'Copied' : 'Copy reply'}
+                accessibilityLabel={copied ? t('a11y.copied', 'Copied') : t('a11y.copy', 'Copy')}
               >
                 {copied
                   ? <Check size={15} color={P_LIGHT} strokeWidth={2.8} />
@@ -493,7 +495,7 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <Animated.View style={[SB.overlay, { opacity: overlayOpacity }]}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} accessibilityRole="button" accessibilityLabel={t('close', 'Close')} />
       </Animated.View>
       <Animated.View style={[SB.panel, { paddingTop: insets.top + 12, transform: [{ translateX }] }]}>
         <View style={SB.panelHeader}>
@@ -503,12 +505,12 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
             </LinearGradient>
             <Text style={SB.panelTitle} numberOfLines={1}>{t('aiBrand.gyaan', 'Krushi Gyaan')}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={SB.closeBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={onClose} style={SB.closeBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
             <CloseIcon size={20} color={MUTED} strokeWidth={2.2} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={SB.newChatBtn} onPress={() => { onNewChat(); onClose(); }} activeOpacity={0.8}>
+        <TouchableOpacity style={SB.newChatBtn} onPress={() => { onNewChat(); onClose(); }} activeOpacity={0.8} accessibilityRole="button">
           <LinearGradient colors={[USER_A, USER_B]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={SB.newChatGrad}>
             <Plus size={18} color="#fff" strokeWidth={2.6} />
             <Text style={SB.newChatText}>New Chat</Text>
@@ -537,7 +539,7 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
               const dateStr = new Date(item.updatedAt || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
               return (
                 <View style={SB.sessionRowWrap}>
-                  <TouchableOpacity style={SB.sessionRow} onPress={() => { onSessionPress(item); onClose(); }} activeOpacity={0.75}>
+                  <TouchableOpacity style={SB.sessionRow} onPress={() => { onSessionPress(item); onClose(); }} activeOpacity={0.75} accessibilityRole="button">
                     <View style={[SB.sessionIcon, { backgroundColor: isScan ? 'rgba(34,197,94,0.12)' : 'rgba(245,184,65,0.12)' }]}>
                       {isScan
                         ? <ScanLine size={16} color={P_LIGHT} strokeWidth={2.2} />
@@ -566,6 +568,8 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
                     }}
                     activeOpacity={0.7}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('a11y.deleteItem', { name: item.title || 'AI Chat', defaultValue: 'Delete {{name}}' })}
                   >
                     <Trash2 size={16} color={DANGER} strokeWidth={2.2} />
                   </TouchableOpacity>
@@ -1039,7 +1043,7 @@ export default function AIChatScreen({ navigation, route }) {
       {hasFarms ? (
         <View style={S.farmBar}>
           <View style={S.farmBarRow}>
-            <TouchableOpacity style={[S.farmBarInner, { flex: 1 }]} onPress={() => farmContextEnabled && setFarmPickerOpen(!farmPickerOpen)} activeOpacity={farmContextEnabled ? 0.7 : 1}>
+            <TouchableOpacity style={[S.farmBarInner, { flex: 1 }]} onPress={() => farmContextEnabled && setFarmPickerOpen(!farmPickerOpen)} activeOpacity={farmContextEnabled ? 0.7 : 1} accessibilityRole="button" accessibilityState={{ expanded: farmPickerOpen, disabled: !farmContextEnabled }}>
               <Leaf size={14} color={farmContextEnabled ? P_LIGHT : MUTED} strokeWidth={2.2} />
               <Text style={[S.farmBarName, !farmContextEnabled && { color: MUTED }]} numberOfLines={1}>
                 {farmContextEnabled ? (activeFarm?.farmName || activeFarm?.farmAlias || 'Select Farm') : 'Farm context off'}
@@ -1059,6 +1063,9 @@ export default function AIChatScreen({ navigation, route }) {
               style={[S.farmBarPill, { backgroundColor: farmContextEnabled ? 'rgba(34,197,94,0.15)' : SURFACE, borderWidth: 1, borderColor: farmContextEnabled ? 'rgba(34,197,94,0.3)' : BORDER }]}
               onPress={() => { setFarmContextEnabled(v => !v); setFarmPickerOpen(false); }}
               activeOpacity={0.7}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: farmContextEnabled }}
+              accessibilityLabel={t('a11y.useFarmRecords', 'Use my farm records')}
             >
               {farmContextEnabled
                 ? <ToggleRight size={16} color={P_LIGHT} strokeWidth={2.2} style={{ marginRight: 4 }} />
@@ -1077,6 +1084,8 @@ export default function AIChatScreen({ navigation, route }) {
                   style={[S.farmDropItem, f.id === activeFarmId && S.farmDropItemActive]}
                   onPress={() => { switchActiveFarm(f.id); setFarmPickerOpen(false); }}
                   activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: f.id === activeFarmId }}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={[S.farmDropName, f.id === activeFarmId && { color: P_LIGHT }]}>
@@ -1097,6 +1106,7 @@ export default function AIChatScreen({ navigation, route }) {
           style={[S.farmBar, { backgroundColor: 'rgba(245,184,65,0.1)', borderBottomColor: 'rgba(245,184,65,0.22)' }]}
           onPress={() => navigation.navigate('FarmAddEdit')}
           activeOpacity={0.7}
+          accessibilityRole="button"
         >
           <View style={S.farmBarInner}>
             <Plus size={14} color={ACCENT} strokeWidth={2.4} />
@@ -1134,7 +1144,7 @@ export default function AIChatScreen({ navigation, route }) {
           )}
           ListFooterComponent={typing ? (
             <View style={S.aiBubbleWrap}>
-              <View style={S.aiBubble}>
+              <View style={S.aiBubble} accessible accessibilityLabel={t('aiChat.voiceThinking', 'Krushi Intelligence is thinking')} accessibilityLiveRegion="polite">
                 <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFillObject} />
                 <TypingDots />
               </View>
@@ -1153,7 +1163,7 @@ export default function AIChatScreen({ navigation, route }) {
                   <Text style={C.recordLabel}>Listening… auto-stops on silence</Text>
                   <VoiceWaveform amplitude={audioLevel} bars={28} height={20} />
                 </View>
-                <TouchableOpacity style={C.stopBtn} onPress={stopAndSend} activeOpacity={0.85}>
+                <TouchableOpacity style={C.stopBtn} onPress={stopAndSend} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={t('a11y.stopRecording', 'Stop recording')}>
                   <SquareIcon size={16} color="#fff" strokeWidth={2.6} fill="#fff" />
                 </TouchableOpacity>
               </View>
@@ -1165,7 +1175,7 @@ export default function AIChatScreen({ navigation, route }) {
                 <View style={C.attachRow}>
                   <Image source={{ uri: attachedImage.uri }} style={C.attachThumb} />
                   <Text style={C.attachLabel} numberOfLines={1}>{t('aiChat.photoAttached', 'Photo attached')}</Text>
-                  <TouchableOpacity onPress={() => setAttachedImage(null)} style={C.attachClose} activeOpacity={0.7} accessibilityLabel="Remove photo">
+                  <TouchableOpacity onPress={() => setAttachedImage(null)} style={C.attachClose} activeOpacity={0.7} accessibilityLabel={t('cropScan.removePhoto', 'Remove photo')} accessibilityRole="button">
                     <CloseIcon size={16} color={MUTED} strokeWidth={2.4} />
                   </TouchableOpacity>
                 </View>
@@ -1175,6 +1185,8 @@ export default function AIChatScreen({ navigation, route }) {
                   style={C.iconBtn}
                   onPress={onAttachPress}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('cropScan.addImage', 'Add a photo')}
                 >
                   <Paperclip size={20} color={attachedImage ? PRIMARY : MUTED} strokeWidth={2.2} />
                 </TouchableOpacity>
@@ -1192,6 +1204,7 @@ export default function AIChatScreen({ navigation, route }) {
                   blurOnSubmit
                   onSubmitEditing={() => sendMessage()}
                   editable={!typing && !isProcessing}
+                  accessibilityLabel={t('chat.typePlaceholder', 'Type your message...')}
                 />
                 {showSend ? (
                   <TouchableOpacity
@@ -1199,6 +1212,9 @@ export default function AIChatScreen({ navigation, route }) {
                     onPress={() => sendMessage()}
                     disabled={typing}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: typing }}
+                    accessibilityLabel={t('aiChat.send', 'Send')}
                   >
                     {typing
                       ? <ActivityIndicator size={16} color="#fff" />
@@ -1210,6 +1226,9 @@ export default function AIChatScreen({ navigation, route }) {
                     onPress={startRecording}
                     disabled={isProcessing}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: isProcessing }}
+                    accessibilityLabel={t('a11y.startRecording', 'Start recording')}
                   >
                     {isProcessing
                       ? <ActivityIndicator size={16} color={BG} />

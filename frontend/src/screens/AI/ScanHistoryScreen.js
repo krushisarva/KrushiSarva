@@ -77,7 +77,7 @@ export default function ScanHistoryScreen({ navigation }) {
     <View style={S.safe}>
       {/* Header */}
       <View style={[S.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn} accessibilityRole="button" accessibilityLabel={t('common.goBack', 'Go back')}>
           <Ionicons name="chevron-back" size={22} color={COLORS.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -103,8 +103,8 @@ export default function ScanHistoryScreen({ navigation }) {
       ) : error ? (
         <View style={S.empty}>
           <Ionicons name="cloud-offline-outline" size={48} color={COLORS.gray175} />
-          <Text style={S.emptyTitle}>{error}</Text>
-          <TouchableOpacity style={S.retryBtn} onPress={() => { setLoading(true); load().finally(() => setLoading(false)); }}>
+          <Text style={S.emptyTitle} accessibilityLiveRegion="polite">{error}</Text>
+          <TouchableOpacity style={S.retryBtn} onPress={() => { setLoading(true); load().finally(() => setLoading(false)); }} accessibilityRole="button">
             <Text style={S.retryTxt}>{t('retry', 'Retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -127,6 +127,7 @@ export default function ScanHistoryScreen({ navigation }) {
                 style={S.card}
                 onPress={() => openReport(item)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
               >
                 <View style={[S.riskBar, { backgroundColor: riskCol }]} />
                 <View style={{ flex: 1, padding: 12 }}>

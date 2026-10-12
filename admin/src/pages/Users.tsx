@@ -237,18 +237,18 @@ export function UserDetailPage() {
           {readOnly ? (
             <Card className="p-5">
               <h3 className="mb-2 text-sm font-medium text-slate-700">Account actions</h3>
-              <p className="text-sm text-slate-400">Hidden while viewing as this user — the session is read-only.</p>
+              <p className="text-sm text-slate-500">Hidden while viewing as this user — the session is read-only.</p>
             </Card>
           ) : (
             <Card className="p-5">
               <h3 className="mb-3 text-sm font-medium text-slate-700">Account actions</h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="flex-1">
+                  <Select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="flex-1" aria-label="New role">
                     <option value="">Change role…</option>
                     {ROLES.filter((r) => r !== u.role).map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
                   </Select>
-                  <Button variant="secondary" onClick={onChangeRole} disabled={!newRole} loading={changeRole.isPending}><UserCog className="h-4 w-4" /></Button>
+                  <Button variant="secondary" onClick={onChangeRole} disabled={!newRole} loading={changeRole.isPending} aria-label="Apply role change"><UserCog className="h-4 w-4" /></Button>
                 </div>
                 <Button variant="danger" className="w-full" onClick={onForceLogout} loading={forceLogout.isPending}><LogOut className="h-4 w-4" /> Force logout</Button>
               </div>
@@ -260,7 +260,7 @@ export function UserDetailPage() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-medium text-slate-700">Recent orders</h3>
-          {detail.data.recent.orders.length === 0 ? <p className="text-sm text-slate-400">No orders.</p> : (
+          {detail.data.recent.orders.length === 0 ? <p className="text-sm text-slate-500">No orders.</p> : (
             <ul className="divide-y divide-slate-100 text-sm">
               {detail.data.recent.orders.map((o) => (
                 <li key={o.id} className="flex items-center justify-between py-2">
@@ -283,7 +283,7 @@ export function UserDetailPage() {
                   <Badge tone={c.granted ? 'green' : 'red'}>{c.granted ? 'Granted' : 'Withdrawn'}</Badge>
                 </li>
               ))}
-              {Object.keys(consents.data?.effective ?? {}).length === 0 && <li className="text-slate-400">No consent records.</li>}
+              {Object.keys(consents.data?.effective ?? {}).length === 0 && <li className="text-slate-500">No consent records.</li>}
             </ul>
           )}
         </Card>
@@ -297,10 +297,10 @@ export function UserDetailPage() {
               <li key={a.id} className="flex items-center justify-between gap-3 py-2">
                 <span className="font-mono text-xs text-slate-700">{a.action}</span>
                 <span className="text-slate-500">{a.entity}</span>
-                <span className="text-xs text-slate-400">{formatDateTime(a.createdAt)}</span>
+                <span className="text-xs text-slate-500">{formatDateTime(a.createdAt)}</span>
               </li>
             ))}
-            {(audit.data?.items ?? []).length === 0 && <li className="py-2 text-slate-400">No audit entries.</li>}
+            {(audit.data?.items ?? []).length === 0 && <li className="py-2 text-slate-500">No audit entries.</li>}
           </ul>
         )}
         <div className="mt-2 text-right">

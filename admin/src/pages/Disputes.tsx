@@ -9,7 +9,7 @@
  *
  * Gated behind the CONTENT_MODERATOR admin scope (nav + server).
  */
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { apiGet, apiPatch, apiPost, errorMessage } from '../lib/api';
@@ -70,11 +70,11 @@ function ContextView({ ctx }: { ctx: Context }) {
           <ul className="space-y-1.5 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm">
             {c.messages.map((m) => (
               <li key={m.id} className="flex flex-col">
-                <span className="text-[11px] text-slate-400">{m.senderId === c.buyer?.id ? 'Buyer' : m.senderId === c.seller?.id ? 'Seller' : 'User'} · {formatDateTime(m.createdAt)}</span>
+                <span className="text-[11px] text-slate-500">{m.senderId === c.buyer?.id ? 'Buyer' : m.senderId === c.seller?.id ? 'Seller' : 'User'} · {formatDateTime(m.createdAt)}</span>
                 <span className="text-slate-700">{m.text || (m.imageUrl ? '[image]' : '—')}</span>
               </li>
             ))}
-            {c.messages.length === 0 && <li className="text-slate-400">No messages.</li>}
+            {c.messages.length === 0 && <li className="text-slate-500">No messages.</li>}
           </ul>
         </div>
       </div>
@@ -127,13 +127,13 @@ function ContextView({ ctx }: { ctx: Context }) {
                 <span className="text-slate-500">{formatINR(it.totalPrice)}</span>
               </li>
             ))}
-            {o.items.length === 0 && <li className="px-3 py-2 text-slate-400">No items.</li>}
+            {o.items.length === 0 && <li className="px-3 py-2 text-slate-500">No items.</li>}
           </ul>
         </div>
       </div>
     );
   }
-  return <p className="text-sm text-slate-400">Linked record not found (ref {ctx.refId}).</p>;
+  return <p className="text-sm text-slate-500">Linked record not found (ref {ctx.refId}).</p>;
 }
 
 // ── Create-dispute modal ─────────────────────────────────────────────────────
@@ -196,6 +196,7 @@ export default function DisputesPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [assignTo, setAssignTo] = useState('');
+  const assignId = useId();
 
   const params = useMemo(() => {
     const p: Record<string, unknown> = {};
@@ -243,8 +244,8 @@ export default function DisputesPage() {
     { key: 'type', header: 'Type', render: (d) => <Badge tone="blue">{TYPE_LABEL[d.type] ?? titleCase(d.type)}</Badge>, csv: (d) => d.type },
     { key: 'reason', header: 'Reason', render: (d) => <span className="line-clamp-1 max-w-xs text-slate-600">{d.reason}</span>, csv: (d) => d.reason },
     { key: 'status', header: 'Status', render: (d) => <StatusBadge value={d.status} />, csv: (d) => d.status },
-    { key: 'assignedTo', header: 'Assigned', render: (d) => d.assignedTo ? <span className="font-mono text-xs">{d.assignedTo.slice(0, 8)}</span> : <span className="text-slate-300">—</span>, csv: (d) => d.assignedTo ?? '' },
-    { key: 'createdAt', header: 'Opened', render: (d) => <span className="text-xs text-slate-400">{formatDate(d.createdAt)}</span>, csv: (d) => d.createdAt },
+    { key: 'assignedTo', header: 'Assigned', render: (d) => d.assignedTo ? <span className="font-mono text-xs">{d.assignedTo.slice(0, 8)}</span> : <span className="text-slate-500">—</span>, csv: (d) => d.assignedTo ?? '' },
+    { key: 'createdAt', header: 'Opened', render: (d) => <span className="text-xs text-slate-500">{formatDate(d.createdAt)}</span>, csv: (d) => d.createdAt },
   ];
 
   return (
@@ -301,9 +302,9 @@ export default function DisputesPage() {
 
             {/* Actions */}
             <div className="space-y-3 border-t border-slate-100 pt-4">
-              <Field label="Assign to (admin user id)">
+              <Field label="Assign to (admin user id)" htmlFor={assignId}>
                 <div className="flex items-center gap-2">
-                  <Input value={assignTo} onChange={(e) => setAssignTo(e.target.value)} placeholder="uuid" className="flex-1" />
+                  <Input id={assignId} value={assignTo} onChange={(e) => setAssignTo(e.target.value)} placeholder="uuid" className="flex-1" />
                   <Button variant="secondary" disabled={!assignTo.trim()} loading={patch.isPending} onClick={onAssign}>Assign</Button>
                 </div>
               </Field>
