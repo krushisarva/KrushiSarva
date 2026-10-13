@@ -1,5 +1,5 @@
 import {
-  canMove, canSellerCancel, moveSellerLines, nextStatusFor, orderItemQty,
+  FAILED_REASONS, canMove, canSellerCancel, moveSellerLines, nextStatusFor, orderItemQty,
   sellerStatusByOrder, sellerStatusOf,
 } from '../sellerOrders';
 import { refusalMessage } from '../apiError';
@@ -57,6 +57,29 @@ describe('actions match the server transitions', () => {
     expect(canSellerCancel('CANCELLED')).toBe(false);
   });
 
+  test('a shipped line may be cancelled only as a failed delivery, with a reason', () => {
+    expect(canMove('SHIPPED', 'CANCELLED')).toBe(false);
+    expect(canMove('SHIPPED', 'CANCELLED', {})).toBe(false);
+    expect(canMove('SHIPPED', 'CANCELLED', null)).toBe(false);
+    expect(canMove('SHIPPED', 'CANCELLED', { failedReason: 'CHANGED_MY_MIND' })).toBe(false);
+    for (const failedReason of FAILED_REASONS) {
+      expect(canMove('SHIPPED', 'CANCELLED', { failedReason })).toBe(true);
+    }
+    expect(FAILED_REASONS).toEqual(['REFUSED', 'UNREACHABLE', 'ADDRESS_NOT_FOUND']);
+  });
+
+  test('a reason opens no other move', () => {
+    const sent = { failedReason: 'REFUSED' };
+    // Before shipping a cancel never needed one, and still does not.
+    expect(canMove('PENDING', 'CANCELLED')).toBe(true);
+    expect(canMove('CONFIRMED', 'CANCELLED', sent)).toBe(true);
+    // Delivered and cancelled stay final.
+    expect(canMove('DELIVERED', 'CANCELLED', sent)).toBe(false);
+    expect(canMove('CANCELLED', 'CANCELLED', sent)).toBe(false);
+    expect(canMove('SHIPPED', 'CONFIRMED', sent)).toBe(false);
+    expect(canMove('SHIPPED', 'DELIVERED')).toBe(true);
+  });
+
   test('next step walks the flow and stops at DELIVERED', () => {
     expect(nextStatusFor('PENDING')).toBe('CONFIRMED');
     expect(nextStatusFor('SHIPPED')).toBe('DELIVERED');
@@ -75,6 +98,19 @@ describe('actions match the server transitions', () => {
     // Untouched rows keep their identity (memoised cards do not re-render).
     expect(moved[1]).toBe(rows[1]);
     expect(moved[3]).toBe(rows[3]);
+  });
+
+  test('a plain cancel leaves shipped lines; "could not deliver" takes them too', () => {
+    const rows = [
+      row('a', 'o1', 'CONFIRMED'), row('b', 'o1', 'SHIPPED'), row('c', 'o1', 'DELIVERED'),
+      row('d', 'o2', 'SHIPPED'),
+    ];
+    expect(moveSellerLines(rows, 'o1', 'CANCELLED').map((r) => r.status))
+      .toEqual(['CANCELLED', 'SHIPPED', 'DELIVERED', 'SHIPPED']);
+    const failed = moveSellerLines(rows, 'o1', 'CANCELLED', { failedReason: 'UNREACHABLE' });
+    expect(failed.map((r) => r.status)).toEqual(['CANCELLED', 'CANCELLED', 'DELIVERED', 'SHIPPED']);
+    // Another order's shipped line is never touched.
+    expect(failed[3]).toBe(rows[3]);
   });
 });
 

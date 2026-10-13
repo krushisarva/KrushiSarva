@@ -6,8 +6,9 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, Animated, Alert, Easing, RefreshControl, Dimensions,
+  Image, Animated, Easing, RefreshControl, Dimensions,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Haptics } from '@krushisarva/shared/utils/haptics';
@@ -20,6 +21,7 @@ import { StoreCategoryIcon } from '@krushisarva/shared/components/StoreCategoryI
 import MockImagePlaceholder from '../../components/MockImagePlaceholder';
 import { SkeletonList } from '../../components/ui/Skeleton';
 import { classifyError, inr, thumbUrl, SHOP_ERRORS } from './shopClient';
+import { deliveryBreakdownLines } from './shopUtils';
 
 const W = Dimensions.get('window').width;
 
@@ -384,7 +386,7 @@ export default function CartScreen({ navigation }) {
       scheduleRequote();
     } catch (err) {
       // Say why ("Only 5 in stock") instead of the number silently snapping back.
-      Alert.alert(t('product.error'), err.response?.data?.error?.message || t('cart.qtyError'));
+      showPopup(t('product.error'), err.response?.data?.error?.message || t('cart.qtyError'));
       changeSeq.current += 1;
       fetchCart();
     }
@@ -525,6 +527,19 @@ export default function CartScreen({ navigation }) {
                 {delivery === 0 ? t('free') : inr(delivery)}
               </Text>
             </View>
+
+            {/* What that charge is made of — only when it is more than the
+                standard fee (a shop's extra charge for this area, heavy-item
+                handling, a cash-on-delivery fee). The farmer was shown ₹69 where
+                another shop showed ₹49, with nothing to say why. */}
+            {deliveryBreakdownLines(quote).map((line) => (
+              <View key={line.id} style={S.summarySubRow}>
+                <Text style={S.summarySubLabel}>{t(line.key, line.fallback)}</Text>
+                <Text style={[S.summarySubValue, line.free && { color: COLORS.primary }]}>
+                  {line.free ? t('free') : inr(line.amount)}
+                </Text>
+              </View>
+            ))}
 
             {/* Tax, only when the platform is actually charging or showing it.
                 The product page said "inclusive of all taxes" under every price
@@ -685,6 +700,11 @@ const S = StyleSheet.create({
   },
   summaryTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textDark, marginBottom: 16 },
   summaryRow:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  // The parts of the delivery charge: indented under their row and a size
+  // down, so they read as an explanation of it and not as further charges.
+  summarySubRow:   { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: -4, marginBottom: 8, paddingLeft: 14 },
+  summarySubLabel: { flex: 1, fontSize: 12.5, color: COLORS.textMedium },
+  summarySubValue: { fontSize: 12.5, fontWeight: '600', color: COLORS.textMedium },
   summaryLabel: { fontSize: 14, color: COLORS.textMedium },
   summaryValue: { fontSize: 14, fontWeight: '600', color: COLORS.textDark },
   summaryDivider:{ borderTopWidth: 1, borderTopColor: COLORS.border, marginVertical: 10 },

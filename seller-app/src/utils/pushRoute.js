@@ -7,13 +7,17 @@
  * (cropReportShare.routes.js), and tapping it opened the dashboard, leaving the
  * seller to find the report in the inbox by hand.
  *
+ * A new order pushes `{ kind: 'new_order', orderId }` to each seller on it
+ * (docs/SELLER_DELIVERY_DESIGN.md §8.1). Until that push existed a seller found
+ * out about an order only by opening the app.
+ *
  * A notification payload is NOT trusted input — anything that can mint a push
  * for this project can choose its `data`. So this is an allowlist of kinds, and
  * every id is shape-checked before it reaches a screen that will request it.
  * An unknown kind returns null, which means "open normally".
  */
 
-// CropReportShare.id is @default(uuid()).
+// CropReportShare.id and Order.id are both @default(uuid()).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const uuid = (v) => (typeof v === 'string' && UUID_RE.test(v.trim()) ? v.trim() : null);
@@ -50,6 +54,13 @@ export function pushTarget(data) {
     case 'crop_report_share': {
       const shareId = uuid(data.shareId);
       return shareId ? { name: 'ReceivedReportDetail', params: { shareId } } : null;
+    }
+    case 'new_order': {
+      // Opens the order LIST: there is no single-order screen, and the list is
+      // newest-first, so the order is its first card. The id is still required
+      // and shape-checked — a payload without a real one is not a new order —
+      // but it is not passed on, because nothing on that screen requests it.
+      return uuid(data.orderId) ? { name: 'SellerOrders', params: {} } : null;
     }
     default:
       return null;

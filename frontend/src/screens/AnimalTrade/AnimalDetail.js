@@ -16,9 +16,10 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, Alert, Image, Animated, Dimensions, Share,
+  SafeAreaView, Image, Animated, Dimensions, Share,
   ActivityIndicator, Modal, Pressable,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import { fs } from '../../utils/responsive';
 import { formatLocation } from '../../utils/location';
@@ -280,7 +281,7 @@ export default function AnimalDetail({ route, navigation }) {
   const handleCall = async () => {
     if (revealing) return;
     if (!user?.id) {
-      Alert.alert(t('animalDetail.signInTitle', 'Sign in to call'),
+      showPopup(t('animalDetail.signInTitle', 'Sign in to call'),
         t('animalDetail.signInToCall', 'Please sign in so the seller knows who is calling.'));
       return;
     }
@@ -290,10 +291,10 @@ export default function AnimalDetail({ route, navigation }) {
       if (!phone) throw new Error('no phone');
       setContact({ phone });
       const ok = await safeOpenURL(`tel:${sanitizePhone(phone)}`);
-      if (!ok) Alert.alert(t('product.error'), t('animalDetail.phoneError'));
+      if (!ok) showPopup(t('product.error'), t('animalDetail.phoneError'));
     } catch (e) {
       const classified = classifyError(e, t('animalDetail.phoneError'));
-      Alert.alert(t('product.error'), classified.message);
+      showPopup(t('product.error'), classified.message);
     } finally {
       setRevealing(false);
     }
@@ -308,7 +309,10 @@ export default function AnimalDetail({ route, navigation }) {
     try {
       await Share.share({ title, message });
     } catch (e) {
-      Alert.alert(t('product.error'), String(e?.message || e));
+      // Closing the browser's share sheet without sharing rejects with
+      // AbortError — the farmer changed their mind, which is not an error.
+      if (e?.name === 'AbortError') return;
+      showPopup(t('product.error'), String(e?.message || e));
     }
   };
 
@@ -334,19 +338,19 @@ export default function AnimalDetail({ route, navigation }) {
     try {
       await api.post(`/animals/${listing.id}/report`, { reason });
       setReportOpen(false);
-      Alert.alert(
+      showPopup(
         t('animal.reportThanksTitle', 'Thank you'),
         t('animal.reportThanks', 'Our team will look at this listing.'),
       );
     } catch (e) {
-      Alert.alert(t('product.error'), classifyError(e, t('animal.reportFailed', 'Could not send the report.')).message);
+      showPopup(t('product.error'), classifyError(e, t('animal.reportFailed', 'Could not send the report.')).message);
     } finally {
       setReporting(false);
     }
   };
 
   const confirmBlock = () => {
-    Alert.alert(
+    showPopup(
       t('animal.blockTitle', 'Block this seller?'),
       t('animal.blockBody', 'You will not see their animals or be able to message each other. You can undo this later.'),
       [
@@ -360,7 +364,7 @@ export default function AnimalDetail({ route, navigation }) {
               invalidateFocusData('animals');
               navigation.goBack();
             } catch (e) {
-              Alert.alert(t('product.error'), classifyError(e, t('animal.blockFailed', 'Could not block.')).message);
+              showPopup(t('product.error'), classifyError(e, t('animal.blockFailed', 'Could not block.')).message);
             }
           },
         },

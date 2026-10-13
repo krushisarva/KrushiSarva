@@ -80,6 +80,14 @@ productsQcRouter.get(
       const limit = Math.min(parseInt(req.query.limit || '25', 10) || 25, 100);
       const where = { status: req.query.status || 'PENDING_QC' };
 
+      // The offer waiting behind a pending product — its price, stock and where
+      // it sells — is half of what the reviewer is approving: approval puts it on
+      // sale. Only for PENDING_QC, where it is bounded: a product still in review
+      // can carry offers from the seller who proposed it and nobody else, one per
+      // pack size (see POST /agristore/listings). An APPROVED product can have an
+      // offer from every Kendra, which does not belong in a list response.
+      const withOffers = where.status === 'PENDING_QC';
+
       const [items, total] = await Promise.all([
         prisma.product.findMany({
           where,
@@ -89,6 +97,17 @@ productsQcRouter.get(
               select: {
                 id: true, unit: true, attributes: true, gtin: true, sku: true,
                 _count: { select: { listings: true } },
+                ...(withOffers && {
+                  listings: {
+                    select: {
+                      id: true, sellerId: true, sellingPrice: true, mrp: true, stockQty: true,
+                      minOrderQty: true, dispatchSlaDays: true, condition: true, sellScope: true,
+                      village: true, taluka: true, district: true, state: true,
+                      images: true, status: true,
+                    },
+                    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                  },
+                }),
               },
             },
           },

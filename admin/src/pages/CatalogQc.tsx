@@ -12,31 +12,54 @@
  * SCOPE: CONTENT_MODERATOR, matching the server. Product authoring stays
  * CMS_EDITOR. See backend/src/routes/admin/catalogQc.routes.js for why.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, GitMerge, X, AlertTriangle } from 'lucide-react';
+import { Check, Eye, GitMerge, X, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost, errorMessage } from '../lib/api';
 import { PageHeader, Card, Button, Badge, Spinner, ErrorState, Field, Input, Textarea } from '../components/ui';
 import { Modal } from '../components/Modal';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
-import { formatDate } from '../lib/format';
+import { formatDate, formatINR, formatNumber } from '../lib/format';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+/** The seller's offer waiting behind a pending product. Money arrives as a string (Decimal). */
+interface QcOffer {
+  id: string; sellerId: string;
+  sellingPrice: string | number; mrp?: string | number | null;
+  stockQty: number; minOrderQty: number; dispatchSlaDays: number;
+  condition?: string | null; sellScope: string;
+  village?: string | null; taluka?: string | null; district?: string | null; state?: string | null;
+  images: string[]; status: string;
+}
 interface QcVariant {
   id: string; unit: string; gtin?: string | null; sku?: string | null;
   attributes?: Record<string, unknown> | null;
   _count?: { listings: number };
+  listings?: QcOffer[];
 }
 interface QcProduct {
   id: string; name: string; nameHi?: string | null; nameMr?: string | null;
   brand?: string | null; manufacturer?: string | null; modelNumber?: string | null;
+  countryOfOrigin?: string | null; subcategory?: string | null;
   description?: string | null; images: string[]; status: string;
+  highlights?: string[] | null; tags?: string[] | null;
+  specifications?: Record<string, unknown> | null;
   createdAt: string; normalizedKey: string;
   category?: { id: string; name: string } | null;
   variants: QcVariant[];
   proposedBy?: { id: string; name: string | null; phone: string; kycStatus: string; district?: string | null } | null;
 }
+
+const packLabel = (v: QcVariant) => String((v.attributes as any)?.packSize ?? v.unit);
+
+const SCOPE_LABEL: Record<string, string> = {
+  village: 'Own village only',
+  taluka: 'Own taluka',
+  district: 'Own district',
+  state: 'Whole state',
+  all_india: 'All India',
+};
 interface NearMiss {
   id: string; kind: string; leftId: string; rightId?: string | null;
   similarity?: number | null; leftLabel?: string | null; rightLabel?: string | null; note?: string | null;
@@ -56,11 +79,191 @@ const KIND_TONE: Record<string, 'amber' | 'red' | 'slate' | 'blue'> = {
   MERGE_CONFLICT: 'amber',
 };
 
+// ── Review one pending product ────────────────────────────────────────────────
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[9rem_1fr] gap-3 py-1 text-sm">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="min-w-0 break-words text-slate-900">{children}</dd>
+    </div>
+  );
+}
+
+function Photos({ urls, alt }: { urls: string[]; alt: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {urls.map((url, i) => (
+        // Opens full size in a new tab: a thumbnail cannot show a blurred label
+        // or another brand's packaging.
+        <a key={`${url}-${i}`} href={url} target="_blank" rel="noreferrer" title="Open full size">
+          <img src={url} alt={`${alt} ${i + 1}`} className="h-28 w-28 rounded-lg border border-slate-200 object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Everything the seller submitted, in full, before the decision.
+ *
+ * The queue card is a summary — one thumbnail and two lines of description. An
+ * approval publishes all of it to every buyer and every other seller of the
+ * product, and puts the seller's waiting offer on sale at the price shown here,
+ * so the reviewer has to be able to read all of it first.
+ */
+function ReviewDetails({ p }: { p: QcProduct }) {
+  const offers = p.variants.flatMap((v) => (v.listings ?? []).map((o) => ({ ...o, pack: packLabel(v) })));
+  const offerPhotos = offers.flatMap((o) => o.images ?? []);
+  // The count comes from the database either way. If it says there are offers
+  // and none arrived, the server did not send them (an older build) — say that,
+  // never "no offer": approving would still put them on sale.
+  const offerCount = p.variants.reduce((n, v) => n + (v._count?.listings ?? 0), 0);
+  const highlights = (p.highlights ?? []).filter(Boolean);
+  const tags = (p.tags ?? []).filter(Boolean);
+  const specs = Object.entries(p.specifications ?? {}).filter(([, v]) => v != null && String(v).trim() !== '');
+
+  return (
+    <div className="space-y-5">
+      <Section title="Photos">
+        {p.images?.length ? <Photos urls={p.images} alt={`Photo of ${p.name}`} /> : (
+          <p className="inline-flex items-center gap-1.5 text-sm text-amber-700">
+            <AlertTriangle className="h-4 w-4" /> No photo submitted — buyers will see a placeholder.
+          </p>
+        )}
+      </Section>
+
+      <Section title="Product">
+        <dl>
+          <Row label="Name">{p.name}</Row>
+          {p.nameHi ? <Row label="Hindi name">{p.nameHi}</Row> : null}
+          {p.nameMr ? <Row label="Marathi name">{p.nameMr}</Row> : null}
+          <Row label="Category">{[p.category?.name, p.subcategory].filter(Boolean).join(' › ') || '—'}</Row>
+          <Row label="Brand">{p.brand || '—'}</Row>
+          <Row label="Manufacturer">{p.manufacturer || '—'}</Row>
+          {p.modelNumber ? <Row label="Model">{p.modelNumber}</Row> : null}
+          <Row label="Country of origin">{p.countryOfOrigin || '—'}</Row>
+        </dl>
+      </Section>
+
+      <Section title="Description">
+        {p.description
+          ? <p className="whitespace-pre-line text-sm text-slate-700">{p.description}</p>
+          : <p className="text-sm text-slate-500">No description given.</p>}
+      </Section>
+
+      {highlights.length ? (
+        <Section title="Highlights">
+          <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-700">
+            {highlights.map((h, i) => <li key={`${h}-${i}`}>{h}</li>)}
+          </ul>
+        </Section>
+      ) : null}
+
+      {specs.length ? (
+        <Section title="Specifications">
+          <dl>{specs.map(([k, v]) => <Row key={k} label={k}>{String(v)}</Row>)}</dl>
+        </Section>
+      ) : null}
+
+      {tags.length ? (
+        <Section title="Search tags">
+          <div className="flex flex-wrap gap-1.5">{tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}</div>
+        </Section>
+      ) : null}
+
+      <Section title="Pack sizes">
+        {p.variants.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {p.variants.map((v) => (
+              <span key={v.id} className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                {packLabel(v)}{v.gtin ? ` · barcode ${v.gtin}` : ''}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="inline-flex items-center gap-1.5 text-sm text-amber-700">
+            <AlertTriangle className="h-4 w-4" /> No pack size — nothing can be sold against this.
+          </p>
+        )}
+      </Section>
+
+      <Section title="The seller's offer — goes on sale when you approve">
+        {offers.length ? (
+          <div className="space-y-3">
+            {offers.map((o) => {
+              const aboveMrp = o.mrp != null && Number(o.sellingPrice) > Number(o.mrp);
+              const place = [o.village, o.taluka, o.district, o.state].filter(Boolean).join(', ');
+              return (
+                <dl key={o.id} className="rounded-lg border border-slate-200 px-3 py-2">
+                  <Row label="Pack size">{o.pack}</Row>
+                  <Row label="Selling price">
+                    <span className="font-semibold">{formatINR(o.sellingPrice)}</span>
+                    {aboveMrp ? (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                        <AlertTriangle className="h-3 w-3" /> above MRP
+                      </span>
+                    ) : null}
+                  </Row>
+                  <Row label="MRP">{o.mrp != null ? formatINR(o.mrp) : 'Not given'}</Row>
+                  <Row label="Stock">{formatNumber(o.stockQty)}</Row>
+                  <Row label="Minimum order">{formatNumber(o.minOrderQty)}</Row>
+                  <Row label="Dispatch within">{o.dispatchSlaDays} day(s)</Row>
+                  <Row label="Sells to">{SCOPE_LABEL[o.sellScope] ?? o.sellScope}{place ? ` — ${place}` : ''}</Row>
+                </dl>
+              );
+            })}
+            {offerPhotos.length ? (
+              <div>
+                <p className="mb-1.5 text-xs text-slate-500">The seller's own photos of their stock</p>
+                <Photos urls={offerPhotos} alt={`Seller's photo of ${p.name}`} />
+              </div>
+            ) : null}
+          </div>
+        ) : offerCount > 0 ? (
+          <p className="inline-flex items-start gap-1.5 text-sm text-amber-700">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            {offerCount} offer(s) are attached and will go on sale when you approve, but the price and stock
+            could not be loaded. Restart the server and refresh this page before deciding.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-500">
+            No offer attached. Approving adds the product to the catalogue, but nothing is on sale until a seller sets a price.
+          </p>
+        )}
+      </Section>
+
+      <Section title="Proposed by">
+        <dl>
+          <Row label="Seller">{p.proposedBy?.name || 'unknown'}</Row>
+          <Row label="Phone">{p.proposedBy?.phone || '—'}</Row>
+          <Row label="District">{p.proposedBy?.district || '—'}</Row>
+          <Row label="KYC">
+            {p.proposedBy?.kycStatus
+              ? <Badge tone={p.proposedBy.kycStatus === 'VERIFIED' ? 'green' : 'amber'}>{p.proposedBy.kycStatus}</Badge>
+              : '—'}
+          </Row>
+          <Row label="Submitted">{formatDate(p.createdAt)}</Row>
+        </dl>
+      </Section>
+    </div>
+  );
+}
+
 // ── QC queue ──────────────────────────────────────────────────────────────────
 function QcQueue() {
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
+  const [reviewing, setReviewing] = useState<QcProduct | null>(null);
   const [rejecting, setRejecting] = useState<QcProduct | null>(null);
   const [reason, setReason] = useState('');
 
@@ -97,8 +300,10 @@ function QcQueue() {
       message: 'Every seller of this product will share this name, description and imagery. Any draft offers already attached to it go live immediately.',
       confirmLabel: 'Approve',
     });
-    if (confirmed) approve.mutate(p.id);
+    if (confirmed) { approve.mutate(p.id); setReviewing(null); }
   };
+
+  const startReject = (p: QcProduct) => { setReviewing(null); setRejecting(p); setReason(''); };
 
   if (queue.isLoading) return <div className="flex justify-center py-10"><Spinner /></div>;
   if (queue.error) return <ErrorState message="Failed to load the QC queue." />;
@@ -146,7 +351,7 @@ function QcQueue() {
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {p.variants.length ? p.variants.map((v) => (
                     <span key={v.id} className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600">
-                      {String((v.attributes as any)?.packSize ?? v.unit)}
+                      {packLabel(v)}
                       {v.gtin ? ` · ${v.gtin}` : ''}
                       {v._count?.listings ? ` · ${v._count.listings} offer(s)` : ''}
                     </span>
@@ -169,10 +374,13 @@ function QcQueue() {
               </div>
 
               <div className="flex shrink-0 flex-col gap-2">
+                <Button onClick={() => setReviewing(p)}>
+                  <Eye className="h-4 w-4" /> Review
+                </Button>
                 <Button variant="primary" onClick={() => onApprove(p)} disabled={approve.isPending}>
                   <Check className="h-4 w-4" /> Approve
                 </Button>
-                <Button variant="ghost" onClick={() => { setRejecting(p); setReason(''); }}>
+                <Button variant="ghost" onClick={() => startReject(p)}>
                   <X className="h-4 w-4 text-red-500" /> Reject
                 </Button>
               </div>
@@ -180,6 +388,26 @@ function QcQueue() {
           </Card>
         ))}
       </div>
+
+      <Modal
+        open={!!reviewing}
+        onClose={() => setReviewing(null)}
+        title={`Review "${reviewing?.name ?? ''}"`}
+        size="lg"
+        footer={reviewing ? (
+          <>
+            <Button variant="ghost" onClick={() => setReviewing(null)}>Close</Button>
+            <Button variant="ghost" onClick={() => startReject(reviewing)}>
+              <X className="h-4 w-4 text-red-500" /> Reject
+            </Button>
+            <Button variant="primary" onClick={() => onApprove(reviewing)} disabled={approve.isPending}>
+              <Check className="h-4 w-4" /> Approve
+            </Button>
+          </>
+        ) : null}
+      >
+        {reviewing ? <ReviewDetails p={reviewing} /> : null}
+      </Modal>
 
       <Modal open={!!rejecting} onClose={() => setRejecting(null)} title={`Reject "${rejecting?.name ?? ''}"`}>
         <div className="space-y-3">

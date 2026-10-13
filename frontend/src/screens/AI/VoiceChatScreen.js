@@ -10,8 +10,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, Dimensions, StatusBar, Platform, Alert,
+  Animated, Dimensions, StatusBar, Platform,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { ArrowLeft, ChevronDown, MessageSquare, Mic, MicOff, PhoneOff, Square as SquareIcon, Plus, Keyboard as KeyboardIcon, X as CloseIcon, ArrowUp } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -498,7 +499,7 @@ export default function VoiceChatScreen({ navigation }) {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(t('aiChat.micPermTitle'), t('aiChat.micPermMsg'));
+        showPopup(t('aiChat.micPermTitle'), t('aiChat.micPermMsg'));
         return;
       }
       await Audio.setAudioModeAsync({
@@ -555,7 +556,7 @@ export default function VoiceChatScreen({ navigation }) {
         }
       });
     } catch (err) {
-      Alert.alert(t('aiChat.recErrorTitle'), err?.message || t('aiVoice.micStartFailed', 'Could not start microphone.'));
+      showPopup(t('aiChat.recErrorTitle'), err?.message || t('aiVoice.micStartFailed', 'Could not start microphone.'));
     } finally {
       lockRef.current = false;
     }

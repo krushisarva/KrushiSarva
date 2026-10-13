@@ -5,7 +5,7 @@
  * farmApi.addLaborLog.
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, LabeledInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -47,8 +47,8 @@ export default function PruningLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('pruningLog.missingInfoTitle'), t('pruningLog.missingInfoMsg')); return; }
-    if (!cycleId) { Alert.alert(t('pruningLog.pickCycleTitle'), t('pruningLog.pickCycleMsg')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('pruningLog.missingInfoTitle'), t('pruningLog.missingInfoMsg')); return; }
+    if (!cycleId) { showPopup(t('pruningLog.pickCycleTitle'), t('pruningLog.pickCycleMsg')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

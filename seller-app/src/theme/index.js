@@ -212,11 +212,16 @@ export const GRAD = {
  * Single source of truth: colour, fill, icon and i18n key per status. The
  * lifecycle order (`step`) lives here too, so the order card's step indicator
  * and the "advance to next" button can never disagree about the sequence.
+ *
+ * SHIPPED reads "Out for delivery". The seller delivers with their own vehicle,
+ * so nothing is ever "shipped" with a courier — the stored status is unchanged,
+ * only the word is. It has its OWN key rather than a new value for
+ * `orders.statusShipped`, which the farmer app's order screens also read.
  */
 const ORDER_STATUS = {
   PENDING:   { color: P.amber600, tint: P.amber50, icon: 'hourglass-outline',    step: 0, tKey: 'orders.statusPending',   fallback: 'Pending' },
   CONFIRMED: { color: P.azure600, tint: P.azure50, icon: 'checkmark-circle',     step: 1, tKey: 'orders.statusConfirmed', fallback: 'Confirmed' },
-  SHIPPED:   { color: P.iris600,  tint: P.iris50,  icon: 'cube',                 step: 2, tKey: 'orders.statusShipped',   fallback: 'Shipped' },
+  SHIPPED:   { color: P.iris600,  tint: P.iris50,  icon: 'cube',                 step: 2, tKey: 'sellerOrders.statusOutForDelivery', fallback: 'Out for delivery' },
   DELIVERED: { color: P.moss600,  tint: P.moss50,  icon: 'bag-check',            step: 3, tKey: 'orders.statusDelivered', fallback: 'Delivered' },
   CANCELLED: { color: P.rust600,  tint: P.rust50,  icon: 'close-circle',         step: -1, tKey: 'orders.statusCancelled', fallback: 'Cancelled' },
   REFUNDED:  { color: P.stone600, tint: P.stone50, icon: 'return-up-back',       step: -1, tKey: 'orders.statusRefunded',  fallback: 'Refunded' },

@@ -5,7 +5,7 @@
  * the cycle's P&L via addLaborLog (labour) and addExpenseLog (machinery).
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, ChipRow, BigNumberInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -58,8 +58,8 @@ export default function LandPrepLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('landPrepLog.missingInfoTitle'), t('landPrepLog.missingInfoBody')); return; }
-    if (!cycleId) { Alert.alert(t('landPrepLog.pickCycleTitle'), t('landPrepLog.pickCycleBody')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('landPrepLog.missingInfoTitle'), t('landPrepLog.missingInfoBody')); return; }
+    if (!cycleId) { showPopup(t('landPrepLog.pickCycleTitle'), t('landPrepLog.pickCycleBody')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

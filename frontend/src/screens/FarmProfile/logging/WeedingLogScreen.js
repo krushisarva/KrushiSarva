@@ -5,7 +5,7 @@
  * itemised P&L via farmApi.addLaborLog.
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, LabeledInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -46,8 +46,8 @@ export default function WeedingLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('weedingLog.missingInfo'), t('weedingLog.pickMethodMsg')); return; }
-    if (!cycleId) { Alert.alert(t('weedingLog.pickCycle'), t('weedingLog.pickCycleMsg')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('weedingLog.missingInfo'), t('weedingLog.pickMethodMsg')); return; }
+    if (!cycleId) { showPopup(t('weedingLog.pickCycle'), t('weedingLog.pickCycleMsg')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

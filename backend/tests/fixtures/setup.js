@@ -235,6 +235,10 @@ export async function cleanupTestData() {
     prisma.cropDiseaseReport.deleteMany(),
     prisma.booking.deleteMany(),
     prisma.review.deleteMany(),
+    // order_deliveries carries plain ids with no foreign key, so nothing removes
+    // it with the order. Leaked rows are inert (every key is a fresh uuid), but
+    // the table is cleared with the orders it describes all the same.
+    prisma.orderDelivery.deleteMany(),
     prisma.orderItem.deleteMany(),
     prisma.order.deleteMany(),
     prisma.cartItem.deleteMany(),

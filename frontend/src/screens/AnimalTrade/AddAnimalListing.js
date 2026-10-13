@@ -25,9 +25,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, SafeAreaView, Alert, Switch, ActivityIndicator, Image,
+  TextInput, SafeAreaView, Switch, ActivityIndicator, Image,
   Platform, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -243,7 +244,7 @@ export default function AddAnimalListing({ navigation, route }) {
   const pickPhoto = async () => {
     const remaining = MAX_PHOTOS - totalPhotos;
     if (remaining <= 0) {
-      Alert.alert(t('addAnimal.limitReached'), t('addAnimal.maxPhotos'));
+      showPopup(t('addAnimal.limitReached'), t('addAnimal.maxPhotos'));
       return;
     }
     // Multi-select: allowsEditing is mutually exclusive with
@@ -291,7 +292,7 @@ export default function AddAnimalListing({ navigation, route }) {
 
   const openPreview = () => {
     if (!validate()) {
-      Alert.alert(t('addAnimal.missingInfo'), t('addAnimal.checkFields', 'Please check the highlighted fields.'));
+      showPopup(t('addAnimal.missingInfo'), t('addAnimal.checkFields', 'Please check the highlighted fields.'));
       return;
     }
     setPreviewOpen(true);
@@ -399,7 +400,7 @@ export default function AddAnimalListing({ navigation, route }) {
         }
         setErrors((e) => ({ ...e, ...fieldErrors }));
       }
-      Alert.alert(t('product.error'), err?.expose ? err.message : classified.message);
+      showPopup(t('product.error'), err?.expose ? err.message : classified.message);
       // Allow a deliberate retry — but keep the SAME idempotency key so a
       // request that actually succeeded server-side is not duplicated.
       submittingRef.current = false;

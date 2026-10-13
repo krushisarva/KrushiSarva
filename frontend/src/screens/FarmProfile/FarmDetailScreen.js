@@ -14,8 +14,9 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, Alert, RefreshControl,
+  View, Text, ScrollView, Pressable, StyleSheet, RefreshControl,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -61,7 +62,7 @@ export default function FarmDetailScreen({ navigation, route }) {
       const data = await farmApi.getFarm(farmId);
       setFarm(data);
     } catch {
-      Alert.alert(t('login.error') || 'Error', t('farmProfile.loadError') || 'Could not load farm details.');
+      showPopup(t('login.error') || 'Error', t('farmProfile.loadError') || 'Could not load farm details.');
     } finally {
       setLoading(false);
       setRefreshing(false);

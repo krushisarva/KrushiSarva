@@ -19,8 +19,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Image, ActivityIndicator, Dimensions, StatusBar, Alert, Modal, Linking,
+  Image, ActivityIndicator, Dimensions, StatusBar, Modal, Linking,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import useContactReveal from '../../hooks/useContactReveal';
 import { fs } from '../../utils/responsive';
@@ -191,7 +192,7 @@ export default function LabourDetail({ route, navigation }) {
       bookingRef.current = false;
       if (!aliveRef.current) return;
       const { title, body } = noticeText(notice, t, inr);
-      Alert.alert(title, body);
+      showPopup(title, body);
       if (notice?.kind === 'SLOT_GONE' || notice?.kind === 'SLOT_TAKEN') {
         setBookFrom(null); setBookTo(null);
       }
@@ -201,11 +202,11 @@ export default function LabourDetail({ route, navigation }) {
 
   const handleBook = useCallback(async () => {
     if (!bookFrom || !bookTo) {
-      Alert.alert(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
+      showPopup(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
       return;
     }
     if (bookedDays <= 0) {
-      Alert.alert(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
+      showPopup(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
       return;
     }
     if (bookingRef.current) return;

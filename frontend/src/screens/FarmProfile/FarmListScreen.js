@@ -7,7 +7,8 @@
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,11 +43,11 @@ export default function FarmListScreen({ navigation }) {
 
   const handleLongPress = useCallback((farm) => {
     Haptics.medium?.();
-    Alert.alert(farm.farmName || farm.farmAlias || `Farm ${farm.farmNumber}`, '', [
+    showPopup(farm.farmName || farm.farmAlias || `Farm ${farm.farmNumber}`, '', [
       { text: t('farmProfile.setActive') || 'Set active', onPress: () => { Haptics.success?.(); switchActiveFarm(farm.id); } },
       { text: t('edit') || 'Edit', onPress: () => goEdit(farm) },
       { text: t('delete') || 'Delete', style: 'destructive', onPress: () => {
-        Alert.alert(
+        showPopup(
           t('farmProfile.deleteTitle') || 'Delete farm?',
           t('farmProfile.deleteConfirm') || 'This cannot be undone.',
           [

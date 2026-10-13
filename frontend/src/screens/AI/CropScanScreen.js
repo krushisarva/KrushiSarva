@@ -12,9 +12,10 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView,
   TextInput, Dimensions, Animated, Easing, StatusBar, Image,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
   Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { LinearGradient } from 'expo-linear-gradient';
 import PhotoIcon from '../../components/PhotoIcon';
 import SymptomImage from '../../components/SymptomImage';
@@ -164,7 +165,7 @@ if (typeof __DEV__ !== 'undefined' && __DEV__) {
 // ImagePicker silently fails — the user must open OS Settings. Offer that
 // path directly so the flow isn't a dead-end.
 function showPermissionAlert({ title, message, onOpenSettings }) {
-  Alert.alert(
+  showPopup(
     title,
     message,
     [
@@ -574,9 +575,9 @@ export default function CropScanScreen({ navigation }) {
 
   // Action sheet for "Retake / Replace" — lets the user swap the current photo
   // via camera or gallery without us rendering two separate buttons.
-  // Uses the native Alert so the look matches the rest of the app's prompts.
+  // Uses the app's own pop-up so the look matches the rest of the app's prompts.
   const openReplacePhotoSheet = () => {
-    Alert.alert(
+    showPopup(
       t('cropScan.replacePhoto', 'Replace photo'),
       t('cropScan.addPhotoFrom', 'Choose a source'),
       [

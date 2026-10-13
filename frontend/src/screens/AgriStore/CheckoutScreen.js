@@ -7,9 +7,10 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, KeyboardAvoidingView,
+  TextInput, ActivityIndicator, KeyboardAvoidingView,
   Platform, Animated, Image, StatusBar, Dimensions, Easing, Modal, Linking,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoIcon from '../../components/PhotoIcon';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ import {
   fetchCartQuote, fetchPaymentConfig, fetchPaymentStatus, initiatePayment, confirmPayment,
   classifyError, paymentStatusNotice, confirmFailureNotice, inr, thumbUrl,
 } from './shopClient';
+import { deliveryBreakdownLines } from './shopUtils';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 
@@ -247,6 +249,16 @@ function PRow({ label, value, bold, green }) {
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
       <Text style={{ fontSize: bold ? 15 : 14, color: bold ? COLORS.charcoal : COLORS.textMedium, fontWeight: bold ? '800' : '400' }}>{label}</Text>
       <Text style={{ fontSize: bold ? 18 : 14, color: green || bold ? COLORS.primary : COLORS.charcoal, fontWeight: bold ? '900' : '600' }}>{value}</Text>
+    </View>
+  );
+}
+
+/** A part of the row above it: indented and a size down, so it explains that row rather than adding to it. */
+function PSubRow({ label, value, green }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: -4, marginBottom: 8, paddingLeft: 14 }}>
+      <Text style={{ flex: 1, fontSize: 12.5, color: COLORS.textMedium }}>{label}</Text>
+      <Text style={{ fontSize: 12.5, fontWeight: '600', color: green ? COLORS.primary : COLORS.textMedium }}>{value}</Text>
     </View>
   );
 }
@@ -522,19 +534,19 @@ export default function CheckoutScreen({ route, navigation }) {
     const phone = normalizePhone(form.phone);
     if (!form.name.trim() || !form.phone.trim() || !form.flat.trim() || !form.street.trim() ||
         !form.city.trim() || !form.state.trim() || !form.pincode.trim()) {
-      Alert.alert(t('checkout.required'), t('checkout.fillAllFields'));
+      showPopup(t('checkout.required'), t('checkout.fillAllFields'));
       return;
     }
     if (!isValidPhone(phone)) {
-      Alert.alert(t('checkout.invalidPhone'), t('checkout.invalidPhoneMsg'));
+      showPopup(t('checkout.invalidPhone'), t('checkout.invalidPhoneMsg'));
       return;
     }
     if (!isValidPincode(form.pincode)) {
-      Alert.alert(t('checkout.invalidPincode'), t('checkout.invalidPincodeMsg'));
+      showPopup(t('checkout.invalidPincode'), t('checkout.invalidPincodeMsg'));
       return;
     }
     if (pin.status === 'not_found') {
-      Alert.alert(t('checkout.invalidPincode'), t('pincode.notFound'));
+      showPopup(t('checkout.invalidPincode'), t('pincode.notFound'));
       return;
     }
     setSavingAddr(true);
@@ -546,28 +558,28 @@ export default function CheckoutScreen({ route, navigation }) {
       setShowForm(false);
       setForm({ type: 'HOME', name: '', phone: '', flat: '', street: '', city: '', state: '', pincode: '', landmark: '' });
     } catch (err) {
-      Alert.alert(t('login.error'), err?.response?.data?.error?.message || t('checkout.saveAddressError'));
+      showPopup(t('login.error'), err?.response?.data?.error?.message || t('checkout.saveAddressError'));
     } finally {
       setSavingAddr(false);
     }
   }
 
   async function deleteAddress(id) {
-    Alert.alert(t('checkout.deleteAddress'), t('checkout.deleteAddressMsg'), [
+    showPopup(t('checkout.deleteAddress'), t('checkout.deleteAddressMsg'), [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
           try {
             await api.delete(`/addresses/${id}`);
             setAddresses(prev => prev.filter(a => a.id !== id));
             if (selectedAddr === id) setSelectedAddr(addresses.find(a => a.id !== id)?.id || null);
-          } catch { Alert.alert(t('login.error'), t('checkout.deleteAddressError')); }
+          } catch { showPopup(t('login.error'), t('checkout.deleteAddressError')); }
         }
       },
     ]);
   }
 
   async function placeOrder() {
-    if (!selectedAddr) { Alert.alert(t('checkout.selectAddress'), t('checkout.selectAddressMsg')); return; }
+    if (!selectedAddr) { showPopup(t('checkout.selectAddress'), t('checkout.selectAddressMsg')); return; }
     // A double-tap must not become two orders. The key is generated ONCE per
     // attempt and reused across the retry below, so the server's idempotency
     // middleware can recognise the second call as the same order.
@@ -594,7 +606,7 @@ export default function CheckoutScreen({ route, navigation }) {
 
       if (fresh?.issues?.length) {
         const first = fresh.issues[0];
-        Alert.alert(t('checkout.orderFailed'), first.message, [{ text: t('ok', 'OK') }]);
+        showPopup(t('checkout.orderFailed'), first.message, [{ text: t('ok', 'OK') }]);
         setPlacing(false);
         return;
       }
@@ -605,7 +617,7 @@ export default function CheckoutScreen({ route, navigation }) {
       // farmer saw "Order Placed!" with a UPI badge and was charged nothing.
       if (payMethod !== 'cod') {
         if (!payCfg.onlineEnabled) {
-          Alert.alert(
+          showPopup(
             t('checkout.onlineUnavailableTitle', 'Online payment unavailable'),
             t('checkout.onlineUnavailableMsg', 'Online payment is not available right now. Please choose Cash on Delivery.'),
           );
@@ -661,7 +673,7 @@ export default function CheckoutScreen({ route, navigation }) {
       // PIN code. Showing that beats "order failed", which tells the farmer
       // nothing about what to change.
       const issues = info.issues;
-      Alert.alert(
+      showPopup(
         t('checkout.orderFailed'),
         issues?.length ? issues.map((i) => i.message).join('\n\n') : info.message,
         [{ text: t('ok', 'OK') }],
@@ -729,7 +741,7 @@ export default function CheckoutScreen({ route, navigation }) {
           : notice.bodyFallback),
       ].filter(Boolean).join('\n\n');
 
-      Alert.alert(
+      showPopup(
         t(notice.titleKey, notice.titleFallback),
         body,
         // A genuinely failed payment leaves them on checkout to try again; one
@@ -775,7 +787,7 @@ export default function CheckoutScreen({ route, navigation }) {
       // wrongly. An unrecognised state now lands on "we could not confirm",
       // carrying the server's own words where it sent any.
       const notice = paymentStatusNotice(status);
-      Alert.alert(
+      showPopup(
         t(notice.titleKey, notice.titleFallback),
         notice.preferServerMessage && notice.serverMessage
           ? notice.serverMessage
@@ -787,7 +799,7 @@ export default function CheckoutScreen({ route, navigation }) {
     } catch {
       // Could not reach the server to find out. Say exactly that rather than
       // claiming either outcome.
-      Alert.alert(
+      showPopup(
         t('checkout.paymentUnknownTitle', 'We could not confirm your payment'),
         t('checkout.paymentUnknownMsg',
           'Please check My Orders before trying again, so you are not charged twice.'),
@@ -804,7 +816,7 @@ export default function CheckoutScreen({ route, navigation }) {
     setPlacing(false);
     // A new attempt is a new order, so it needs a new idempotency key.
     idemKeyRef.current = newIdempotencyKey();
-    Alert.alert(
+    showPopup(
       t('checkout.paymentFailed', 'Payment failed'),
       code === 'SCRIPT_LOAD'
         ? t('checkout.paymentNoNetwork', 'Could not open the payment page. Check your internet connection and try again.')
@@ -819,7 +831,7 @@ export default function CheckoutScreen({ route, navigation }) {
 
   function handleContinue() {
     if (step === 1) {
-      if (!selectedAddr && !showForm) { Alert.alert(t('checkout.selectAddress'), t('checkout.selectAddressMsg')); return; }
+      if (!selectedAddr && !showForm) { showPopup(t('checkout.selectAddress'), t('checkout.selectAddressMsg')); return; }
       if (showForm) { saveAddress(); return; }
       setStep(2);
     } else if (step === 2) {
@@ -1047,6 +1059,17 @@ export default function CheckoutScreen({ route, navigation }) {
                   value={delivery === 0 ? t('free') : inr(delivery)}
                   green={delivery === 0}
                 />
+                {/* What the delivery charge is made of, when it is more than
+                    the standard fee — the same lines as the cart, from the same
+                    quote, so the two screens cannot explain it differently. */}
+                {deliveryBreakdownLines(quote).map((line) => (
+                  <PSubRow
+                    key={line.id}
+                    label={t(line.key, line.fallback)}
+                    value={line.free ? t('free') : inr(line.amount)}
+                    green={line.free}
+                  />
+                ))}
                 {taxAmount > 0 && (
                   <PRow
                     label={quote?.taxIncludedInPrice ? t('cart.taxIncluded', 'GST (included)') : t('cart.tax', 'GST')}
