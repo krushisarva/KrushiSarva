@@ -4,7 +4,7 @@
  * itemised P&L via farmApi.addExpenseLog + a generic EXPENSE activity entry.
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, LabeledInput, NotesField, Card,
   useLoggerSave,
@@ -60,8 +60,8 @@ export default function ExpenseLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('expenseLog.missingInfoTitle'), t('expenseLog.missingInfoMsg')); return; }
-    if (!cycleId) { Alert.alert(t('expenseLog.noCycleTitle'), t('expenseLog.noCycleMsg')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('expenseLog.missingInfoTitle'), t('expenseLog.missingInfoMsg')); return; }
+    if (!cycleId) { showPopup(t('expenseLog.noCycleTitle'), t('expenseLog.noCycleMsg')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

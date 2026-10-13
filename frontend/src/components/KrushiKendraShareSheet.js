@@ -12,8 +12,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, TextInput, StyleSheet, Alert, Platform,
+  ActivityIndicator, TextInput, StyleSheet, Platform,
 } from 'react-native';
+import { showPopup } from '../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
@@ -75,13 +76,13 @@ export default function KrushiKendraShareSheet({
       });
       const share = res.data.data;
       onShared?.(share);
-      Alert.alert(
+      showPopup(
         t('share.sentTitle', 'Sent'),
         t('share.sentBody', { name: selected.name || selected.phone, defaultValue: 'Report sent to {{name}}. They will be notified.' }),
         [{ text: t('ok', 'OK'), onPress: onClose }],
       );
     } catch (e) {
-      Alert.alert(t('share.sendFailed', 'Could not send'), safeErrorMessage(e));
+      showPopup(t('share.sendFailed', 'Could not send'), safeErrorMessage(e));
     } finally {
       setSending(false);
     }

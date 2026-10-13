@@ -13,9 +13,10 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 
 import CosmicScreen from './ui/CosmicScreen';
@@ -99,7 +100,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
   const handleCreate = useCallback(async () => {
     if (!crop || !season || !area) {
       Haptics.error?.();
-      Alert.alert(
+      showPopup(
         t('farmProfile.requiredTitle') || 'Missing info',
         t('farmProfile.cropCycleRequiredMsg') || 'Please pick a crop, season, and area.',
       );
@@ -127,7 +128,7 @@ export default function CropCycleCreateScreen({ navigation, route }) {
       const msg = e.response?.data?.error?.message
         || e.userMessage
         || (t('farmProfile.saveFailed') || 'Save failed.');
-      Alert.alert(t('login.error') || 'Error', msg);
+      showPopup(t('login.error') || 'Error', msg);
     } finally {
       setSaving(false);
     }

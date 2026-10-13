@@ -8,7 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import linking from './linking';
 import TabIcon from '../components/TabIcons';
 import { TabBarScenery, TabActiveGlow } from '../components/TabBarScenery';
-import { navigationRef } from './navigationRef';
+import { navigationRef, flushPendingNavigation } from './navigationRef';
+import usePushNavigation from '../hooks/usePushNavigation';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -505,8 +506,18 @@ export default function AppNavigator() {
     return () => sub.remove();
   }, []);
 
+  // A tapped "Order shipped" push opens My Orders (utils/pushRoute.js). The tap
+  // that LAUNCHED the app is read before the container below has mounted, so it
+  // is held and released by `onReady`.
+  usePushNavigation();
+
   return (
-    <NavigationContainer ref={navigationRef} linking={linking} onStateChange={() => markActivity()}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      onReady={flushPendingNavigation}
+      onStateChange={() => markActivity()}
+    >
       <Tab.Navigator
         tabBar={(props) => <ImmersiveTabBar {...props} />}
         screenOptions={{ headerShown: false }}

@@ -106,6 +106,15 @@ import { ENV } from '../config/env.js';
 // One implementation, two URLs — see the /payment-config route below.
 import { paymentConfigHandler } from './payments.routes.js';
 import { sendPushToUser } from '../services/push.service.js';
+// Seller delivery (docs/SELLER_DELIVERY_DESIGN.md §8). The logic lives in the
+// service; this file only calls it at the points an order is created or moved.
+import {
+  notifySellersOfNewOrder, withOrderDeliveries, attachSellerDeliveryState,
+  planSellerDelivery, recordDeliveryOutcome, mayCancelShipped,
+  isDeliveryCode, NO_CODE_REASONS, FAILED_REASONS, DELIVERY_REFUSALS,
+} from '../services/orderDelivery.service.js';
+import { withMyReviews } from '../services/orderReview.service.js';
+import { listSellerReviews } from '../services/sellerReviews.service.js';
 
 const router = Router();
 router.param('id', uuidParamGuard);        // product / order id
@@ -1558,6 +1567,11 @@ router.post(
       // cache. Ordinary decrements ride the 60 s TTL, as before.
       if (crossedZero.length) await invalidateCatalogCaches();
 
+      // Tell each seller they have an order (§8.1). After the commit and not
+      // awaited: a push must never undo, or delay the answer to, an order the
+      // farmer has just been told succeeded.
+      notifySellersOfNewOrder(order);
+
       if (ENV.DEVICE_FINGERPRINT_ENABLED) {
         recordDeviceLink({ userId: req.user.id, fingerprint: strongDeviceId(req), ip: req.ip, context: 'order' }).catch(() => {});
       }
@@ -1582,7 +1596,8 @@ router.get('/orders', authenticate, async (req, res) => {
       cursor: req.query.cursor, limit,
       hydrate: (ids) => prisma.order.findMany({ where: { id: { in: ids } }, include }),
     });
-    return sendSuccess(res, items, 200, { limit, nextCursor, hasMore });
+    await withMyReviews(items, req.user.id);
+    return sendSuccess(res, await withOrderDeliveries(items), 200, { limit, nextCursor, hasMore });
   }
 
   const page = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
@@ -1600,7 +1615,13 @@ router.get('/orders', authenticate, async (req, res) => {
     prisma.order.count({ where: { userId: req.user.id } }),
   ]);
 
-  return sendSuccess(res, orders, 200, paginationMeta(total, page, limit));
+  // `items[].myReview` on delivered lines, for both paging modes — one batched
+  // query for the page, none when nothing on it has been delivered.
+  await withMyReviews(orders, req.user.id);
+
+  // `expectedBy` + `deliveries` (§8.2), for both paging modes. At most two
+  // batched queries for the whole page, whatever its size — never one per order.
+  return sendSuccess(res, await withOrderDeliveries(orders), 200, paginationMeta(total, page, limit));
 });
 
 router.get('/orders/:id', authenticate, async (req, res) => {
@@ -1609,7 +1630,11 @@ router.get('/orders/:id', authenticate, async (req, res) => {
     include: { items: { include: { product: true } } },
   });
   if (!order) return sendNotFound(res, 'Order');
-  return sendSuccess(res, order);
+  await withMyReviews([order], req.user.id);
+  // Scoped to the buyer above — which is what makes it safe to attach the
+  // seller's phone and the delivery code here (§8.2).
+  const [withDelivery] = await withOrderDeliveries([order]);
+  return sendSuccess(res, withDelivery);
 });
 
 router.put('/orders/:id/cancel', authenticate, velocityGuard(VELOCITY_ACTIONS.REFUND), refundAbuseGuard(), async (req, res) => {
@@ -2061,6 +2086,12 @@ router.post(
       await attachOrderToIntent({ providerOrderId: razorpayOrderId, orderId: order.id }).catch(() => {});
 
       if (crossedZero.length) await invalidateCatalogCaches();
+
+      // Same as the cash path: one push per seller, after the commit (§8.1).
+      // Only the request that actually CREATED the order reaches this line — a
+      // replayed confirm returns the existing order earlier, or lands in the
+      // P2002 branch below — so a seller is never told twice.
+      notifySellersOfNewOrder(order);
 
       if (ENV.DEVICE_FINGERPRINT_ENABLED) {
         recordDeviceLink({ userId: req.user.id, fingerprint: strongDeviceId(req), ip: req.ip, context: 'order' }).catch(() => {});
@@ -2967,6 +2998,30 @@ router.get('/seller/stats', authenticate, requireRole(...SELLER_ROLES), async (r
   return sendSuccess(res, stats);
 });
 
+// ── Seller: my ratings and reviews ────────────────────────────────────────────
+// What buyers said about THIS seller. `data` is the page of reviews; the
+// average, count and star split ride in `meta.summary` on the first page only.
+// What a seller is and is not shown is decided in sellerReviews.service.js.
+router.get(
+  '/seller/reviews',
+  authenticate,
+  requireRole(...SELLER_ROLES),
+  [query('limit').optional().isInt({ min: 1, max: 50 })],
+  validate,
+  async (req, res) => {
+    try {
+      const limit = parsePageSize(req.query.limit, 20, 50);
+      const page = await listSellerReviews(req.user.id, { cursor: req.query.cursor, limit });
+      return sendSuccess(res, page.reviews, 200, {
+        limit, nextCursor: page.nextCursor, hasMore: page.hasMore,
+        ...(page.summary ? { summary: page.summary } : {}),
+      });
+    } catch (err) {
+      return sendServerError(res, err, 'Could not load your reviews. Please try again.');
+    }
+  },
+);
+
 // ── Seller: order item status ─────────────────────────────────────────────────
 /**
  * Where a seller may move one of their items from each status. Forward only —
@@ -2977,6 +3032,14 @@ router.get('/seller/stats', authenticate, requireRole(...SELLER_ROLES), async (r
  * Any transition used to be accepted: DELIVERED → CANCELLED returned delivered
  * units to stock (phantom stock), and CANCELLED → SHIPPED shipped units the
  * cancel had already restocked (oversell).
+ *
+ * ONE move is not in this table, because it is conditional: SHIPPED → CANCELLED
+ * is allowed when — and only when — the request carries a valid `failedReason`
+ * ("could not deliver": the farmer refused, could not be reached, the address
+ * was not found). See mayCancelShipped() and docs/SELLER_DELIVERY_DESIGN.md
+ * §8.4. It is safe for seller delivery in a way it would not be for a courier:
+ * the goods come back on the seller's own vehicle, so restocking them is true.
+ * Without a reason a shipped line still cannot be cancelled, exactly as before.
  */
 const SELLER_ITEM_TRANSITIONS = {
   PENDING:   ['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'],
@@ -3013,6 +3076,17 @@ router.put(
     body('status')
       .isIn(['CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'])
       .withMessage('status must be one of CONFIRMED, SHIPPED, DELIVERED, CANCELLED'),
+    // Seller delivery (§8.4). All three are optional and each is looked at only
+    // for the status it belongs to, so an older app's bare { status } — and a
+    // stray field on some other status — validates exactly as it always did.
+    // '' and null count as "not sent": a form that submits an empty code field
+    // alongside a reason must not be refused for the empty field.
+    body('deliveryCode').if(body('status').equals('DELIVERED')).optional({ values: 'falsy' })
+      .custom(isDeliveryCode).withMessage('deliveryCode must be a string of exactly 4 digits'),
+    body('noCodeReason').if(body('status').equals('DELIVERED')).optional({ values: 'falsy' })
+      .isIn(NO_CODE_REASONS).withMessage(`noCodeReason must be one of ${NO_CODE_REASONS.join(', ')}`),
+    body('failedReason').if(body('status').equals('CANCELLED')).optional({ values: 'falsy' })
+      .isIn(FAILED_REASONS).withMessage(`failedReason must be one of ${FAILED_REASONS.join(', ')}`),
   ],
   validate,
   async (req, res) => {
@@ -3020,6 +3094,14 @@ router.put(
     const { status }  = req.body;
 
     try {
+      // Decided BEFORE the transaction, with its own committed statements: a
+      // wrong delivery code is refused, and the attempt it used up has to
+      // survive that refusal — inside the Serializable transaction below it
+      // would roll back with everything else. A legacy { status } request with
+      // the code not required leaves this having run no query.
+      const delivery = await planSellerDelivery({ orderId, sellerId: req.user.id, status, body: req.body });
+      if (delivery.refusal) return sendError(res, delivery.refusal.message, 409, delivery.refusal.details);
+
       const result = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
         const mine = await tx.orderItem.findMany({
           where: { orderId, sellerId: req.user.id },
@@ -3035,10 +3117,21 @@ router.put(
 
         // Only items that may make this move are touched. Items already there
         // are a no-op (a repeated tap), not an error.
-        const movable = mine.filter((i) => SELLER_ITEM_TRANSITIONS[i.status]?.includes(status));
+        const movable = mine.filter((i) => SELLER_ITEM_TRANSITIONS[i.status]?.includes(status)
+          // "Could not deliver": a shipped line may be cancelled, with a reason.
+          || mayCancelShipped(i.status, status, delivery));
         if (!movable.length) {
           if (mine.every((i) => i.status === status)) return { noop: true };
-          return { refused: true, from: [...new Set(mine.map((i) => i.status))] };
+          return {
+            refused: true,
+            from: [...new Set(mine.map((i) => i.status))],
+            // A shipped line that a reason WOULD have moved. The app needs to
+            // tell this apart from "already delivered", where no reason helps —
+            // and from a database without the delivery table, where none does
+            // either (`enabled` false: the feature is standing aside).
+            failedReasonRequired: delivery.enabled !== false
+              && status === 'CANCELLED' && mine.some((i) => i.status === 'SHIPPED'),
+          };
         }
 
         // Paid online → the cancelled lines' money goes back. Worked out from
@@ -3065,8 +3158,21 @@ router.put(
           data: { status, ...transitionTimestampFor(status, now) },
         });
 
+        // What the move means for this seller's delivery of the order: issue the
+        // code on SHIPPED, record how it was delivered, or why it could not be.
+        // In this transaction, so it commits or rolls back with the lines.
+        const deliveredVia = await recordDeliveryOutcome(tx, {
+          orderId, sellerId: req.user.id, status, movable, plan: delivery,
+        });
+
         // A seller-set CANCELLED never restocked, unlike buyer-cancel. The units
         // stayed reserved against an order nobody was going to receive.
+        //
+        // A SHIPPED line cancelled with a `failedReason` takes this same branch
+        // and no other: it is in `movable` like any cancelled line, so its stock,
+        // its lot and its refund are each handled once, by the code that already
+        // handled them — and it is CANCELLED afterwards, which is final, so a
+        // repeat of the request finds nothing left to move.
         let crossedZero = [];
         if (status === 'CANCELLED') {
           const deltas = movable
@@ -3096,7 +3202,7 @@ router.put(
 
         return {
           itemsUpdated: movable.length, orderStatus, previousStatus: before?.status,
-          buyerId: before?.userId, crossedZero, refundPlan,
+          buyerId: before?.userId, crossedZero, refundPlan, deliveredVia,
         };
       }, { isolationLevel: 'Serializable' }));
 
@@ -3104,7 +3210,13 @@ router.put(
       if (result.noop) return sendSuccess(res, { itemsUpdated: 0, unchanged: true });
       if (result.refused) {
         const from = result.from.map((x) => x.toLowerCase()).join(' / ');
-        return sendError(res, `This order is already ${from} and cannot be marked ${status.toLowerCase()}.`, 409, { from: result.from });
+        // Same status, same message and the same `from` an older seller app
+        // already receives. `code` is added — never substituted — when a
+        // `failedReason` is what was missing (§8.4).
+        return sendError(res, `This order is already ${from} and cannot be marked ${status.toLowerCase()}.`, 409, {
+          ...(result.failedReasonRequired ? { code: DELIVERY_REFUSALS.FAILED_REASON_REQUIRED } : {}),
+          from: result.from,
+        });
       }
       if (result.crossedZero?.length) await invalidateCatalogCaches();
 
@@ -3126,7 +3238,11 @@ router.put(
         if (copy) {
           sendPushToUser({
             userId: result.buyerId,
-            type: 'ORDER_STATUS',
+            // A value of the NotificationType enum. This said 'ORDER_STATUS',
+            // which is not one: the device push went out, but the insert into
+            // `notifications` was refused by Postgres every time, so no order
+            // update ever reached the farmer's in-app inbox.
+            type: 'ORDER_UPDATE',
             title: copy.title,
             body: copy.body,
             data: { orderId, status: result.orderStatus, screen: 'OrderDetail' },
@@ -3139,6 +3255,9 @@ router.put(
         itemsUpdated: result.itemsUpdated,
         itemStatus: status,
         orderStatus: result.orderStatus,
+        // 'CODE' | 'NO_CODE' | null — null is a delivery made with neither,
+        // which is what an older seller app does while the code is optional.
+        ...(status === 'DELIVERED' ? { deliveredVia: result.deliveredVia ?? null } : {}),
       });
     } catch (err) {
       return sendServerError(res, err, 'Could not update the order. Please try again.');
@@ -3203,6 +3322,11 @@ router.get('/seller/orders', authenticate, requireRole(...SELLER_ROLES), async (
     : [];
   const byVariant = new Map(variants.map((v) => [v.id, v]));
   for (const i of items) i.variant = i.variantId ? byVariant.get(i.variantId) || null : null;
+
+  // `order.delivery: { hasCode, codeRequired, lockedUntil }` (§8.3) — what the
+  // app needs to decide whether to ask for a code. One batched query for the
+  // page. The code itself is never sent to the seller, in any form.
+  await attachSellerDeliveryState(items, req.user.id);
 
   return sendSuccess(res, items, 200, paginationMeta(total, page, limit));
 });

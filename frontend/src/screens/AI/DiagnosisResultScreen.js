@@ -19,8 +19,9 @@
 import { useRef, useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Animated, StatusBar, Alert, Image, Modal,
+  Dimensions, Animated, StatusBar, Image, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import PhotoIcon from '../../components/PhotoIcon';
 import SoilIcon from '../../components/SoilIcons';
@@ -229,9 +230,9 @@ export default function DiagnosisResultScreen({ navigation, route }) {
       await api.post('/agristore/cart', product.listingId
         ? { listingId: product.listingId, quantity }
         : { productId: product.id, quantity });
-      Alert.alert(t('share.addedToCartTitle', 'Added'), t('share.addedToCartBody', { name: product.name, defaultValue: '{{name}} added to your cart.' }));
+      showPopup(t('share.addedToCartTitle', 'Added'), t('share.addedToCartBody', { name: product.name, defaultValue: '{{name}} added to your cart.' }));
     } catch (err) {
-      Alert.alert(t('error', 'Error'), err?.response?.data?.error?.message || t('share.cartFailed', 'Could not add to cart.'));
+      showPopup(t('error', 'Error'), err?.response?.data?.error?.message || t('share.cartFailed', 'Could not add to cart.'));
     }
   };
 
@@ -1187,10 +1188,10 @@ ${(() => {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert(t('diagnosis.savedTitle', 'Saved'), t('diagnosis.savedToPath', { path: uri, defaultValue: 'Report saved to:\n{{path}}' }));
+        showPopup(t('diagnosis.savedTitle', 'Saved'), t('diagnosis.savedToPath', { path: uri, defaultValue: 'Report saved to:\n{{path}}' }));
       }
     } catch (err) {
-      Alert.alert(t('error', 'Error'), t('diagnosis.reportGenFailed', 'Could not generate report. Please try again.'));
+      showPopup(t('error', 'Error'), t('diagnosis.reportGenFailed', 'Could not generate report. Please try again.'));
       logger.error('[Download Report] failed to generate PDF:', err?.message);
     } finally {
       setDownloading(false);

@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Switch, Alert, Modal, TextInput, Linking,
+  Switch, Modal, TextInput, Linking,
   Image, ImageBackground, ActivityIndicator, Platform, Animated, ScrollView,
   KeyboardAvoidingView,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import useFocusRefresh from '../../hooks/useFocusRefresh';
 import PhotoIcon from '../../components/PhotoIcon';
 import { Ionicons } from '@expo/vector-icons';
@@ -192,13 +193,13 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
   });
 
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert(t('product.error'), t('profile.nameEmpty')); return; }
-    if (pin.blocksSubmit) { Alert.alert(t('product.error'), t('pincode.fixBeforeSave')); return; }
+    if (!name.trim()) { showPopup(t('product.error'), t('profile.nameEmpty')); return; }
+    if (pin.blocksSubmit) { showPopup(t('product.error'), t('pincode.fixBeforeSave')); return; }
     // Email is optional; only validate format when the user actually typed one.
     // Empty string is sent through to clear it server-side (stored as NULL).
     const emailTrim = email.trim();
     if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      Alert.alert(t('product.error'), t('profile.emailInvalid', 'Enter a valid email address'));
+      showPopup(t('product.error'), t('profile.emailInvalid', 'Enter a valid email address'));
       return;
     }
     setSaving(true);
@@ -208,7 +209,7 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
       const { data } = await api.put('/users/me', body);
       onSaved(data.data);
     } catch (e) {
-      Alert.alert(t('product.error'), e?.response?.data?.error?.message || t('profile.updateFailed'));
+      showPopup(t('product.error'), e?.response?.data?.error?.message || t('profile.updateFailed'));
     } finally {
       setSaving(false);
     }
@@ -398,7 +399,7 @@ export default function ProfileScreen({ navigation }) {
       updateUser({ notificationsEnabled: next });
     } catch (err) {
       setNotifications(previous);
-      Alert.alert(
+      showPopup(
         t('profile.notifSaveFailedTitle', 'Could not save'),
         err?.response?.data?.error?.message
           || t('profile.notifSaveFailedMsg', 'Your notification setting was not saved. Please try again.'),
@@ -441,7 +442,7 @@ export default function ProfileScreen({ navigation }) {
   const handlePhotoPress = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('profile.permissionNeeded'), t('profile.photoPermission'));
+      showPopup(t('profile.permissionNeeded'), t('profile.photoPermission'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -461,7 +462,7 @@ export default function ProfileScreen({ navigation }) {
       || mime.includes('jpeg') || mime.includes('png') || mime.includes('webp') || mime.includes('jpg');
 
     if (!isValidType) {
-      Alert.alert(t('profile.invalidFileType') || 'Invalid File', t('profile.invalidFileMsg') || 'Please select a JPG, PNG, or WebP image.');
+      showPopup(t('profile.invalidFileType') || 'Invalid File', t('profile.invalidFileMsg') || 'Please select a JPG, PNG, or WebP image.');
       return;
     }
     setUploadingPhoto(true);
@@ -496,7 +497,7 @@ export default function ProfileScreen({ navigation }) {
       // Log the server's real reason (not just axios's "status code 400").
       if (__DEV__) console.warn('[Profile] Upload error:', err.response?.data?.error?.message || err.message, err.response?.status);
       const msg = err.response?.data?.error?.message || t('profile.uploadFailedMsg') || 'Upload failed. Try again.';
-      Alert.alert(t('profile.uploadFailed') || 'Upload Failed', msg);
+      showPopup(t('profile.uploadFailed') || 'Upload Failed', msg);
     } finally {
       setUploadingPhoto(false);
     }
@@ -511,7 +512,7 @@ export default function ProfileScreen({ navigation }) {
   const handleOpenSellerApp = useCallback(async () => {
     const result = await openSellerApp();
     if (result === 'failed') {
-      Alert.alert(
+      showPopup(
         t('profile.sellerAppTitle', 'Open Seller App'),
         t('profile.sellerAppFailed', 'Could not open the seller app on this device.'),
       );
@@ -531,7 +532,7 @@ export default function ProfileScreen({ navigation }) {
       if (!supported) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
-      Alert.alert(
+      showPopup(
         t('profile.linkFailedTitle', 'Could not open link'),
         t('profile.linkFailedMsg', 'No app on this device can open this link.'),
       );
@@ -550,7 +551,7 @@ export default function ProfileScreen({ navigation }) {
    * storage, erasure on request) rather than an absolute we cannot honour.
    */
   const handlePrivacyCenter = useCallback(() => {
-    Alert.alert(
+    showPopup(
       t('profile.privacyCenter'),
       t('profile.privacyBody'),
       [
@@ -872,8 +873,8 @@ export default function ProfileScreen({ navigation }) {
 
           <SectionCard delay={420}>
             <SectionHeader title={t('profile.feedbackInfo')} icon="chatbubbles-outline" iconColor={D.gold} />
-            <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => Alert.alert(t('profile.thankYou'), t('profile.thankYouMsg'))} />
-            <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => Alert.alert(t('profile.support'), t('profile.callUs'))} />
+            <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => showPopup(t('profile.thankYou'), t('profile.thankYouMsg'))} />
+            <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => showPopup(t('profile.support'), t('profile.callUs'))} />
             <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal(LEGAL_URLS.terms)} />
             <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} isLast />
           </SectionCard>

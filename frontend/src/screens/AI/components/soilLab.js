@@ -3,7 +3,8 @@
  * Laboratory" service. There is no public API for this, so we deep-link the
  * farmer to the authoritative locator (always up to date, zero data upkeep).
  */
-import { Linking, Alert } from 'react-native';
+import { Linking } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 
 // National Government Services Portal — locate soil testing laboratory.
 const SOIL_LAB_LOCATOR_URL =
@@ -19,7 +20,7 @@ export async function openSoilLabFinder(t = (k, f) => f) {
     if (!ok) throw new Error('cannot open');
     await Linking.openURL(SOIL_LAB_LOCATOR_URL);
   } catch {
-    Alert.alert(
+    showPopup(
       t('soilHub.lab.cannotOpenTitle', 'Could not open the lab finder'),
       t(
         'soilHub.lab.cannotOpenBody',

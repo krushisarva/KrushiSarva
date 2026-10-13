@@ -273,6 +273,7 @@ export async function buildQuote({
       currency: 'INR',
       shipments: [],
       subtotal: '0.00', deliveryFee: '0.00', taxAmount: '0.00',
+      deliveryBreakdown: { base: '0.00', heavy: '0.00', area: '0.00', cod: '0.00' },
       taxIncludedInPrice: cfg.pricesIncludeTax, discountAmount: '0.00', codFee: '0.00',
       total: '0.00', totalPaise: 0,
       itemCount: 0, shipmentCount: 0,
@@ -347,6 +348,19 @@ export async function buildQuote({
 
     const delivery = round2(parcelFee.plus(heavyFee).plus(surcharge));
 
+    // What that fee is MADE OF, so the buyer can be shown it. The cart printed
+    // one "Delivery charges" figure, and a seller's extra charge for a far
+    // village was folded into it unannounced — the farmer saw ₹69 where the
+    // shop next door showed ₹49, with nothing to say why.
+    //
+    // Display only; the fee above is what is charged. The parts come from the
+    // same Decimals it was summed from, and `base` is whatever is left of the
+    // ROUNDED fee after the other two, so the lines on screen add up to the fee
+    // to the paisa even if an operator types an odd number into a setting.
+    const areaPart = round2(surcharge);
+    const heavyPart = round2(heavyFee);
+    const basePart = delivery.minus(heavyPart).minus(areaPart);
+
     for (const line of group.items) issues.push(...validateLine(line, reservedByListing));
 
     shipments.push({
@@ -356,6 +370,16 @@ export async function buildQuote({
       unitCount: group.items.reduce((s, i) => s + i.quantity, 0),
       goodsSubtotal: goods.toFixed(2),
       deliveryFee: delivery.toFixed(2),
+      //   base   the standard per-delivery fee (0 when free delivery applied)
+      //   heavy  handling for HEAVY items — never waived
+      //   area   THIS seller's extra charge for the buyer's PIN code — not
+      //          waived by free delivery either: it is the seller's own cost of
+      //          the trip, not a platform promotion
+      deliveryBreakdown: {
+        base: basePart.toFixed(2),
+        heavy: heavyPart.toFixed(2),
+        area: areaPart.toFixed(2),
+      },
       freeDeliveryApplied: freeApplies && hasParcel,
       // How much more this shipment needs for free delivery. Real arithmetic on a
       // real threshold — not a countdown or a manufactured urgency prompt.
@@ -395,6 +419,15 @@ export async function buildQuote({
   const shipmentDelivery = round2(sumD(shipments, (s) => s.deliveryFee));
   const codFee = paymentMethod === 'cod' ? cfg.codFee : D(0);
   const deliveryFee = round2(shipmentDelivery.plus(codFee));
+  // The same split for the whole order: what the summary row "Delivery charges"
+  // is made of. `cod` is what the order-level cash-on-delivery fee added on top
+  // of the shipments, taken as the remainder so the four always sum to the fee.
+  const deliveryBreakdown = {
+    base: round2(sumD(shipments, (s) => s.deliveryBreakdown.base)).toFixed(2),
+    heavy: round2(sumD(shipments, (s) => s.deliveryBreakdown.heavy)).toFixed(2),
+    area: round2(sumD(shipments, (s) => s.deliveryBreakdown.area)).toFixed(2),
+    cod: deliveryFee.minus(shipmentDelivery).toFixed(2),
+  };
   const taxAmount = round2(sumD(lines, (l) => l.taxAmount));
   const taxAddedToTotal = round2(sumD(lines, (l) => l.taxAddedToTotal));
   const discountAmount = D(0); // coupons are not implemented; the slot is here so the total is complete
@@ -419,6 +452,7 @@ export async function buildQuote({
     shipments,
     subtotal: subtotal.toFixed(2),
     deliveryFee: deliveryFee.toFixed(2),
+    deliveryBreakdown,
     shipmentDeliveryFee: shipmentDelivery.toFixed(2),
     codFee: codFee.toFixed(2),
     taxAmount: taxAmount.toFixed(2),
@@ -466,10 +500,16 @@ export function orderTotalsFromQuote(quote) {
       taxIncludedInPrice: quote.taxIncludedInPrice,
       codFee: quote.codFee,
       shipmentDeliveryFee: quote.shipmentDeliveryFee,
+      // Frozen with the order, so "what was the delivery charge made of" has
+      // the same answer on the order screen a year later as on the cart today
+      // — whatever the seller's area charge or the platform fee is by then.
+      // Absent on orders placed before this was recorded.
+      deliveryBreakdown: quote.deliveryBreakdown,
       shipments: quote.shipments.map((s) => ({
         sellerId: s.sellerId,
         goodsSubtotal: s.goodsSubtotal,
         deliveryFee: s.deliveryFee,
+        deliveryBreakdown: s.deliveryBreakdown,
         freeDeliveryApplied: s.freeDeliveryApplied,
         etaMinDays: s.etaMinDays,
         etaMaxDays: s.etaMaxDays,

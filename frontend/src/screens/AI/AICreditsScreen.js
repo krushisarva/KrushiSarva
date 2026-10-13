@@ -8,8 +8,9 @@ import { COLORS, TYPE, SHADOWS } from '@krushisarva/shared/constants/colors';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Platform, RefreshControl, Alert, Modal, ActivityIndicator,
+  StatusBar, Platform, RefreshControl, Modal, ActivityIndicator,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
@@ -68,12 +69,12 @@ export default function AICreditsScreen({ navigation }) {
 
   const purchase = useCreditPurchase({ onCredited: handleCredited });
 
-  // The flow settles → ONE Alert.
+  // The flow settles → ONE pop-up.
   //
   // The effect depends on `notice` alone. usePaymentFlow returns a fresh object
   // literal every render, so `dismissNotice` — a useCallback closed over it —
   // has a new identity on every render too; listing it here would re-run this
-  // effect on each one and stack a new Alert on the farmer's screen every time.
+  // effect on each one and raise the pop-up on the farmer's screen every time.
   // It is read through a ref instead, which is always current and never a
   // dependency.
   const { notice } = purchase;
@@ -95,7 +96,7 @@ export default function AICreditsScreen({ navigation }) {
       || (notice.vars
         ? tr(notice.bodyKey, { ...notice.vars, defaultValue: notice.bodyFallback })
         : tr(notice.bodyKey, notice.bodyFallback));
-    Alert.alert(
+    showPopup(
       tr(notice.titleKey, notice.titleFallback),
       body,
       // `mayRetry` is false for every outcome where the money may have moved,
@@ -172,7 +173,7 @@ export default function AICreditsScreen({ navigation }) {
    */
   const handleBuy = () => {
     if (purchase.packsState === PACKS.READY) { purchase.openSheet(); return; }
-    Alert.alert(
+    showPopup(
       t('aiCredits.buyCredits', 'Buy Credits'),
       t('aiCredits.buySoon', 'Purchasing will be available soon.'),
     );

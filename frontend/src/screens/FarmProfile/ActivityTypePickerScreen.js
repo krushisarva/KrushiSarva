@@ -16,7 +16,8 @@
  */
 
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 
 import CosmicScreen from './ui/CosmicScreen';
@@ -77,7 +78,7 @@ export default function ActivityTypePickerScreen({ navigation, route }) {
       navigation.navigate('CropCycleDetail', { cycleId, prefillActivity: type });
       return;
     }
-    Alert.alert(
+    showPopup(
       t('myFarm.v2.picker.logTitle', { label: TYPE_LABELS[type] || type }),
       t('myFarm.v2.picker.logHint', 'Open a crop cycle first, then log this activity from the cycle screen.'),
     );

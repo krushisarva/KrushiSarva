@@ -16,9 +16,10 @@
 import { useState, useCallback, useRef, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
-  ActivityIndicator, RefreshControl, Modal, ScrollView, Alert,
+  ActivityIndicator, RefreshControl, Modal, ScrollView,
   KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -219,7 +220,7 @@ export default function SavedAddressesScreen({ navigation }) {
     } catch (e) {
       await load();  // snap back to whatever the server actually holds
       if (alive.current) {
-        Alert.alert(t('savedAddresses.title'),
+        showPopup(t('savedAddresses.title'),
           e?.response?.data?.error?.message || t('savedAddresses.defaultFailed'));
       }
     } finally {
@@ -241,7 +242,7 @@ export default function SavedAddressesScreen({ navigation }) {
     } catch (e) {
       if (alive.current) {
         setPendingDelete(null);
-        Alert.alert(t('savedAddresses.title'),
+        showPopup(t('savedAddresses.title'),
           e?.response?.data?.error?.message || t('savedAddresses.deleteFailed'));
       }
     } finally {

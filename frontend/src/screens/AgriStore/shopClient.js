@@ -57,6 +57,21 @@ export async function fetchReviews(productId, { cursor, limit = 10 } = {}, signa
 }
 
 /**
+ * Rate a product the buyer has received.
+ *
+ * `payload` is what reviewUtils.reviewPayload() built: `{ rating, comment?,
+ * orderItemId }`. The server accepts it only against a DELIVERED order line of
+ * the caller's, and keys the review on that line — so sending again for the
+ * same line EDITS the review rather than adding a second one.
+ *
+ * Returns the saved review `{ id, rating, comment, orderItemId, … }`.
+ */
+export async function submitReview(productId, payload) {
+  const { data } = await api.post(`/agristore/products/${productId}/review`, payload);
+  return data?.data || null;
+}
+
+/**
  * Ask whether an interrupted payment actually went through.
  *
  * The single most important call in the module: without it a farmer whose

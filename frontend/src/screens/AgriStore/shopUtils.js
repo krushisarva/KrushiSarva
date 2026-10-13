@@ -636,6 +636,32 @@ export function orderRefundLabel(paymentStatus) {
   }
 }
 
+/** paymentStatus values that mean the buyer's money DID reach us — even if it has since gone back. */
+const MONEY_MOVED = new Set(['paid', 'partially_refunded', 'refund_pending', 'refunded']);
+
+/**
+ * How an order is paid for — the words that sit beside its total.
+ *
+ * My Orders printed the label "Paid" above every total, including a
+ * cash-on-delivery order nobody had paid a rupee for yet. A farmer reading
+ * "Paid ₹609" and then being asked for ₹609 at the door has been told two
+ * different things by the same app.
+ *
+ *   cash on delivery            → "Cash on Delivery" — the METHOD, which is true
+ *                                 before the goods arrive and after
+ *   paid through the gateway    → "Paid online" — only when paymentStatus says
+ *                                 the money actually moved (a refund in progress
+ *                                 still means it was paid; the refund line says
+ *                                 the rest)
+ *   anything else               → null. Nothing about money beats a guess.
+ */
+export function orderPaymentLabel(order) {
+  const method = typeof order?.paymentMethod === 'string' ? order.paymentMethod.trim().toLowerCase() : '';
+  if (method === 'cod') return { key: 'checkout.cod', fallback: 'Cash on Delivery' };
+  if (method && MONEY_MOVED.has(order?.paymentStatus)) return { key: 'orders.paidOnline', fallback: 'Paid online' };
+  return null;
+}
+
 /**
  * A readable label for an order status this build does not know.
  *
@@ -723,4 +749,405 @@ export function cancelRefundPreview(order) {
 
   const remaining = Math.max(0, paise(order.totalAmount) - alreadyRefunded);
   return { refundable: remaining > 0, cod, amount: remaining / 100 };
+}
+
+// ── Delivery: the promised date, the shops, the code ──────────────────────────
+/**
+ * My Orders said nothing about delivery: no date, no shop, no way to reach the
+ * person bringing the goods. Everything in this section turns two fields the
+ * order response gained (docs/SELLER_DELIVERY_DESIGN.md §8.2) into what the card
+ * shows:
+ *
+ *   expectedBy  ISO time = createdAt + promisedEtaDays days, or null
+ *   deliveries  one entry per seller on the order:
+ *               { sellerId, sellerName, status, sellerPhone, deliveryCode }
+ *
+ * EVERY ONE OF THEM IS OPTIONAL. A backend that predates this work sends
+ * neither, and a newer one sends null for most of them most of the time (the
+ * phone only while the seller is delivering, the code only once the goods have
+ * left the shop). So each function here answers "nothing to show" for missing
+ * data — null or an empty list — and the card then renders exactly as it did
+ * before. Nothing may reach the screen as an empty box, a raw enum or "Invalid
+ * Date".
+ *
+ * Kept free of `t` like the rest of this file: the helpers return a key and its
+ * English fallback, and the screen does the lookup.
+ */
+
+/** An order — or one shop's part of it — that is still on its way. */
+const DELIVERY_LIVE = new Set(['PENDING', 'CONFIRMED', 'SHIPPED']);
+/** Finished: nothing more is coming, so no date, no phone and no code. */
+const DELIVERY_DONE = new Set(['DELIVERED', 'CANCELLED', 'REFUNDED']);
+
+/**
+ * SHIPPED has its own NEW key. The stored status is unchanged; only the wording
+ * is — a seller driving the goods over in their own vehicle has not "shipped"
+ * anything, and "Out for delivery" is what tells the farmer to stay near their
+ * phone. `orders.statusShipped` is left exactly as it was: the seller app and
+ * older builds still read it.
+ */
+const ORDER_STATUS_LABELS = {
+  PENDING:   { key: 'orders.statusPending',        fallback: 'Pending' },
+  CONFIRMED: { key: 'orders.statusConfirmed',      fallback: 'Confirmed' },
+  SHIPPED:   { key: 'orders.statusOutForDelivery', fallback: 'Out for delivery' },
+  DELIVERED: { key: 'orders.statusDelivered',      fallback: 'Delivered' },
+  CANCELLED: { key: 'orders.statusCancelled',      fallback: 'Cancelled' },
+  REFUNDED:  { key: 'orders.statusRefunded',       fallback: 'Refunded' },
+};
+
+/**
+ * The words for an order status — the order badge and each shop's own status
+ * both come through here, so the two can never disagree about what SHIPPED is
+ * called.
+ *
+ * A status this build has never heard of comes back with `key: null` and a
+ * title-cased phrase (see humanOrderStatus); a missing one comes back null, so
+ * the caller renders nothing rather than an empty pill.
+ *
+ * @returns {{key: string|null, fallback: string}|null}
+ */
+export function orderStatusLabel(status) {
+  // hasOwnProperty, not a bare lookup: a status of "constructor" must not
+  // resolve to Object.prototype's.
+  if (typeof status === 'string' && Object.prototype.hasOwnProperty.call(ORDER_STATUS_LABELS, status)) {
+    return ORDER_STATUS_LABELS[status];
+  }
+  const fallback = humanOrderStatus(status);
+  return fallback ? { key: null, fallback } : null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** An ISO string (or a Date) → a real Date, or null. Never an "Invalid Date". */
+function toDate(value) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  // Strings only. `new Date(null)` is 1 Jan 1970 and `new Date(7)` is seven
+  // milliseconds after it — both would print as a confident, wrong promise.
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/** "Now" as a Date, from a Date or epoch milliseconds. Falls back to the clock. */
+function toNow(now) {
+  const d = now instanceof Date ? now : new Date(typeof now === 'number' ? now : NaN);
+  return Number.isFinite(d.getTime()) ? d : new Date();
+}
+
+/** promisedEtaDays → a usable day count, or null. `Number(null)` is 0, hence the guard. */
+function etaDays(value) {
+  const n = typeof value === 'number'
+    ? value
+    : (typeof value === 'string' && value.trim() ? Number(value) : NaN);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * The moment the order was promised by.
+ *
+ * The server's `expectedBy` wins when it is there. A backend that predates the
+ * field still sends `createdAt` and `promisedEtaDays`, and the sum is the same
+ * instant — so the farmer on an old server gets the same date, not a blank.
+ *
+ * Null when no promise was recorded (`promisedEtaDays` is null on orders placed
+ * before serviceability existed). No date is better than an invented one.
+ *
+ * @returns {Date|null}
+ */
+export function orderExpectedBy(order) {
+  const fromServer = toDate(order?.expectedBy);
+  if (fromServer) return fromServer;
+
+  const created = toDate(order?.createdAt);
+  const days = etaDays(order?.promisedEtaDays);
+  if (!created || days == null) return null;
+  return toDate(new Date(created.getTime() + days * DAY_MS));
+}
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * "16 Oct" — day and short month, formatted for India, in the phone's own zone.
+ *
+ * The same `en-IN` formatter the card footer uses for the order date, so the
+ * two dates on one card are always written the same way on a given phone (the
+ * engine's month names are not identical across versions — "Sep" on one,
+ * "Sept" on another — and a hand-built table would disagree with one of them).
+ *
+ * The year is added only when it is not this year, so a promise from last
+ * December is not read as one for this December.
+ *
+ * The hand-built form is only the fallback for an engine that throws or answers
+ * with nothing: a blank where the date goes would leave "Arriving by" hanging.
+ *
+ * @returns {string|null}
+ */
+export function formatOrderDay(date, now = Date.now()) {
+  const d = toDate(date);
+  if (!d) return null;
+  const sameYear = d.getFullYear() === toNow(now).getFullYear();
+  try {
+    const text = d.toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }),
+    });
+    if (typeof text === 'string' && text.trim()) return text;
+  } catch { /* fall through to the hand-built form */ }
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}${sameYear ? '' : ` ${d.getFullYear()}`}`;
+}
+
+/** A calendar day in the phone's zone as one comparable number (20261016). */
+const localDay = (d) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+
+/**
+ * The "Arriving by 16 Oct" line, or null when there is nothing to promise.
+ *
+ * Shown only while the order is still on its way. A delivered, cancelled or
+ * refunded order has no arrival to wait for, and a status this build does not
+ * know gets nothing either — "Arriving by" under a RETURNED badge would be a
+ * promise the app cannot stand behind.
+ *
+ * LATE is decided by the calendar day, not the instant. `expectedBy` is the
+ * order time plus N days — 2:32 pm, say — but what the farmer was told is a
+ * DAY. At 6 pm on that day the promise is not broken yet; from the next morning
+ * it is, and the line says so plainly rather than keep showing a date in the
+ * past as though it were still a promise.
+ *
+ * @param {object} order
+ * @param {number|Date} [now] injectable for tests
+ * @returns {{late: boolean, date: Date, dateText: string, key: string, fallback: string}|null}
+ */
+export function orderEta(order, now = Date.now()) {
+  if (!DELIVERY_LIVE.has(order?.status)) return null;
+  const date = orderExpectedBy(order);
+  if (!date) return null;
+
+  const today = toNow(now);
+  const late = localDay(today) > localDay(date);
+  return {
+    late,
+    date,
+    dateText: formatOrderDay(date, today),
+    key: late ? 'orders.expectedLate' : 'orders.arrivingBy',
+    fallback: late ? 'Expected by {{date}} — running late' : 'Arriving by {{date}}',
+  };
+}
+
+/**
+ * The delivery code, ready to show and to be read aloud.
+ *
+ *   spaced  "4 0 7 2"     what the card prints, large
+ *   spoken  "4, 0, 7, 2"  the accessibility label
+ *
+ * The comma matters. A screen reader handed "4072" says "four thousand and
+ * seventy-two", and handed "4 0 7 2" some speech engines still join the digits
+ * back into one number. A farmer repeating that at the door gives the delivery
+ * person something that is not the code. Comma-separated digits are read one at
+ * a time by every engine.
+ *
+ * Accepts a STRING of 4 to 6 digits and nothing else. The server issues exactly
+ * four today; the extra room means a longer code later does not blank the box on
+ * this build. A number is refused outright — 0407 arrives as 407, and showing a
+ * farmer a code with its leading zero missing is worse than showing none (the
+ * seller can still deliver without a code and give a reason).
+ *
+ * @returns {{digits: string[], spaced: string, spoken: string}|null}
+ */
+export function deliveryCodeView(code) {
+  if (typeof code !== 'string') return null;
+  const clean = code.trim();
+  if (!/^[0-9]{4,6}$/.test(clean)) return null;
+  const digits = clean.split('');
+  return { digits, spaced: digits.join(' '), spoken: digits.join(', ') };
+}
+
+/**
+ * A phone number reduced to something the dialler accepts, or null.
+ *
+ * Digits and one leading '+', the same reduction utils/sanitize.js applies
+ * before a `tel:` link — plus a length check, because a Call button on a masked
+ * or truncated number ("98******10" → "9810") opens the dialler on nothing
+ * useful. 6–15 digits covers a short landline up to a full E.164 number.
+ *
+ * @returns {string|null}
+ */
+export function callablePhone(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const clean = String(value).replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+  const count = clean.replace(/\D/g, '').length;
+  return count >= 6 && count <= 15 ? clean : null;
+}
+
+/** How many product names a shop's block lists before "+N more". */
+const DELIVERY_ITEM_NAMES = 2;
+
+/**
+ * One block per shop delivering this order.
+ *
+ * Each block answers what a farmer waiting for goods asks: which shop, where is
+ * it up to, how do I ring them, and — once the goods have left the shop — what
+ * code do I give at the door.
+ *
+ * ── What comes back for missing data ─────────────────────────────────────────
+ *   no `deliveries` (older backend)        → no blocks; the card is as it was
+ *   a finished order                       → no blocks; nothing is coming
+ *   no entry still on its way              → no blocks
+ *   one shop with no name, phone or code   → no blocks, not an empty row
+ *   `sellerName` null                      → `name: null`; the screen says
+ *                                            "Shop" / "Shop 2" (see `ordinal`)
+ *   `sellerPhone` null or unusable         → `phone: null`, no Call button
+ *   `deliveryCode` null or malformed       → `code: null`, no code box
+ *
+ * ── One shop vs several ──────────────────────────────────────────────────────
+ * `compact` is true for an order from a single shop, which is nearly all of
+ * them. Its status is already the order badge, and its goods are already the
+ * item row, so the block repeats neither (`showStatus` false, `itemNames`
+ * empty) — a name and a Call button on one line.
+ *
+ * With several shops each block carries its own status and the names of the
+ * goods that shop is bringing. That is what stops the wrong code being given:
+ * two shops mean two different codes, and the farmer has to be able to match
+ * the person at the door to a block by more than a shop name they may not
+ * remember.
+ *
+ * The phone and the code are passed through only as far as this view model and
+ * the card that renders it. Nothing here logs, caches or persists them.
+ *
+ * @param {object} order
+ * @param {{language?: string}} [opts] 'mr' picks the Marathi product names
+ * @returns {{compact: boolean, blocks: Array<{
+ *   key: string, sellerId: string|null, ordinal: number, name: string|null,
+ *   status: string|null, statusLabel: {key: string|null, fallback: string}|null,
+ *   showStatus: boolean, phone: string|null,
+ *   code: {digits: string[], spaced: string, spoken: string}|null,
+ *   itemNames: string[], moreItems: number }>}}
+ */
+export function orderDeliveries(order, opts) {
+  const language = opts?.language;
+  const none = { compact: false, blocks: [] };
+  if (!order || DELIVERY_DONE.has(order.status)) return none;
+
+  const entries = Array.isArray(order.deliveries)
+    ? order.deliveries.filter((d) => d && typeof d === 'object' && !Array.isArray(d))
+    : [];
+  // Shown only while something is still on its way. An order whose every shop
+  // has delivered or cancelled has no one left to call and no code to give.
+  if (!entries.some((d) => DELIVERY_LIVE.has(d.status))) return none;
+
+  const compact = entries.length === 1;
+  const items = Array.isArray(order.items) ? order.items.filter(Boolean) : [];
+  const nameOf = (it) => (language === 'mr' && it.productNameMr)
+    || it.productName || it.product?.name || null;
+
+  const blocks = entries.map((d, i) => {
+    const status = typeof d.status === 'string' && d.status.trim() ? d.status : null;
+    const statusLabel = orderStatusLabel(status);
+    const sellerId = typeof d.sellerId === 'string' && d.sellerId ? d.sellerId : null;
+    const name = typeof d.sellerName === 'string' && d.sellerName.trim() ? d.sellerName.trim() : null;
+
+    let itemNames = [];
+    let moreItems = 0;
+    if (!compact && sellerId) {
+      const mine = items.filter((it) => it.sellerId === sellerId);
+      // The goods still coming. If the shop cancelled every line, name those
+      // instead, so a "Cancelled" block still says what it was for.
+      const open = mine.filter((it) => it.status !== 'CANCELLED');
+      const names = (open.length ? open : mine)
+        .map(nameOf)
+        .filter((n) => typeof n === 'string' && n.trim());
+      itemNames = names.slice(0, DELIVERY_ITEM_NAMES);
+      moreItems = Math.max(names.length - DELIVERY_ITEM_NAMES, 0);
+    }
+
+    return {
+      // Index first: the server's order is stable, and a repeated sellerId (it
+      // should never happen) must not produce two rows with one React key.
+      key: `${i}:${sellerId || ''}`,
+      sellerId,
+      ordinal: i + 1,
+      name,
+      status,
+      statusLabel,
+      // With one shop the order badge already says this, unless the two differ.
+      showStatus: Boolean(statusLabel) && (!compact || status !== order.status),
+      // The server sends the phone only while the shop is delivering. Dropped
+      // here too once that shop is done, so a row folded locally (a cancel the
+      // farmer just made) cannot leave a Call button behind.
+      phone: DELIVERY_DONE.has(status) ? null : callablePhone(d.sellerPhone),
+      // A code means something only while the goods are on the road.
+      code: status === 'SHIPPED' ? deliveryCodeView(d.deliveryCode) : null,
+      itemNames,
+      moreItems,
+    };
+  });
+
+  if (compact) {
+    const [only] = blocks;
+    if (!only.name && !only.phone && !only.code && !only.showStatus) return none;
+  }
+  return { compact, blocks };
+}
+
+// ── What the delivery charge is made of ───────────────────────────────────────
+/**
+ * The lines to print under "Delivery charges" — or none.
+ *
+ * The cart showed one figure. A shop may add its own extra charge for a far
+ * village (seller app → Delivery areas), and that used to be folded into the
+ * figure unannounced: the farmer saw ₹69 where another shop showed ₹49 and was
+ * told nothing about why. The server now sends what the fee is made of
+ * (`deliveryBreakdown`, see services/shopPricing.service.js):
+ *
+ *   base   the standard fee per delivery (0 when free delivery applied)
+ *   area   the shop's extra charge for this PIN code
+ *   heavy  handling for heavy items
+ *   cod    the cash-on-delivery fee
+ *
+ * `source` is a cart QUOTE, or an order's `pricingSnapshot` — both carry the
+ * same two things, the split and each shipment's `freeDeliveryApplied`.
+ *
+ * ── When it returns nothing ──────────────────────────────────────────────────
+ *   - an older backend, or an order placed before the split was recorded;
+ *   - a charge that is ONLY the standard fee. That is nearly every cart, the one
+ *     row "Delivery charges ₹49" already says all of it, and repeating it as a
+ *     sub-line underneath would be noise on the screen people check the price on.
+ *
+ * So the lines appear exactly when there is something to explain: an extra the
+ * farmer did not expect.
+ *
+ * The standard line is kept even at ₹0 when free delivery applied (`free`), so
+ * "Free delivery" and "Delivery charges ₹20" on the same order do not read as a
+ * contradiction: delivery IS free, and the ₹20 is the shop's own charge.
+ *
+ * Amounts are plain numbers for display. Nothing here is added up into a total —
+ * the total on screen is always the server's own.
+ *
+ * @returns {Array<{id: 'base'|'area'|'heavy'|'cod', key: string, fallback: string, amount: number, free: boolean}>}
+ */
+export function deliveryBreakdownLines(source) {
+  const split = source?.deliveryBreakdown;
+  if (!split || typeof split !== 'object' || Array.isArray(split)) return [];
+
+  const part = (v) => {
+    const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() ? Number(v) : NaN);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const base = part(split.base);
+  const area = part(split.area);
+  const heavy = part(split.heavy);
+  const cod = part(split.cod);
+  if (!area && !heavy && !cod) return [];
+
+  const shipments = Array.isArray(source.shipments) ? source.shipments : [];
+  const freeApplied = shipments.some((s) => s?.freeDeliveryApplied === true);
+
+  const lines = [];
+  if (base > 0) {
+    lines.push({ id: 'base', key: 'cart.deliveryStandard', fallback: 'Standard delivery', amount: base, free: false });
+  } else if (freeApplied) {
+    lines.push({ id: 'base', key: 'cart.deliveryStandard', fallback: 'Standard delivery', amount: 0, free: true });
+  }
+  if (area) lines.push({ id: 'area', key: 'cart.deliveryArea', fallback: 'Extra charge for your area', amount: area, free: false });
+  if (heavy) lines.push({ id: 'heavy', key: 'cart.deliveryHeavy', fallback: 'Heavy item handling', amount: heavy, free: false });
+  if (cod) lines.push({ id: 'cod', key: 'cart.deliveryCod', fallback: 'Cash on delivery fee', amount: cod, free: false });
+  return lines;
 }

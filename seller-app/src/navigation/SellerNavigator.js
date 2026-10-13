@@ -42,6 +42,8 @@ import SellerCatalogSearch  from '../screens/CatalogSearchScreen';
 import SellerOrders         from '../screens/OrdersScreen';
 import SellerProfile        from '../screens/SellerProfileScreen';
 import SellerBusiness       from '../screens/BusinessProfileScreen';
+import DeliveryAreas        from '../screens/DeliveryAreasScreen';
+import SellerReviews        from '../screens/SellerReviewsScreen';
 import ReceivedReports      from '../screens/ReceivedReportsScreen';
 import ReceivedReportDetail from '../screens/ReceivedReportDetailScreen';
 
@@ -132,6 +134,9 @@ export default function SellerNavigator() {
         <Stack.Screen name="SellerOrders"         component={SellerOrders}         options={{ title: t('dash.orders') }} />
         <Stack.Screen name="SellerProfile"        component={SellerProfile}        options={{ headerShown: false }} />
         <Stack.Screen name="BusinessProfile"      component={SellerBusiness}       options={{ title: t('sellerProfile.bizProfileKyc') }} />
+        {/* Draws its own AppHeader, like the profile screen it is opened from. */}
+        <Stack.Screen name="DeliveryAreas"        component={DeliveryAreas}        options={{ headerShown: false }} />
+        <Stack.Screen name="SellerReviews"        component={SellerReviews}        options={{ headerShown: false }} />
         <Stack.Screen name="ReceivedReports"      component={ReceivedReports}      options={{ headerShown: false }} />
         <Stack.Screen name="ReceivedReportDetail" component={ReceivedReportDetail} options={{ headerShown: false }} />
       </Stack.Navigator>

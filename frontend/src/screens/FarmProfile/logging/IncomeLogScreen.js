@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -34,8 +34,8 @@ export default function IncomeLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('incomeLog.missingInfoTitle'), t('incomeLog.missingInfoMsg')); return; }
-    if (!cycleId) { Alert.alert(t('incomeLog.noCycleTitle'), t('incomeLog.noCycleMsg')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('incomeLog.missingInfoTitle'), t('incomeLog.missingInfoMsg')); return; }
+    if (!cycleId) { showPopup(t('incomeLog.noCycleTitle'), t('incomeLog.noCycleMsg')); return; }
     save();
   }, [canSave, cycleId, save, t]);
   const subtitle = activeFarm ? `${activeFarm.farmName || activeFarm.farmAlias || t('nav.farm')}${cycleId ? t('incomeLog.activeCycleSuffix') : ''}` : undefined;

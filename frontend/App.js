@@ -41,6 +41,7 @@ import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachab
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 import InAppChatBanner from './src/components/InAppChatBanner';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import PopupHost from './src/components/PopupHost';
 
 function RootNavigator() {
   const { isLoggedIn, loading, user, restoreFailed } = useAuth();
@@ -141,6 +142,13 @@ export default function App() {
               </FarmProvider>
             </CartProvider>
           </AuthProvider>
+          {/* Every message and every "are you sure?" in the app. There is no
+              Alert.alert anywhere: screens call showPopup() (src/utils/popup.js)
+              and this draws it, in the app's own style, on Android and in a
+              browser alike. Outside AuthProvider on purpose — the sign-in and
+              onboarding screens raise pop-ups too — and inside LanguageProvider
+              for the translated "OK". */}
+          <PopupHost />
         </LanguageProvider>
       </SafeAreaProvider>
     </RootErrorBoundary>

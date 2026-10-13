@@ -2,8 +2,9 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, Animated,
-  ActivityIndicator, StatusBar, Dimensions, Alert, Easing, Image,
+  ActivityIndicator, StatusBar, Dimensions, Easing, Image,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import {
   Sprout, Mic, Send, Plus, Menu, PenSquare, Paperclip,
   Leaf, ChevronDown, ChevronUp, ChevronRight, Check, X as CloseIcon,
@@ -553,7 +554,7 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
                   <TouchableOpacity
                     style={SB.trashBtn}
                     onPress={() => {
-                      Alert.alert(
+                      showPopup(
                         'Delete conversation?',
                         `"${item.title || 'AI Chat'}" will be removed from your history. This cannot be undone.`,
                         [
@@ -714,7 +715,7 @@ export default function AIChatScreen({ navigation, route }) {
   const confirmReset = useCallback(() => {
     // Nothing to clear (only the welcome bubble) → reset silently.
     if (messages.length <= 1) { resetChat(); return; }
-    Alert.alert(
+    showPopup(
       t('aiChat.newChatTitle', 'Start a new chat?'),
       t('aiChat.newChatBody', 'This clears the current conversation from the screen. Your saved history is not deleted.'),
       [
@@ -730,18 +731,18 @@ export default function AIChatScreen({ navigation, route }) {
     try {
       const c = await compressImage(asset.uri, { needBase64: true });
       const base64 = c?.base64;
-      if (!base64) { Alert.alert('Photo', 'Could not read that image. Please try another.'); return; }
+      if (!base64) { showPopup('Photo', 'Could not read that image. Please try another.'); return; }
       setAttachedImage({ uri: c?.uri || asset.uri, base64, mime_type: 'image/jpeg' });
     } catch (e) {
       if (__DEV__) console.warn('[AIChat] image compress failed', e?.message);
-      Alert.alert('Photo', 'Could not process that image. Please try another.');
+      showPopup('Photo', 'Could not process that image. Please try another.');
     }
   }, []);
 
   const pickFromCamera = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Camera Permission', 'Please allow camera access in Settings → Apps → KrushiSarva → Permissions.');
+      showPopup('Camera Permission', 'Please allow camera access in Settings → Apps → KrushiSarva → Permissions.');
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.85, allowsEditing: true, aspect: [4, 3] });
@@ -751,7 +752,7 @@ export default function AIChatScreen({ navigation, route }) {
   const pickFromGallery = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Photos Permission', 'Please allow photo access in Settings → Apps → KrushiSarva → Permissions.');
+      showPopup('Photos Permission', 'Please allow photo access in Settings → Apps → KrushiSarva → Permissions.');
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
@@ -759,7 +760,7 @@ export default function AIChatScreen({ navigation, route }) {
   }, [attachImage]);
 
   const onAttachPress = useCallback(() => {
-    Alert.alert(t('cropScan.addImage', 'Add a photo'), t('aiChat.attachHint', 'Share a photo of your crop for a quick diagnosis.'), [
+    showPopup(t('cropScan.addImage', 'Add a photo'), t('aiChat.attachHint', 'Share a photo of your crop for a quick diagnosis.'), [
       { text: t('cropScan.takePhoto', 'Take photo'), onPress: pickFromCamera },
       { text: t('cropScan.chooseGallery', 'From gallery'), onPress: pickFromGallery },
       { text: t('common.cancel', 'Cancel'), style: 'cancel' },
@@ -775,7 +776,7 @@ export default function AIChatScreen({ navigation, route }) {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Microphone Permission', 'Please allow microphone access in Settings → Apps → KrushiSarva → Permissions.');
+        showPopup('Microphone Permission', 'Please allow microphone access in Settings → Apps → KrushiSarva → Permissions.');
         return;
       }
       await Audio.setAudioModeAsync({
@@ -852,7 +853,7 @@ export default function AIChatScreen({ navigation, route }) {
       setIsRecording(true); setAudioLevel(0);
     } catch (err) {
       console.error('[Recording] startRecording failed:', err?.message || err);
-      Alert.alert('Recording Error', `Could not start microphone.\n${err?.message || 'Please check microphone permissions and try again.'}`);
+      showPopup('Recording Error', `Could not start microphone.\n${err?.message || 'Please check microphone permissions and try again.'}`);
     } finally {
       recordingLockRef.current = false;
     }
@@ -972,7 +973,7 @@ export default function AIChatScreen({ navigation, route }) {
         const next = [...prev, item];
         return next.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       });
-      Alert.alert(
+      showPopup(
         'Could not delete',
         err?.response?.data?.error?.message || err?.message || 'Please check your connection and try again.'
       );

@@ -16,9 +16,10 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -100,7 +101,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(t('farmProfile.gpsErrorTitle') || 'Location permission', 'Please enable location to drop your farm pin.');
+        showPopup(t('farmProfile.gpsErrorTitle') || 'Location permission', 'Please enable location to drop your farm pin.');
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -108,7 +109,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
       u('longitude', loc.coords.longitude);
       Haptics.success?.();
     } catch {
-      Alert.alert(t('farmProfile.gpsErrorTitle') || 'GPS error', t('farmProfile.gpsErrorMsg') || 'Could not read location. Try again outdoors.');
+      showPopup(t('farmProfile.gpsErrorTitle') || 'GPS error', t('farmProfile.gpsErrorMsg') || 'Could not read location. Try again outdoors.');
     }
   }, [t]);
 
@@ -116,12 +117,12 @@ export default function FarmAddEditScreen({ navigation, route }) {
   const handleSave = useCallback(async () => {
     if (pin.blocksSubmit) {
       Haptics.error?.();
-      Alert.alert(t('farmProfile.pincode') || 'Pincode', t('pincode.fixBeforeSave'));
+      showPopup(t('farmProfile.pincode') || 'Pincode', t('pincode.fixBeforeSave'));
       return;
     }
     if (!form.landSizeAcres || parseFloat(form.landSizeAcres) <= 0) {
       Haptics.error?.();
-      Alert.alert(t('farmProfile.requiredTitle') || 'Land size required', t('farmProfile.landRequired') || 'Please enter the total land size in acres.');
+      showPopup(t('farmProfile.requiredTitle') || 'Land size required', t('farmProfile.landRequired') || 'Please enter the total land size in acres.');
       return;
     }
     setSaving(true);
@@ -135,7 +136,7 @@ export default function FarmAddEditScreen({ navigation, route }) {
       navigation.goBack();
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || 'Error', e.message || (t('farmProfile.saveFailed') || 'Save failed.'));
+      showPopup(t('login.error') || 'Error', e.message || (t('farmProfile.saveFailed') || 'Save failed.'));
     } finally {
       setSaving(false);
     }

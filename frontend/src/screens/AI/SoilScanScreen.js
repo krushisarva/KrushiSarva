@@ -8,8 +8,9 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator,
-  StatusBar, Alert, ScrollView,
+  StatusBar, ScrollView,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -57,21 +58,21 @@ export default function SoilScanScreen({ navigation }) {
     try {
       const c = await compressImage(asset.uri, { needBase64: true });
       if (!c?.base64) {
-        Alert.alert(t('soilHub.scan.photo', 'Photo'), t('soilHub.scan.cantRead', 'Could not read that image. Please try another.'));
+        showPopup(t('soilHub.scan.photo', 'Photo'), t('soilHub.scan.cantRead', 'Could not read that image. Please try another.'));
         return;
       }
       setPreview({ uri: c.uri || asset.uri, base64: c.base64 });
       setError(null);
       runOcr(c.base64);
     } catch {
-      Alert.alert(t('soilHub.scan.photo', 'Photo'), t('soilHub.scan.cantProcess', 'Could not process that image. Please try another.'));
+      showPopup(t('soilHub.scan.photo', 'Photo'), t('soilHub.scan.cantProcess', 'Could not process that image. Please try another.'));
     }
   }, [runOcr, t]);
 
   const pickFromCamera = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('soilHub.scan.cameraPerm', 'Camera permission'), t('soilHub.scan.cameraPermBody', 'Please allow camera access in Settings to scan your card.'));
+      showPopup(t('soilHub.scan.cameraPerm', 'Camera permission'), t('soilHub.scan.cameraPermBody', 'Please allow camera access in Settings to scan your card.'));
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.85, allowsEditing: false });
@@ -81,7 +82,7 @@ export default function SoilScanScreen({ navigation }) {
   const pickFromGallery = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('soilHub.scan.photoPerm', 'Photos permission'), t('soilHub.scan.photoPermBody', 'Please allow photo access in Settings to choose a card photo.'));
+      showPopup(t('soilHub.scan.photoPerm', 'Photos permission'), t('soilHub.scan.photoPermBody', 'Please allow photo access in Settings to choose a card photo.'));
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });

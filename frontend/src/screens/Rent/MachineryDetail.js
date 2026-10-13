@@ -10,9 +10,10 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, ActivityIndicator, Dimensions,
+  Image, ActivityIndicator, Dimensions,
   StatusBar, Modal, TextInput, Animated, Linking,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import { fs } from '../../utils/responsive';
 import { Video, ResizeMode } from 'expo-av';
@@ -326,7 +327,7 @@ export default function MachineryDetail({ route, navigation }) {
     }
     // Choosing the end date: reject a range that spans a booked / unavailable gap.
     if (rangeHasBlocked(selStart, dk)) {
-      Alert.alert(
+      showPopup(
         t('rent.unavailableRangeTitle', 'Dates not available'),
         t('rent.unavailableRangeMsg', 'Your selected range includes dates that are booked or outside the availability window. Please pick a continuous available range.'),
       );
@@ -400,7 +401,7 @@ export default function MachineryDetail({ route, navigation }) {
       bookingRef.current = false;
       if (!aliveRef.current) return;
       const { title, body } = noticeText(notice, t, inr);
-      Alert.alert(title, body);
+      showPopup(title, body);
       // The dates went to someone else — show that on the calendar rather than
       // leaving a range selected that can never be booked. Money having moved
       // also means a booking may exist elsewhere, so RentHome is re-read too.
@@ -414,21 +415,21 @@ export default function MachineryDetail({ route, navigation }) {
 
   const handleBook = async () => {
     if (isOwner) {
-      Alert.alert(t('rent.ownListingTitle', 'Your Listing'), t('rent.ownListingMsg', "This is your own listing — you can't book it."));
+      showPopup(t('rent.ownListingTitle', 'Your Listing'), t('rent.ownListingMsg', "This is your own listing — you can't book it."));
       return;
     }
     if (!selStart || !selEnd) {
-      Alert.alert(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
+      showPopup(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
       return;
     }
     const days = selectedDays();
     if (days <= 0) {
-      Alert.alert(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
+      showPopup(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
       return;
     }
     // Final safety net — the calendar prevents this, but never trust the selection blindly.
     if (isDayBlocked(selStart) || isDayBlocked(selEnd) || rangeHasBlocked(selStart, selEnd)) {
-      Alert.alert(
+      showPopup(
         t('rent.unavailableRangeTitle', 'Dates not available'),
         t('rent.unavailableRangeMsg', 'Your selected range includes dates that are booked or outside the availability window. Please pick a continuous available range.'),
       );

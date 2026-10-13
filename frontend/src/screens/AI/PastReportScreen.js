@@ -11,8 +11,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Alert,
+  ActivityIndicator, Image,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
@@ -264,10 +265,10 @@ export default function PastReportScreen({ navigation, route }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert(t('pastReport.saved', 'Saved'), uri);
+        showPopup(t('pastReport.saved', 'Saved'), uri);
       }
     } catch (e) {
-      Alert.alert(t('pastReport.downloadFailed', 'Download failed'), e.message || '');
+      showPopup(t('pastReport.downloadFailed', 'Download failed'), e.message || '');
     } finally {
       setDownloading(false);
     }
@@ -297,7 +298,7 @@ export default function PastReportScreen({ navigation, route }) {
         });
       }
     } catch (e) {
-      Alert.alert(t('pastReport.shareFailed', 'Share failed'), e.message || '');
+      showPopup(t('pastReport.shareFailed', 'Share failed'), e.message || '');
     }
   };
 
