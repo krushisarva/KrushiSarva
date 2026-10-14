@@ -15,7 +15,7 @@
  */
 import prisma from '../config/db.js';
 import { ENV } from '../config/env.js';
-import { auditAuthEvent, AUTH_ACTIONS } from './audit.service.js';
+import { auditAuthEvent, AUTH_ACTIONS, maskPhone } from './audit.service.js';
 import { assessLoginRisk, notifyRiskyLogin } from './loginRisk.service.js';
 import { recordVelocity, deviceFingerprint, VELOCITY_ACTIONS } from './velocity.service.js';
 import { flagVelocity } from '../middleware/velocityLimit.js';
@@ -42,6 +42,12 @@ export const ACCOUNT_INACTIVE_CODE = 'ACCOUNT_INACTIVE';
 export const ACCOUNT_INACTIVE_MESSAGE =
   'This account has been deactivated. Please contact KrushiSarva support.';
 
+// A proven phone whose account does not hold the role the caller required (the
+// admin panel's login). Same message for "no account" and "wrong role", so the
+// admin login screen is no oracle for which numbers are registered.
+export const NOT_ADMIN_CODE = 'NOT_ADMIN';
+export const NOT_ADMIN_MESSAGE = 'This account is not an administrator.';
+
 /**
  * @param {object}  args
  * @param {object}  args.req          Express request (IP, headers, device id)
@@ -50,9 +56,12 @@ export const ACCOUNT_INACTIVE_MESSAGE =
  * @param {string=} args.name         Optional display name for a first-time signup
  * @param {string}  args.loginMethod  Audit tag, e.g. 'firebase' — records HOW ownership
  *                                    was proven so a compromised provider can be traced
+ * @param {string=} args.requireRole  Refuse unless the EXISTING account has this role
+ *                                    (the admin panel passes 'ADMIN'). It only ever
+ *                                    narrows: no user is created, nothing is minted.
  * @returns {Promise<{body: object, userId: string, isNewUser: boolean}>}
  */
-export async function issueSessionForVerifiedPhone({ req, res, phone, name, loginMethod, providerUid }) {
+export async function issueSessionForVerifiedPhone({ req, res, phone, name, loginMethod, providerUid, requireRole }) {
   // Find-or-create. The phone column is unique, so this is the same
   // no-enumeration behaviour as the OTP path: one endpoint serves signup and
   // login, and the response never reveals which one happened beyond isNewUser.
@@ -70,6 +79,20 @@ export async function issueSessionForVerifiedPhone({ req, res, phone, name, logi
       outcome: 'blocked', reason: 'account_inactive', loginMethod,
     });
     throw Object.assign(new Error(ACCOUNT_INACTIVE_MESSAGE), { accountInactive: true });
+  }
+
+  // Role-restricted login (the admin panel). Checked against the DB row only —
+  // never against anything the client sent — and BEFORE find-or-create, so a
+  // farmer's number typed into the admin login gets no account, no signup
+  // consent row, no refresh token and no cookies. Audited as LOGIN_BLOCKED for
+  // the same reason as above: it must not read back as a successful login.
+  if (requireRole && (!existing || existing.role !== requireRole)) {
+    await auditAuthEvent(existing?.id ?? null, AUTH_ACTIONS.LOGIN_BLOCKED, req.ip, {
+      outcome: 'blocked', reason: 'role_required', requiredRole: requireRole, loginMethod,
+      phone: maskPhone(phone),
+      ...(providerUid ? { providerUid } : {}),
+    });
+    throw Object.assign(new Error(NOT_ADMIN_MESSAGE), { notAdmin: true });
   }
 
   let user = existing;

@@ -48,6 +48,8 @@ npm run dev                # http://localhost:5180/admin/  (served under /admin)
 | `VITE_API_URL` | `/api/v1` | Base path the client calls (`${VITE_API_URL}/admin/*`, `/auth/*`). Keep relative to use the dev proxy / a same-origin reverse proxy in prod. Set to an absolute origin only if the admin app is served from a **different** origin than the API. |
 | `VITE_API_PROXY` | `http://localhost:3000` | Dev only — where `vite dev` proxies `/api` to your running backend. |
 | `VITE_ENV_NAME` | `local` | Shown in the top-bar environment badge (`local` / `staging` / `production`). |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | empty | Firebase **web** app config (public, not secrets). All four set → Firebase phone login; any empty → MSG91 OTP. See [Firebase phone login](#firebase-phone-login-optional). |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_STORAGE_BUCKET` | empty | Optional; not used by phone auth, accepted so the console snippet can be pasted whole. |
 
 In dev, Vite proxies `/api` → the backend, so the browser stays **same-origin** and
 cookies + CSRF "just work" with no CORS. For production behind a reverse proxy, serve
@@ -72,6 +74,120 @@ The admin API lives in `backend/src/routes/admin/*` and is mounted at
 - The backend keeps its existing OTP + JWT + CSRF + cookie auth **unchanged**. The
   admin client sends `X-Auth-Transport: cookie`, `withCredentials`, and the
   `X-CSRF-Token` header on mutations — the same contract the mobile web build uses.
+
+## Firebase phone login (optional)
+
+MSG91 cannot send SMS until DLT registration is done, so `/auth/send-otp` returns
+503 in production. The farmer and seller apps already sign in with Firebase phone
+auth, where Google sends the SMS. The admin panel can sign in the same way.
+
+**How it works.** When the build has the four required `VITE_FIREBASE_*` values,
+the login screen:
+
+1. sends the SMS through Firebase after an invisible reCAPTCHA check;
+2. confirms the code;
+3. posts the Firebase ID token to the same `POST /api/v1/auth/firebase-login`
+   route the apps use, with `audience: "admin"`.
+
+On the server:
+
+- If the phone's existing account is **not** ADMIN (including a number with no
+  account), the server answers `403 NOT_ADMIN`. It creates nothing: no user, no
+  consent row, no refresh token, no cookies. The attempt is written to the
+  audit log as `AUTH_LOGIN_BLOCKED`.
+- The SMS behind the token must be recent: its `auth_time` must be within
+  `FIREBASE_REAUTH_MAX_AGE_SECONDS` (default 300 s), the same check
+  `/auth/change-phone` uses. So a long-lived Firebase session (for example the
+  farmer app signed in on an admin's phone) cannot mint an admin session
+  without a new SMS. An older token gets `401` "request a new code".
+- An ADMIN gets exactly the OTP path's session: httpOnly refresh cookie + CSRF,
+  refresh rotation, `isActive` / `tokenVersion` checks, scopes read from the
+  DB, and the idle logout.
+
+Without the values, the build uses the MSG91 OTP flow, unchanged. When Firebase
+is on, the MSG91 option is hidden.
+
+> **Turning Firebase off later (for example once DLT is approved).** An admin
+> image built with the `VITE_FIREBASE_*` values logs in **only** through
+> Firebase. If you set `FIREBASE_AUTH_ENABLED=false` on the backend while that
+> image is running, the browser blocks the reCAPTCHA script (the CSP no longer
+> allows it) and `/auth/firebase-login` returns 503, so **no admin can log in**.
+> First rebuild and deploy the admin image **without** the `VITE_FIREBASE_*`
+> build args (it then uses MSG91), and only then turn the backend flag off.
+
+**One-time owner setup**
+
+1. **Register a Web app.** This repo has no Firebase web config. Only the
+   Android `google-services.json` files exist, for `com.krushisarva.app` and
+   `com.krushisarva.seller`.
+   - In the Firebase console, open project **`krushisarva-b234d`**. The apps and
+     the backend's `FIREBASE_PROJECT_ID` use this project. Go to Project
+     settings → Your apps → Add app → **Web**.
+   - Copy `apiKey`, `authDomain` (`krushisarva-b234d.firebaseapp.com`),
+     `projectId` and `appId`.
+   - It must be the same project, or the backend rejects every token on
+     audience.
+   - Do not reuse the Android API key.
+2. **Phone sign-in.** Check that Authentication → Sign-in method → Phone is
+   enabled. It already is for the apps.
+3. **Authorized domains.** In Authentication → Settings → Authorized domains,
+   add **`srv2061596.hstgr.cloud`** and any other host that serves `/admin`.
+   `localhost` is listed by default, which covers `http://localhost:5180/admin/`
+   and `http://localhost:3001/admin`. Without this step the reCAPTCHA / SMS
+   request is refused.
+4. **API key restrictions: by API, never by HTTP referrer.** The backend sends
+   `Referrer-Policy: no-referrer` (helmet's default), so the browser sends no
+   `Referer` header to Google. A key restricted by **HTTP referrers** then
+   refuses every call ("requests from referer <empty> are blocked") and the
+   login breaks. If you restrict the web API key in Google Cloud → APIs &
+   Services → Credentials, use **API restrictions** only and allow at least:
+   - Identity Toolkit API
+   - Token Service API
+5. **Build with the values.**
+   - Local: put them in `admin/.env`.
+   - Docker: the root `Dockerfile` stage 1 takes them as build args, for
+     example `docker build --build-arg VITE_FIREBASE_API_KEY=… --build-arg VITE_FIREBASE_AUTH_DOMAIN=… --build-arg VITE_FIREBASE_PROJECT_ID=… --build-arg VITE_FIREBASE_APP_ID=… .`
+   - The args default to empty, so a build without them stays on MSG91.
+   - Vite inlines the values at build time, so changing them needs a rebuild.
+   - Docker may warn `SecretsUsedInArgOrEnv` about `…_API_KEY`. That is a false
+     positive: a Firebase web API key is public.
+6. **Backend env on the server.** Set the same values the apps need:
+   `FIREBASE_AUTH_ENABLED=true`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`
+   and `FIREBASE_PRIVATE_KEY`.
+   - `FIREBASE_AUTH_ENABLED=true` also adds Google's reCAPTCHA and
+     identitytoolkit / securetoken origins to the CSP of the `/admin` page only
+     ([`backend/src/utils/csp.js`](../backend/src/utils/csp.js)). Every other
+     response keeps the normal CSP. Without the flag the browser blocks the
+     reCAPTCHA script.
+   - On the VPS, `ALLOWED_ORIGINS` must include `https://srv2061596.hstgr.cloud`.
+     The backend only treats Railway domains as its own origin, and it refuses
+     a browser POST whose `Origin` it does not know. This applies to the MSG91
+     flow too.
+7. **Limit SMS abuse.** Firebase sends the SMS straight from the browser, so
+   the backend's OTP limiters and proof-of-work gate never see a send. Only
+   Firebase's own controls apply:
+   - Authentication → Settings → **SMS region policy**: allow **India (IN)**
+     only. This stops SMS pumping to foreign numbers, billed to the project.
+   - Turn on **reCAPTCHA Enterprise SMS defense** (or App Check for the web app)
+     if your plan offers it.
+   - Set a **budget alert** in Google Cloud Billing that covers Identity Platform
+     SMS.
+
+   These protect the farmer and seller apps too, which use the same project.
+
+> **Never add a real admin's number under *Phone numbers for testing* in this
+> project.** Test numbers are project-wide and work in production. A test
+> number's fixed code produces a normal phone token for that number, so the
+> admin login would become a fixed, shared code that never rotates and never
+> touches the handset. Anyone who can read the console's auth settings could
+> use it. This project is the one the backend trusts, so the same is true for
+> the apps.
+>
+> To test the admin login without SMS, use a separate dev Firebase project and
+> a dev backend pointed at it. If you must use a test number in this project,
+> use a fictional number that belongs to no real person, make sure its account
+> is **not** an ADMIN in the production database, and delete the test number
+> straight after.
 
 ## 4. Build
 

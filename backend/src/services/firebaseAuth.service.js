@@ -14,6 +14,9 @@
  *
  * otp.service.js is deliberately untouched. When DLT approval lands, flip
  * FIREBASE_AUTH_ENABLED off and the MSG91 path is exactly as it was.
+ * EXCEPT the admin panel: an admin image built with VITE_FIREBASE_* logs in only
+ * through Firebase, so rebuild it WITHOUT those build args first, or flipping
+ * the flag off leaves the panel with no working login (admin/README.md).
  *
  * TRUST MODEL — read before changing anything here:
  * The ID token is a Google-signed JWT. verifyIdToken() checks the signature

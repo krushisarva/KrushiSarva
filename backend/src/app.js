@@ -20,6 +20,7 @@ import { getCacheMetrics } from './utils/cacheMetrics.js';
 import { getShopMetricsFlat, getShopMetrics, shopMetricsMiddleware } from './services/shopMetrics.service.js';
 import { rateLimiter, clientIp } from './middleware/rateLimit.js';
 import { csrfProtection } from './middleware/csrf.js';
+import { withFirebasePhoneAuthCsp } from './utils/csp.js';
 import { installAsyncRouteSafety } from './middleware/asyncRoutes.js';
 
 // An async handler that rejects must produce a response, not a request that
@@ -111,14 +112,22 @@ app.use((req, res, _next) => {
 // not restricted to one CDN host; for an internal, ADMIN-gated panel that trade is
 // worth the working UI. Everything else stays at helmet's defaults — the Vite build
 // emits no inline script, so `script-src 'self'` needs no loosening.
+const cspDirectives = {
+  ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+  'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+};
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      'img-src': ["'self'", 'data:', 'blob:', 'https:'],
-    },
-  },
+  contentSecurityPolicy: { directives: cspDirectives },
 }));
+
+// With FIREBASE_AUTH_ENABLED the admin login can use Firebase phone auth, which
+// needs Google's reCAPTCHA scripts/frames and the identitytoolkit API — see
+// utils/csp.js for the exact sources. Only /admin (the one page that loads
+// reCAPTCHA) gets them: this header replaces the global one there, and every
+// other response keeps the CSP above. With the flag off nothing changes.
+if (ENV.FIREBASE_AUTH_ENABLED) {
+  app.use('/admin', helmet.contentSecurityPolicy({ directives: withFirebasePhoneAuthCsp(cspDirectives) }));
+}
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // [H1] Never reflect arbitrary origins in production.

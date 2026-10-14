@@ -13,6 +13,22 @@ COPY admin/ ./
 # Same-origin: the SPA calls /api/v1/* on the backend that serves it (no CORS).
 ENV VITE_API_URL=/api/v1
 ENV VITE_ENV_NAME=production
+# Firebase WEB app config for the admin login (public values, not secrets; see
+# admin/README.md). Vite inlines them at build time, so they must be build args —
+# .dockerignore keeps every .env out of the context. All empty (the default) →
+# the admin login stays on the MSG91 OTP flow, exactly as before.
+ARG VITE_FIREBASE_API_KEY=""
+ARG VITE_FIREBASE_AUTH_DOMAIN=""
+ARG VITE_FIREBASE_PROJECT_ID=""
+ARG VITE_FIREBASE_APP_ID=""
+ARG VITE_FIREBASE_MESSAGING_SENDER_ID=""
+ARG VITE_FIREBASE_STORAGE_BUCKET=""
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
+    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID \
+    VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
+    VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET
 RUN npm run build           # → /admin/dist
 
 # ── Stage 2: backend runtime ──────────────────────────────────────────────────

@@ -26,7 +26,14 @@ services:
 
   backend:
     image: krushisarva-backend:${TAG:-latest}
-    build: { context: ./app, dockerfile: Dockerfile }
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+      args:                              # Firebase WEB config for the admin login: public values, set in /opt/krushisarva/.env (admin/README.md)
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
     command: ["node", "src/server.js"]   # replaces the sh -c CMD so SIGTERM reaches node
     init: true
     stop_grace_period: 20s               # the app force-exits after 10 s (backend/src/server.js); Docker's default would SIGKILL at the same moment
