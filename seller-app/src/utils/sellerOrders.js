@@ -11,6 +11,19 @@
 
 export const STATUS_FLOW = ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED'];
 
+/**
+ * The order number a farmer and a seller can say to each other: "#7A36A71C".
+ *
+ * The SAME rule as the farmer's My Orders (frontend MyOrdersScreen: the last
+ * eight characters of the order id, in capitals). The seller's card showed no
+ * number at all, so "which order?" on the phone had to be answered by product
+ * name and date. Null when there is no usable id — never a bare "#".
+ */
+export function orderShortId(order) {
+  const id = typeof order?.id === 'string' ? order.id.trim() : '';
+  return id ? `#${id.slice(-8).toUpperCase()}` : null;
+}
+
 // Mirrors SELLER_ITEM_TRANSITIONS in backend agristore.routes.js (PUT
 // /seller/orders/:orderId/status): forward only. Cancel is free before the goods
 // leave; after that it is "could not deliver" and needs a reason (below).
