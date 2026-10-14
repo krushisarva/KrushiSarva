@@ -7,8 +7,13 @@ srv2061596.hstgr.cloud {
 	@internal path /readyz /readyz/*
 	respond @internal 404
 
+	# The admin panel lives on Vercel (admin/vercel.json), which proxies /api/* here.
+	# This host does not serve a copy: old /admin links go to the Vercel panel.
+	@admin path /admin /admin/*
+	redir @admin https://krushi-sarva.vercel.app{uri} 302
+
 	# Everything else goes to Express: /api/v1, /socket.io (WebSocket upgrade is automatic),
-	# /admin, /legal, /healthz. No `encode`: Express already compresses.
+	# /legal, /healthz. No `encode`: Express already compresses.
 	# keepalive 55s stays below Node's 65 s keepAliveTimeout (backend/src/server.js), so
 	# Caddy never reuses a socket Node is closing (which would turn some POSTs into 502s).
 	reverse_proxy 127.0.0.1:3000 {
