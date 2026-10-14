@@ -1,7 +1,8 @@
 /**
  * Auth Routes
- * POST /api/v1/auth/send-otp     → request OTP
+ * POST /api/v1/auth/send-otp     → request OTP (development only — no SMS is sent)
  * POST /api/v1/auth/verify-otp   → verify OTP, get tokens
+ * POST /api/v1/auth/firebase-login → Firebase ID token (the SMS sign-in), get tokens
  * POST /api/v1/auth/refresh       → rotate refresh token
  * POST /api/v1/auth/logout        → revoke refresh token
  * POST /api/v1/auth/logout-all    → revoke all devices
@@ -161,13 +162,13 @@ router.post(
 );
 
 // ── POST /firebase-login ───────────────────────────────────────────────────────
-// Parallel login path for as long as KrushiSarva's DLT registration is pending.
-// Google sends and verifies the SMS OTP (it is the DLT-registered sender); the
-// client hands us the resulting Firebase ID token and we mint OUR session from it.
+// The SMS sign-in. Google sends and verifies the SMS OTP (it is the
+// DLT-registered sender); the client hands us the resulting Firebase ID token and
+// we mint OUR session from it.
 //
-// The MSG91 path above is untouched and remains the default — this route 503s
-// unless FIREBASE_AUTH_ENABLED is on AND a service account is configured, so a
-// deploy without Firebase behaves exactly as before.
+// This route 503s unless FIREBASE_AUTH_ENABLED is on AND a service account is
+// configured. /send-otp above sends no SMS, so without Firebase a production
+// deploy has no phone sign-in.
 //
 // Rate limit note: Firebase enforces its own per-number SMS quota on the send
 // side, which our OTP limiters never see. This limiter caps token-verification
@@ -248,7 +249,7 @@ router.post(
     try {
       // Honour the OTP brute-force lockout even though Google, not us, checked the
       // code. Without this the two login paths are a lockout-evasion pair: burn
-      // through the MSG91 attempts until the number locks, then walk in through
+      // through the /verify-otp attempts until the number locks, then walk in through
       // Firebase. The lock is keyed by phone, so it has to be enforced by every
       // path that can mint a session for that phone.
       //

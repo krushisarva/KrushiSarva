@@ -1,23 +1,22 @@
-# Firebase Phone Auth — interim login while DLT is pending
+# Firebase Phone Auth — production SMS login
 
 ## Why this exists
 
 SMS to Indian numbers requires the sender to be registered on the telecom operators'
-**DLT** platform (TRAI TCCCPR 2018). Until KrushiSarva's own DLT registration is
-approved, **MSG91 cannot deliver a single OTP** — the API returns `success`, the
-operator silently drops the message, and the farmer sees "OTP sent" and receives
-nothing.
+**DLT** platform (TRAI TCCCPR 2018). Firebase Phone Auth works because **Google** is
+the DLT-registered sender: Google sends and verifies the SMS, and our backend only
+checks the resulting ID token.
 
-Firebase Phone Auth works today because **Google** is the DLT-registered sender.
+Firebase is the **only** production SMS sign-in, for the farmer app, the seller app
+and the admin panel. The backend's own `/auth/send-otp` + `/auth/verify-otp` pair is
+kept only as a local development/test login: it never sends an SMS, prints the code
+to the backend log and returns it as `devOtp` so the app auto-fills it. Under
+`NODE_ENV=production`, `/send-otp` returns 503 `OTP_DELIVERY_UNAVAILABLE`.
 
-This is a **parallel path, not a migration**. `otp.service.js` is untouched. When DLT
-approval lands, set `FIREBASE_AUTH_ENABLED=false` and the MSG91 flow is exactly as
-it was.
-
-| | MSG91 path | Firebase path |
+| | Dev OTP path (local only) | Firebase path |
 |---|---|---|
 | Who generates the OTP | We do (`crypto.randomInt`) | Google |
-| Who sends the SMS | MSG91 (needs DLT) | Google (already DLT-registered) |
+| Who sends the SMS | Nobody — logged and returned as `devOtp` | Google (already DLT-registered) |
 | Who verifies the code | We do (bcrypt vs `OtpSession`) | Google |
 | What our server checks | the 6-digit code | a Google-signed ID token |
 | Endpoint | `POST /auth/verify-otp` | `POST /auth/firebase-login` |
@@ -30,10 +29,11 @@ not apply — that is Firebase's abuse protection now.
 
 The per-phone **lockout does apply**: `/firebase-login` calls `checkOtpLock(phone)`
 once the token identifies the number and returns 423. Without that the two routes
-were a lockout-evasion pair — burn through the MSG91 attempts until the number
-locks, then walk in through Firebase.
+were a lockout-evasion pair — burn through the `/verify-otp` attempts until the
+number locks, then walk in through Firebase.
 
-Reverting to MSG91-only is a one-line env change.
+There is no fallback SMS provider: with `FIREBASE_AUTH_ENABLED` off, production has
+no SMS sign-in at all.
 
 ---
 
@@ -129,9 +129,10 @@ Those pairs verify without sending anything.
 `AuthContext`, so the UI, resend timer and error handling are identical on both paths.
 
 `AuthProvider` takes the Firebase adapter as a **`phoneAuth` prop**, injected by
-`frontend/App.js`. It is deliberately not imported inside `shared/`: seller-app
-bundles the same `shared/` tree through Metro `watchFolders`, and a static require of
-a native module it does not install would break its bundle outright.
+`frontend/App.js` and `seller-app/App.js`. It is deliberately not imported inside
+`shared/`, so nothing in the shared tree statically requires the native module. With
+no adapter, or with `EXPO_PUBLIC_FIREBASE_AUTH` off (Expo Go, local dev),
+`AuthProvider` uses the dev OTP path, which only works against a development backend.
 
 ## One shared implementation
 
@@ -141,12 +142,6 @@ lands on every login path at once. The 40 auth API integration tests cover it.
 
 ## Not done
 
-- `seller-app/` has no Firebase and cannot get it without installing the native
-  module. `AuthProvider` falls back to MSG91 when no `phoneAuth` prop is passed,
-  which is what seller-app does.
 - iOS builds are not configured: the RNFirebase plugin is in `app.json` but there is
   no `GoogleService-Info.plist` / `ios.googleServicesFile`. Android is unaffected;
   fix this before any iOS build.
-- The `devOtp` leak in `otp.service.js` (returned whenever `MSG91_AUTH_KEY` is empty,
-  including under `NODE_ENV=production`) is **unchanged** — out of scope here, but it
-  must be gated before any public deploy.

@@ -16,7 +16,8 @@ ENV VITE_ENV_NAME=production
 # Firebase WEB app config for the admin login (public values, not secrets; see
 # admin/README.md). Vite inlines them at build time, so they must be build args —
 # .dockerignore keeps every .env out of the context. All empty (the default) →
-# the admin login stays on the MSG91 OTP flow, exactly as before.
+# the admin login uses the dev OTP flow, which a production backend refuses (503),
+# so a production image needs all four.
 ARG VITE_FIREBASE_API_KEY=""
 ARG VITE_FIREBASE_AUTH_DOMAIN=""
 ARG VITE_FIREBASE_PROJECT_ID=""

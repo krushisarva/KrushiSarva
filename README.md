@@ -49,8 +49,8 @@ npm run dev                   # starts on http://localhost:3001/api/v1
 
 Required env: `DATABASE_URL`, `JWT_SECRET` (≥32 chars), `REDIS_URL`,
 `AI_BACKEND_URL` (URL of the running fastapi service).
-Optional: `MSG91_AUTH_KEY` (real SMS — blank = OTP returned in dev response),
-`CLOUDINARY_*`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
+Optional: `FIREBASE_*` (real SMS sign-in through Firebase Phone Auth — without it,
+local login uses the dev OTP returned in the response), `CLOUDINARY_*`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
 `SARVAM_API_KEY`, `DATA_GOV_API_KEY`, `OPENWEATHER_API_KEY`,
 `FIELD_ENCRYPTION_KEY`.
 

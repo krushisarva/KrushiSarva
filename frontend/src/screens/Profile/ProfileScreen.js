@@ -544,7 +544,7 @@ export default function ProfileScreen({ navigation }) {
    *
    * The previous copy was a hard-coded English alert asserting the data is
    * "never shared with third parties". That is not true — payments go to
-   * Razorpay, OTPs to MSG91, images to Cloudinary, AI features to the model
+   * Razorpay, OTPs to Firebase, images to Cloudinary, AI features to the model
    * provider — and it was unreadable to the Marathi and Hindi majority of users.
    * The replacement is translated, and describes the protections that are
    * genuinely implemented (encryption at rest, masking on read, private KYC

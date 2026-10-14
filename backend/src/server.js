@@ -35,7 +35,7 @@ import logger from './utils/logger.js';
 
 // ── Startup config validation ─────────────────────────────────────────────────
 const OPTIONAL_KEYS = [
-  ['MSG91_AUTH_KEY',       'OTP delivery via MSG91'],
+  ['FIREBASE_AUTH_ENABLED','SMS sign-in (Firebase phone auth)'],
   ['CLOUDINARY_CLOUD_NAME','Image uploads'],
   ['GEMINI_API_KEY',       'All LLM features: crop diagnosis, chat, alerts, pest (Gemini)'],
   ['SARVAM_API_KEY',       'Voice STT/TTS + multilingual (Sarvam)'],

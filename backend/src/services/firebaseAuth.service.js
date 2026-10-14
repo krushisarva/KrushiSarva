@@ -1,22 +1,19 @@
 /**
  * Firebase Phone Auth — ID-token verification.
  *
- * WHY THIS EXISTS (and why it does NOT replace otp.service.js):
+ * WHY THIS EXISTS:
  * SMS to Indian numbers requires the sender to be registered on the telecom
- * operators' DLT platform (TRAI TCCCPR). Until KrushiSarva's own DLT registration
- * is approved, MSG91 cannot deliver a single OTP — the operator drops it silently.
- * Firebase Phone Auth works today because *Google* is the DLT-registered sender.
+ * operators' DLT platform (TRAI TCCCPR). *Google* is a DLT-registered sender, so
+ * Firebase Phone Auth is how every production sign-in gets its SMS.
  *
- * So this is a PARALLEL login path, not a migration:
- *   • MSG91 path  — we generate the OTP, hash it, verify it, own the lockout.
+ * There are two login paths:
  *   • Firebase path — Google generates, sends and verifies the OTP; we only
  *     verify the resulting ID token and mint our own session.
+ *   • otp.service.js — development only. We generate, hash and verify the OTP,
+ *     but no SMS is sent: the code is logged and returned for auto-fill.
  *
- * otp.service.js is deliberately untouched. When DLT approval lands, flip
- * FIREBASE_AUTH_ENABLED off and the MSG91 path is exactly as it was.
- * EXCEPT the admin panel: an admin image built with VITE_FIREBASE_* logs in only
- * through Firebase, so rebuild it WITHOUT those build args first, or flipping
- * the flag off leaves the panel with no working login (admin/README.md).
+ * Turning FIREBASE_AUTH_ENABLED off in production leaves no phone sign-in at all,
+ * for the apps or the admin panel (admin/README.md).
  *
  * TRUST MODEL — read before changing anything here:
  * The ID token is a Google-signed JWT. verifyIdToken() checks the signature
@@ -36,8 +33,8 @@ let initError = null;
 /**
  * Lazily initialise firebase-admin.
  *
- * Lazy on purpose: the backend must boot fine with Firebase unconfigured (it is
- * an optional login path, exactly like MSG91). Importing/initialising at module
+ * Lazy on purpose: the backend must boot fine with Firebase unconfigured (local
+ * development logs in through otp.service.js). Importing/initialising at module
  * load would make a missing service account a boot failure for every deploy that
  * doesn't use Firebase.
  *
@@ -147,8 +144,8 @@ export async function verifyFirebaseIdToken(idToken) {
 
   // GATE ON +91 BEFORE NORMALIZING — do not remove.
   //
-  // normalizeIndianMobile() was written for numbers WE chose (the MSG91 path only
-  // ever hands it an Indian number it is about to SMS as `91${phone}`). This is the
+  // normalizeIndianMobile() was written for numbers typed into an Indian-mobile
+  // field (the OTP path only ever hands it one of those). This is the
   // first caller that feeds it an E.164 string the CALLER controls, and it is not
   // safe for that: its foreign-number guard is `if (parsed.country && parsed.country
   // !== 'IN')`, which is skipped entirely when libphonenumber returns no country —

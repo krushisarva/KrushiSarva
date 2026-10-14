@@ -297,8 +297,8 @@ describe('the Resend countdown (L8)', () => {
     expect(auth.current.otpResendSeconds).toBe(60);
   });
 
-  test('stays 30 s on the MSG91 path', async () => {
-    // No adapter injected → the context uses MSG91, which has no send window.
+  test('stays 30 s on the dev OTP path', async () => {
+    // No adapter injected → the context uses the backend OTP, which has no send window.
     const auth = await renderAuth(null);
     expect(auth.current.otpResendSeconds).toBe(OTP_RESEND_SECONDS);
     expect(auth.current.otpResendSeconds).toBe(30);

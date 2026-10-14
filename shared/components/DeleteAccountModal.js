@@ -61,7 +61,7 @@ export default function DeleteAccountModal({ visible, onClose }) {
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
   const [cooldown,  setCooldown]  = useState(0);
-  // Dev/staging convenience: with MSG91 unset the backend returns the OTP in the
+  // Dev/staging convenience: the backend's dev OTP path returns the OTP in the
   // send response so there is something to type without a real SMS.
   const [devOtp,    setDevOtp]    = useState('');
 
