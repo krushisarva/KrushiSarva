@@ -15,7 +15,8 @@
 **/.vscode
 **/.idea
 
-# Other services aren't part of the backend image.
+# Other services aren't part of the backend image (the admin panel is built on Vercel).
+admin/
 fastapi/
 frontend/
 docs/
