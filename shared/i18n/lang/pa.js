@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'ਇਸ ਖਾਤੇ ਉੱਤੇ ਕੋਈ ਫ਼ੋਨ ਨੰਬਰ ਨਹੀਂ ਹੈ।',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'ਨਵਾਂ ਵਰਜ਼ਨ ਉਪਲਬਧ ਹੈ',
+    updateNow:       'ਹੁਣੇ ਅੱਪਡੇਟ ਕਰੋ',
+    later:           'ਬਾਅਦ ਵਿੱਚ',
+    updating:        'ਅੱਪਡੇਟ ਹੋ ਰਿਹਾ ਹੈ…',
+    restartToUpdate: 'ਰੀਸਟਾਰਟ ਕਰਕੇ ਅੱਪਡੇਟ ਕਰੋ',
+    failed:          'ਅੱਪਡੇਟ ਨਹੀਂ ਹੋ ਸਕਿਆ। ਆਪਣਾ ਇੰਟਰਨੈੱਟ ਵੇਖੋ।',
+    retry:           'ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ',
+    versionLabel:    'ਐਪ ਵਰਜ਼ਨ',
+    builtIn:         'ਮੂਲ',
+    check:           'ਅੱਪਡੇਟ ਚੈੱਕ ਕਰੋ',
+    checking:        'ਚੈੱਕ ਹੋ ਰਿਹਾ ਹੈ…',
+    upToDate:        'ਐਪ ਪੂਰੀ ਤਰ੍ਹਾਂ ਅੱਪਡੇਟ ਹੈ',
+    checkFailed:     'ਚੈੱਕ ਨਹੀਂ ਹੋ ਸਕਿਆ। ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+    bannerA11y:      'ਐਪ ਦਾ ਨਵਾਂ ਵਰਜ਼ਨ ਉਪਲਬਧ ਹੈ',
+  },
+
   posts: 'ਪੋਸਟਾਂ',
   questions: 'ਸਵਾਲ',
   helpful: 'ਮਦਦਗਾਰ',

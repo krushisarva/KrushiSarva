@@ -74,6 +74,10 @@ import api, { safeErrorMessage } from "@krushisarva/shared/services/api";
 import { BUSINESS_TYPES } from "@krushisarva/shared/constants/locations";
 import { LEGAL_URLS } from "@krushisarva/shared/constants/config";
 import DeleteAccountModal from "@krushisarva/shared/components/DeleteAccountModal";
+import {
+  useAppUpdate,
+  describeUpdateRow,
+} from "@krushisarva/shared/hooks/useAppUpdate";
 
 import {
   C,
@@ -198,6 +202,70 @@ function SwitchRow({ icon, label, value, checked, onChange, disabled, last }) {
         accessibilityLabel={label}
         accessibilityHint={value}
       />
+    </View>
+  );
+}
+
+/**
+ * App version and the manual update check. Updates no longer apply by
+ * themselves on the next launch; this row and the shared banner are how a
+ * seller gets one. Status comes from the shared store, so a check the banner
+ * already ran shows here too.
+ */
+function VersionRow({ last }) {
+  const { t } = useLanguage();
+  const appUpdate = useAppUpdate();
+  const { info, checkNow, updateNow } = appUpdate;
+  // Note, button and action per state (shared with the farmer row).
+  const model = describeUpdateRow(appUpdate);
+  const label = t("appUpdate.versionLabel", "App version");
+  const version = `${info?.version ?? ""} · ${
+    info?.updateId || t("appUpdate.builtIn", "built-in")
+  }`;
+  const note = model.note ? t(...model.note) : null;
+
+  return (
+    <View style={[r.row, !last && r.rowRuled]}>
+      <View style={r.rowIcon}>
+        <Ionicons name="phone-portrait-outline" size={18} color={C.brandInk} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View accessible accessibilityLabel={`${label}: ${version}`}>
+          <Text style={r.rowLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={r.rowValue} numberOfLines={1}>
+            {version}
+          </Text>
+        </View>
+        {note ? (
+          <Text
+            style={[r.rowValue, model.noteIsError && r.rowNoteError]}
+            accessibilityLiveRegion="polite"
+          >
+            {note}
+          </Text>
+        ) : null}
+        {/* Dev builds and builds without expo-updates have nothing to check.
+            Under the text, not beside it: the Button is one line, and the
+            long ta/te/ml labels need the column's full width. */}
+        {model.showButton ? (
+          <Button
+            size="sm"
+            variant={model.runs === "update" ? "primary" : "secondary"}
+            label={t(...model.action)}
+            loading={model.busy}
+            onPress={() =>
+              // The hook reports failures through `status`; this only keeps
+              // a stray rejection quiet.
+              Promise.resolve()
+                .then(model.runs === "update" ? updateNow : checkNow)
+                .catch(() => {})
+            }
+            style={r.rowAction}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -793,8 +861,8 @@ export default function SellerProfileScreen({ navigation }) {
               label={t("sellerProfile.privacy", "Privacy policy")}
               onPress={() => openUrl(PRIVACY_URL)}
               hint={t("common.opensBrowser", "Opens in your browser")}
-              last
             />
+            <VersionRow last />
           </SectionCard>
 
           {/* Delete account — DPDP §8 right to erasure. A card of its own rather
@@ -905,4 +973,6 @@ const r = StyleSheet.create({
     borderColor: alpha(C.danger, 0.3),
   },
   rowLabelDanger: { color: C.danger },
+  rowNoteError: { color: C.danger },
+  rowAction: { alignSelf: "flex-start", maxWidth: "100%", marginTop: SP.sm },
 });

@@ -40,6 +40,7 @@ import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
 import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 import InAppChatBanner from './src/components/InAppChatBanner';
+import AppUpdateBanner from '@krushisarva/shared/components/AppUpdateBanner';
 import { COLORS } from '@krushisarva/shared/constants/colors';
 import { TEXT_FIELD_NO_RING_CSS } from '@krushisarva/shared/utils/webFocusCss';
 import PopupHost from './src/components/PopupHost';
@@ -154,6 +155,9 @@ export default function App() {
               onboarding screens raise pop-ups too — and inside LanguageProvider
               for the translated "OK". */}
           <PopupHost />
+          {/* "New version available" — floats over every screen, signed in or
+              not, so it sits outside AuthProvider. */}
+          <AppUpdateBanner />
         </LanguageProvider>
       </SafeAreaProvider>
     </RootErrorBoundary>

@@ -352,6 +352,24 @@ export const translations = {
       errNoPhone:    'No phone number on this account.',
     },
 
+    // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+    appUpdate: {
+      available:       'New version available',
+      updateNow:       'Update now',
+      later:           'Later',
+      updating:        'Updating…',
+      restartToUpdate: 'Restart to update',
+      failed:          "Couldn't update. Check your internet.",
+      retry:           'Try again',
+      versionLabel:    'App version',
+      builtIn:         'built-in',
+      check:           'Check for updates',
+      checking:        'Checking…',
+      upToDate:        "You're up to date",
+      checkFailed:     "Couldn't check. Try again.",
+      bannerA11y:      'A new version of the app is available',
+    },
+
     posts: 'Posts',
     questions: 'Questions',
     helpful: 'Helpful',
@@ -3156,6 +3174,24 @@ export const translations = {
       errNoPhone:    'इस खाते पर कोई फ़ोन नंबर नहीं है।',
     },
 
+    // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+    appUpdate: {
+      available:       'नया वर्ज़न उपलब्ध है',
+      updateNow:       'अभी अपडेट करें',
+      later:           'बाद में',
+      updating:        'अपडेट हो रहा है…',
+      restartToUpdate: 'रीस्टार्ट करके अपडेट करें',
+      failed:          'अपडेट नहीं हो सका। अपना इंटरनेट जांचें।',
+      retry:           'फिर कोशिश करें',
+      versionLabel:    'ऐप वर्ज़न',
+      builtIn:         'मूल',
+      check:           'अपडेट जांचें',
+      checking:        'जांच हो रही है…',
+      upToDate:        'ऐप पूरी तरह अपडेट है',
+      checkFailed:     'जांच नहीं हो सकी। फिर कोशिश करें।',
+      bannerA11y:      'ऐप का नया वर्ज़न उपलब्ध है',
+    },
+
     posts: 'पोस्ट',
     questions: 'प्रश्न',
     helpful: 'सहायक',
@@ -5675,6 +5711,24 @@ export const translations = {
       errNetwork:    'कनेक्शन नाही. तुमचे इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.',
       errGeneric:    'तुमचे खाते हटवता आले नाही. कृपया पुन्हा प्रयत्न करा.',
       errNoPhone:    'या खात्यावर फोन नंबर नाही.',
+    },
+
+    // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+    appUpdate: {
+      available:       'नवीन आवृत्ती उपलब्ध आहे',
+      updateNow:       'आता अपडेट करा',
+      later:           'नंतर',
+      updating:        'अपडेट होत आहे…',
+      restartToUpdate: 'रीस्टार्ट करून अपडेट करा',
+      failed:          'अपडेट झाले नाही. तुमचे इंटरनेट तपासा.',
+      retry:           'पुन्हा प्रयत्न करा',
+      versionLabel:    'ॲप आवृत्ती',
+      builtIn:         'मूळ',
+      check:           'अपडेट तपासा',
+      checking:        'तपासत आहे…',
+      upToDate:        'ॲप पूर्णपणे अपडेट आहे',
+      checkFailed:     'तपासता आले नाही. पुन्हा प्रयत्न करा.',
+      bannerA11y:      'ॲपची नवीन आवृत्ती उपलब्ध आहे',
     },
 
     posts: 'पोस्ट',

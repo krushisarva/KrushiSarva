@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'ఈ ఖాతాలో ఫోన్ నంబర్ లేదు.',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'కొత్త వెర్షన్ అందుబాటులో ఉంది',
+    updateNow:       'ఇప్పుడే అప్‌డేట్ చేయండి',
+    later:           'తర్వాత',
+    updating:        'అప్‌డేట్ అవుతోంది…',
+    restartToUpdate: 'అప్‌డేట్ కోసం రీస్టార్ట్ చేయండి',
+    failed:          'అప్‌డేట్ కాలేదు. మీ ఇంటర్నెట్ తనిఖీ చేయండి.',
+    retry:           'మళ్లీ ప్రయత్నించండి',
+    versionLabel:    'యాప్ వెర్షన్',
+    builtIn:         'అసలు',
+    check:           'అప్‌డేట్ కోసం తనిఖీ చేయండి',
+    checking:        'తనిఖీ చేస్తోంది…',
+    upToDate:        'మీ యాప్ తాజాగా ఉంది',
+    checkFailed:     'తనిఖీ చేయలేకపోయాం. మళ్లీ ప్రయత్నించండి.',
+    bannerA11y:      'యాప్ కొత్త వెర్షన్ అందుబాటులో ఉంది',
+  },
+
   posts: 'పోస్ట్‌లు',
   questions: 'ప్రశ్నలు',
   helpful: 'సహాయకరమైనవి',

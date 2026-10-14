@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'এই অ্যাকাউন্টে কোনো ফোন নম্বর নেই।',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'নতুন সংস্করণ এসেছে',
+    updateNow:       'এখনই আপডেট করুন',
+    later:           'পরে',
+    updating:        'আপডেট হচ্ছে…',
+    restartToUpdate: 'রিস্টার্ট করে আপডেট করুন',
+    failed:          'আপডেট করা যায়নি। আপনার ইন্টারনেট দেখুন।',
+    retry:           'আবার চেষ্টা করুন',
+    versionLabel:    'অ্যাপ সংস্করণ',
+    builtIn:         'মূল',
+    check:           'আপডেট দেখুন',
+    checking:        'পরীক্ষা করা হচ্ছে…',
+    upToDate:        'অ্যাপ সম্পূর্ণ আপডেট আছে',
+    checkFailed:     'পরীক্ষা করা যায়নি। আবার চেষ্টা করুন।',
+    bannerA11y:      'অ্যাপের নতুন সংস্করণ এসেছে',
+  },
+
   posts: 'পোস্ট',
   questions: 'প্রশ্ন',
   helpful: 'সহায়ক',

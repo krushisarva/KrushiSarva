@@ -28,6 +28,8 @@ import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
 import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { useAppUpdate, describeUpdateRow } from '@krushisarva/shared/hooks/useAppUpdate';
+import Button from '@krushisarva/shared/components/ui/Button';
 import { sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 import DeleteAccountModal from './DeleteAccountModal';
 import Svg, { Circle, Defs, RadialGradient as SvgRadialGradient, Stop, Path } from 'react-native-svg';
@@ -112,6 +114,54 @@ function RowItem({ icon, iconColor, label, subtitle, onPress, showArrow = true, 
         <Ionicons name="chevron-forward" size={18} color={KHET.mutedForeground} />
       ))}
     </TouchableOpacity>
+  );
+}
+
+// App version + the manual update check. Updates no longer apply by themselves
+// on the next launch; this row and the shared banner are how a farmer gets one.
+// The status comes from the shared store, so a check the banner already ran
+// shows here too.
+function AppVersionRow({ isLast }) {
+  const { t } = useLanguage();
+  const appUpdate = useAppUpdate();
+  const { info, checkNow, updateNow } = appUpdate;
+  // Note, button and action per state (shared with the seller row).
+  const row = describeUpdateRow(appUpdate);
+  const label = t('appUpdate.versionLabel', 'App version');
+  const version = `${info?.version ?? ''} · ${info?.updateId || t('appUpdate.builtIn', 'built-in')}`;
+  const note = row.note ? t(...row.note) : null;
+  const onAction = () => {
+    // The hook reports failures through `status`; this only keeps a stray rejection quiet.
+    Promise.resolve().then(row.runs === 'update' ? updateNow : checkNow).catch(() => {});
+  };
+  return (
+    <View style={[S.rowItem, isLast && { borderBottomWidth: 0 }]}>
+      <View style={[S.rowIcon, { backgroundColor: D.green + '18' }]}>
+        <Ionicons name="phone-portrait-outline" size={18} color={D.green} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View accessible accessibilityLabel={`${label}, ${version}`}>
+          <Text style={S.rowLabel}>{label}</Text>
+          <Text style={S.rowSubtitle} numberOfLines={1}>{version}</Text>
+        </View>
+        {note ? (
+          <Text style={[S.rowSubtitle, row.noteIsError && S.updateNoteError]} accessibilityLiveRegion="polite">{note}</Text>
+        ) : null}
+      </View>
+      {/* Dev builds and builds without expo-updates have nothing to check.
+          The shared Button keeps its width while the spinner shows. */}
+      {row.showButton ? (
+        <Button
+          title={t(...row.action)}
+          tone={row.runs === 'update' ? 'primary' : 'outline'}
+          size="md"
+          pill
+          loading={row.busy}
+          onPress={onAction}
+          style={S.updateBtn}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -876,7 +926,8 @@ export default function ProfileScreen({ navigation }) {
             <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => showPopup(t('profile.thankYou'), t('profile.thankYouMsg'))} />
             <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => showPopup(t('profile.support'), t('profile.callUs'))} />
             <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal(LEGAL_URLS.terms)} />
-            <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} isLast />
+            <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} />
+            <AppVersionRow isLast />
           </SectionCard>
 
           {/* Seller handoff — only for accounts the backend already flipped to
@@ -1264,6 +1315,9 @@ const S = StyleSheet.create({
   },
   rowLabel: { fontSize: 14.5, fontFamily: KFONT.sansSemi, color: KHET.foreground },
   rowSubtitle: { fontSize: 12, color: KHET.mutedForeground, fontFamily: KFONT.sans, marginTop: 2 },
+  // App version row: outline pill to check, solid pill once an update is offered.
+  updateBtn: { maxWidth: '45%', alignSelf: 'center' },
+  updateNoteError: { color: KHET.destructiveInk },
 
   quickGrid: { flexDirection: 'row', paddingBottom: 4 },
   quickTile: {
