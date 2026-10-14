@@ -5,9 +5,19 @@
  * A non-ADMIN account is hard-rejected client-side (the server ALSO enforces ADMIN
  * on every /admin route — this is just UX). On reload the session is recovered via
  * the httpOnly refresh cookie. An idle-timeout auto-logs-out, mirroring the app.
+ *
+ * When the build has a Firebase web config (FIREBASE_WEB_ENABLED), the SMS code is
+ * sent and checked by Firebase instead, and the resulting ID token goes to
+ * /auth/firebase-login with audience 'admin' — the server then refuses any phone
+ * whose account is not ADMIN without creating anything. Everything after login
+ * (cookies, CSRF, refresh, idle logout) is the same session either way.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { isAxiosError } from 'axios';
 import { api, apiPost, decodeJwt, getAccessToken, onSessionLost, performRefresh, setAccessToken } from './api';
+import {
+  FIREBASE_WEB_ENABLED, FirebasePhoneError, RECAPTCHA_CONTAINER_ID, startPhoneSignIn, type PhoneChallenge,
+} from './firebasePhone';
 
 const IDLE_TIMEOUT_MS = 20 * 60 * 1000; // 20 min of inactivity → auto-logout
 
@@ -19,6 +29,9 @@ export interface AdminUser {
 }
 
 type Status = 'loading' | 'unauthed' | 'authed';
+
+// /auth/verify-otp and /auth/firebase-login return the same session payload.
+interface LoginResponse { accessToken: string; csrfToken?: string; user: AdminUser }
 
 interface AuthState {
   status: Status;
@@ -100,14 +113,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [status, logout]);
 
+  // Firebase path only: the pending SMS verification (holds the reCAPTCHA widget).
+  const challenge = useRef<PhoneChallenge | null>(null);
+  const dropChallenge = () => { challenge.current?.dispose(); challenge.current = null; };
+
   const sendOtp = async (phone: string) => {
+    if (FIREBASE_WEB_ENABLED) {
+      // Google sends the SMS; there is never a devOtp on this path.
+      dropChallenge();
+      challenge.current = await startPhoneSignIn(phone, RECAPTCHA_CONTAINER_ID);
+      return {};
+    }
     // In dev (no SMS provider) the backend returns devOtp so the login screen can
     // show / auto-fill it. It is absent in production (guarded server-side).
     return apiPost<{ sessionId: string; devOtp?: string }>('/auth/send-otp', { phone });
   };
 
+  const firebaseLogin = async (otp: string) => {
+    const pending = challenge.current;
+    if (!pending) throw new FirebasePhoneError('No verification in progress. Please request a new code.');
+    const idToken = await pending.confirm(otp);
+    try {
+      // audience 'admin' only narrows the route: no session unless this phone's
+      // account is ADMIN, and no account, consent row or cookie is created
+      // otherwise. Role and scopes are never sent — the server reads its DB.
+      const data = await apiPost<LoginResponse>('/auth/firebase-login', { idToken, audience: 'admin' });
+      dropChallenge();
+      return data;
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      // A 4xx is a verdict on this token (not admin, inactive, locked, rejected):
+      // the next try needs a new code. A 5xx / network error, or a 429 (only
+      // "slow down"), keeps the proven token so "Verify" can be pressed again.
+      if (status !== undefined && status < 500 && status !== 429) dropChallenge();
+      if (status === 403 && isAxiosError(err) && err.response?.data?.error?.details?.code === 'NOT_ADMIN') {
+        setNotAdmin(true);
+        setStatus('unauthed');
+      }
+      throw err;
+    }
+  };
+
   const verifyOtp = async (phone: string, otp: string) => {
-    const data = await apiPost<{ accessToken: string; csrfToken?: string; user: AdminUser }>('/auth/verify-otp', { phone, otp });
+    const data = FIREBASE_WEB_ENABLED
+      ? await firebaseLogin(otp)
+      : await apiPost<LoginResponse>('/auth/verify-otp', { phone, otp });
     setAccessToken(data.accessToken);
     const role = data.user?.role || decodeJwt(data.accessToken)?.role;
     if (role !== 'ADMIN') {

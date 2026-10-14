@@ -16,6 +16,8 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// Auth calls made with no session: a 401 from them is never "refresh and retry".
+const PRE_AUTH_URL = /\/auth\/(refresh|send-otp|verify-otp|firebase-login)(\?|$)/;
 
 // ── In-memory access token + session listeners ───────────────────────────────
 let accessToken: string | null = null;
@@ -68,7 +70,9 @@ api.interceptors.response.use(
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const status = error.response?.status;
     // Don't try to refresh the refresh call itself, or already-retried requests.
-    if (status === 401 && original && !original._retry && !String(original.url || '').includes('/auth/refresh')) {
+    // Nor a login call: its 401 is a verdict on the credential (e.g. a rejected
+    // Firebase token), not an expired session, and must reach the login screen.
+    if (status === 401 && original && !original._retry && !PRE_AUTH_URL.test(String(original.url || ''))) {
       original._retry = true;
       try {
         const token = await performRefresh();

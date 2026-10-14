@@ -294,7 +294,7 @@ export const AUTH_ACTIONS = {
   LOGIN: "AUTH_LOGIN",
   LOGIN_RISKY: "AUTH_LOGIN_RISKY", // successful login flagged by risk signals (new device / IP)
   LOGIN_GEO_ANOMALY: "AUTH_LOGIN_GEO_ANOMALY", // login flagged by geo anomaly (impossible travel / new country) — FRAUD-4
-  LOGIN_BLOCKED: "AUTH_LOGIN_BLOCKED", // phone proven, but the account is deactivated — no session issued
+  LOGIN_BLOCKED: "AUTH_LOGIN_BLOCKED", // phone proven, but the account is deactivated or lacks the required role (admin login) — no session issued
   LOGOUT: "AUTH_LOGOUT",
   OTP_FAILURE: "AUTH_OTP_FAILURE",
   OTP_LOCKOUT: "AUTH_OTP_LOCKOUT",
