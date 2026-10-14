@@ -1,0 +1,19 @@
+# Keep the AI image lean and never ship local installs or secrets.
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+*.log
+
+# Not needed at runtime.
+tests/
+eval/
+docs/
+railway.json

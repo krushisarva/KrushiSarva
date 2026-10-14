@@ -1,0 +1,19 @@
+# KrushiSarva reverse proxy. Caddy runs on the host network (deploy/docker-compose.yml)
+# and gets a Let's Encrypt certificate for this hostname automatically.
+# Design: docs/deploy/VPS_DEPLOY_PLAN.md §5.2.
+
+srv2061596.hstgr.cloud {
+	# Internal metrics stay internal. On the host use: curl 127.0.0.1:3000/readyz
+	@internal path /readyz /readyz/*
+	respond @internal 404
+
+	# Everything else goes to Express: /api/v1, /socket.io (WebSocket upgrade is automatic),
+	# /admin, /legal, /healthz. No `encode`: Express already compresses.
+	# keepalive 55s stays below Node's 65 s keepAliveTimeout (backend/src/server.js), so
+	# Caddy never reuses a socket Node is closing (which would turn some POSTs into 502s).
+	reverse_proxy 127.0.0.1:3000 {
+		transport http {
+			keepalive 55s
+		}
+	}
+}
