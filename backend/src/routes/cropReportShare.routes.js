@@ -461,7 +461,7 @@ router.get('/:reportId/shares', authenticate, async (req, res) => {
 router.get('/seller/inbox', authenticate, async (req, res) => {
   const page  = parsePageNumber(req.query.page);
   const limit = parsePageSize(req.query.limit, 20, 50);
-  const status = req.query.status; // optional: PENDING | REPLIED | CLOSED
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined; // optional: PENDING | REPLIED | CLOSED
 
   const where = {
     sellerId: req.user.id,

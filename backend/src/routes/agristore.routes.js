@@ -115,6 +115,7 @@ import {
 } from '../services/orderDelivery.service.js';
 import { withMyReviews } from '../services/orderReview.service.js';
 import { listSellerReviews } from '../services/sellerReviews.service.js';
+import { attachSellerPaymentState } from '../services/sellerPayment.service.js';
 
 const router = Router();
 router.param('id', uuidParamGuard);        // product / order id
@@ -3327,6 +3328,11 @@ router.get('/seller/orders', authenticate, requireRole(...SELLER_ROLES), async (
   // app needs to decide whether to ask for a code. One batched query for the
   // page. The code itself is never sent to the seller, in any form.
   await attachSellerDeliveryState(items, req.user.id);
+
+  // `order.payment: { method, status, amountDue, lines, unpaidOnline }` — has the
+  // buyer paid, and if not, how much THIS seller takes at the door. One batched
+  // query for the page; a display only, nothing is written (see the service).
+  await attachSellerPaymentState(items, req.user.id);
 
   return sendSuccess(res, items, 200, paginationMeta(total, page, limit));
 });

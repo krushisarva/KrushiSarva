@@ -41,6 +41,7 @@ import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachab
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 import InAppChatBanner from './src/components/InAppChatBanner';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import { TEXT_FIELD_NO_RING_CSS } from '@krushisarva/shared/utils/webFocusCss';
 import PopupHost from './src/components/PopupHost';
 
 function RootNavigator() {
@@ -110,6 +111,10 @@ export default function App() {
       html, body { height: auto !important; min-height: 100%; overflow-y: auto !important; }
       #root { height: auto !important; min-height: 100vh; overflow: visible !important; display: block !important; }
       #root > div { height: auto !important; min-height: 100vh; overflow: visible !important; }
+      /* One border per text field: without this the browser draws its own
+         focus ring inside (or round) the border the field already has, on
+         every click — see shared/utils/webFocusCss.js. */
+      ${TEXT_FIELD_NO_RING_CSS}
     `;
     document.head.appendChild(style);
     return () => style.remove();

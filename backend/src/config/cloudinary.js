@@ -62,7 +62,8 @@ export function createUploader(maxFiles = 5) {
 export function createAvatarUploader() {
   return multer({
     storage: memoryStorage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB for avatar (frontend compresses to ~200KB)
+    // One file: `.any()` accepts every part, and each is buffered in memory.
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 }, // 5 MB for avatar (frontend compresses to ~200KB)
     fileFilter: (_req, file, cb) => {
       if (!file.mimetype?.startsWith('image/')) {
         return cb(new Error('Only image files are allowed'));

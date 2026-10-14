@@ -26,6 +26,19 @@
  * what it was: one confirm marks delivered, and a shipped order offers no way
  * out — that server would refuse it.
  *
+ * THE MONEY
+ * ---------
+ * The card printed the payment METHOD in capitals — "COD", "UPI" — which says
+ * neither whether an online order was actually paid nor how much to take for a
+ * cash one. The only figure on the card is one LINE's total, which is not what
+ * is owed: it leaves out the delivery charge and the seller's other lines on the
+ * same order. Each card now carries one plain statement — "Collect ₹609.00 in
+ * cash", "Paid online. Do not collect cash.", "The buyer is being refunded" —
+ * and the same statement is repeated at the moment of hand-over, in the
+ * "mark delivered" step, which is when it matters. The amount is the server's
+ * (`order.payment`); the words are decided in utils/orderPayment.js. Nothing
+ * here records that cash was collected.
+ *
  * THE CARD IS A JOURNEY, NOT A BADGE
  * ----------------------------------
  * The old card told you an order's state with a single coloured pill, which
@@ -69,13 +82,13 @@ import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 import DashboardStatIcon from '@krushisarva/shared/components/DashboardStatIcons';
 
 import {
-  C, SP, T, formatCurrency, orderStatusLabel, orderStatusMeta, useResponsive,
+  C, R, SP, T, formatCurrency, orderStatusLabel, orderStatusMeta, useResponsive,
 } from '../theme';
 import usePagedList from '../hooks/usePagedList';
 import { useEntrance } from '../hooks/useMotion';
 import { useNetwork } from '../hooks/useNetwork';
 import {
-  STATUS_FLOW, moveSellerLines, nextStatusFor, orderItemQty,
+  STATUS_FLOW, moveSellerLines, nextStatusFor, orderItemQty, orderShortId,
   sellerStatusByOrder, sellerStatusOf,
 } from '../utils/sellerOrders';
 import {
@@ -83,6 +96,7 @@ import {
   isStaleStatusRefusal, patchDelivery, refusalText, statusPrompt,
 } from '../utils/orderDelivery';
 import { deliveryPhone, mapQuery, mapUrls, telUrl } from '../utils/orderContact';
+import { handoverReminder, paymentNotice, paymentText } from '../utils/orderPayment';
 import { openExternalUrl } from '../utils/openUrl';
 import { refusalMessage } from '../utils/apiError';
 import OrderActionSheet from '../components/OrderActionSheet';
@@ -93,6 +107,21 @@ import {
 } from '../components/ui';
 
 const FILTERS = ['All', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+
+// How each kind of payment statement is coloured. Never the only signal: each
+// also has its own icon and its own words (utils/orderPayment.js).
+//   collect  cash to take          amber — the one that asks the seller to act
+//   paid     nothing to take       green
+//   refund   money going back      blue
+//   warn     an online order that was never paid — an anomaly, so red
+//   quiet    history: delivered, or cancelled with nothing owed
+const PAY_TONE = {
+  collect: { ink: C.warning, fill: C.warningPale, line: C.warningPale },
+  paid:    { ink: C.success, fill: C.successPale, line: C.successPale },
+  refund:  { ink: C.info, fill: C.infoPale, line: C.infoPale },
+  warn:    { ink: C.danger, fill: C.dangerPale, line: C.dangerPale },
+  quiet:   { ink: C.textBody, fill: C.neutralPale, line: C.border },
+};
 const PAGE_SIZE = 20;
 
 // Printed like the buyer line's "+91 …". Checkout accepts any shape whose last
@@ -169,18 +198,41 @@ const OrderCard = React.memo(function OrderCard({
   const canMap = !!next && !!mapQuery(address);
   const recipient = (address && typeof address === 'object' && String(address.name ?? '').trim()) || buyerName;
 
+  // What to say about the money, for THIS seller's part of the order and the
+  // status this card is showing — see utils/orderPayment.js.
+  const pay = paymentNotice(item, status);
+  const paySaid = paymentText(pay, t, formatCurrency);
+  const payTone = PAY_TONE[pay?.tone] || PAY_TONE.quiet;
+
   const createdAt = item.order?.createdAt ? new Date(item.order.createdAt) : null;
   const dateLabel = createdAt && !Number.isNaN(createdAt.getTime())
     ? createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
+  // The number the farmer sees on their own order, so the two of them can name
+  // the same order on a call.
+  const orderNo = orderShortId(item.order);
 
   return (
     <Animated.View style={entrance}>
       <Card style={o.card} accent={meta.color}>
-        {/* Date leads the card as an eyebrow. It used to be a stray line of
-            grey text under the buttons, which is where nobody looks. */}
+        {/* Date and order number lead the card as an eyebrow. The date used to
+            be a stray line of grey text under the buttons, where nobody looks;
+            the number was not shown at all. Two items in a wrapping row, with
+            no dot between them: beside a long status pill the number drops to
+            its own line whole, and nothing is left dangling at the end of the
+            first. Read out as one thing, the number letter by letter. */}
         <View style={o.head}>
-          <Text style={o.date} numberOfLines={1}>{dateLabel}</Text>
+          <View
+            style={o.headMeta}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={orderNo
+              ? `${dateLabel}, ${t('orderConfirmed.orderId', 'Order ID')} ${orderNo.slice(1).split('').join(' ')}`
+              : dateLabel}
+          >
+            <Text style={o.date} numberOfLines={1}>{dateLabel}</Text>
+            {orderNo ? <Text style={o.date} numberOfLines={1}>{orderNo}</Text> : null}
+          </View>
           <StatusPill status={status} t={t} size="sm" />
         </View>
 
@@ -217,13 +269,30 @@ const OrderCard = React.memo(function OrderCard({
               value: formatCurrency(item.totalPrice),
               color: C.accentInk,
             },
-            {
-              label: t('orders.payment', 'Payment'),
-              value: item.order?.paymentMethod?.toUpperCase() || '—',
-            },
           ]}
           style={{ marginTop: SP.lg }}
         />
+
+        {/* The money, in words. One accessible element: a screen reader says
+            the instruction and its explanation as one thing. An icon as well as
+            a colour, so "collect" and "paid" are not told apart by hue alone. */}
+        {paySaid ? (
+          <View
+            style={[o.pay, { backgroundColor: payTone.fill, borderColor: payTone.line }]}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={[paySaid.title, paySaid.hint, paySaid.detail].filter(Boolean).join('. ')}
+          >
+            <Ionicons name={pay.icon} size={20} color={payTone.ink} style={o.payIcon} />
+            <View style={o.payBody}>
+              <Text style={[o.payTitle, { color: payTone.ink }]}>{paySaid.title}</Text>
+              {paySaid.hint ? <Text style={o.payHint}>{paySaid.hint}</Text> : null}
+              {/* What the amount is made of. The "Amount" above is one line's
+                  goods; this is why the figure here is not the same. */}
+              {paySaid.detail ? <Text style={o.payDetail}>{paySaid.detail}</Text> : null}
+            </View>
+          </View>
+        ) : null}
 
         {delivery ? (
           <View style={o.addrRow}>
@@ -393,6 +462,8 @@ export default function OrdersScreen({ navigation }) {
         step: prompt,
         hasCode: !!info?.hasCode,
         lockedUntil: info?.lockedUntil ?? null,
+        // Said again at the door, where the money actually changes hands.
+        payment: newStatus === 'DELIVERED' ? handoverReminder(item, fromStatus, t, formatCurrency) : null,
       });
       return;
     }
@@ -402,6 +473,9 @@ export default function OrdersScreen({ navigation }) {
     // On a backend that issues delivery codes, this is the tap that creates
     // one. Saying so is what makes the seller ask for it at the door.
     const startsDelivery = newStatus === 'SHIPPED' && !!info;
+    // One-tap delivery (no code to ask for): the confirmation is the last thing
+    // read before the goods are handed over, so the money is said there.
+    const reminder = newStatus === 'DELIVERED' ? handoverReminder(item, fromStatus, t, formatCurrency) : null;
 
     const ok = await confirm({
       title: destructive
@@ -411,7 +485,7 @@ export default function OrdersScreen({ navigation }) {
         ? t('orders.cancelMsg', { defaultValue: 'The buyer will be notified that this order is cancelled. This cannot be undone.' })
         : startsDelivery
           ? t('sellerOrders.outForDeliveryMsg', 'The farmer will get a 4-digit delivery code. Ask for it when you hand over the order.')
-          : t('orders.markAsMsg', { status: label }),
+          : [reminder?.text, t('orders.markAsMsg', { status: label })].filter(Boolean).join('\n\n'),
       confirmLabel: destructive ? t('orders.cancelOrder', 'Cancel order') : t('orders.confirm', 'Confirm'),
       cancelLabel: t('cancel', 'Cancel'),
       destructive,
@@ -652,10 +726,32 @@ const o = StyleSheet.create({
     gap: SP.md,
     marginBottom: SP.md,
   },
+  // Shrinks before the status pill does; its two items wrap as whole words.
+  headMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: SP.md, rowGap: 2, flexShrink: 1, minWidth: 0 },
   date: { ...T.micro, color: C.textFaint, textTransform: 'uppercase', flexShrink: 1 },
 
   product: { ...T.subhead, color: C.text },
   buyer: { ...T.caption, color: C.textMuted, marginTop: SP.xs },
+
+  // The payment statement. A filled strip rather than another metric: it is an
+  // instruction ("collect", "do not collect"), and the three figures above it
+  // are facts about the line.
+  pay: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SP.md,
+    marginTop: SP.lg,
+    paddingVertical: SP.md,
+    paddingHorizontal: SP.lg,
+    borderRadius: R.lg,
+    borderWidth: 1,
+  },
+  payIcon: { marginTop: 1 },
+  payBody: { flex: 1, minWidth: 0, gap: SP.xxs },
+  payTitle: { ...T.bodyBold },
+  payHint: { ...T.caption, color: C.textBody },
+  // Figures, so the bolder caption: "Items ₹540 + delivery ₹69".
+  payDetail: { ...T.captionBold, color: C.textBody, marginTop: SP.xxs },
 
   flow: { marginTop: SP.lg, gap: SP.sm },
   flowTxt: { ...T.micro, color: C.textMuted, textTransform: 'uppercase' },

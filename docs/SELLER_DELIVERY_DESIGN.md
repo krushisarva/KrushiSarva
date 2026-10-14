@@ -1,8 +1,9 @@
 # Seller Delivery — Documentation & Design
 
-**Status:** phases 1 to 4 are written and tested, and sit on the branch
-`feat/seller-delivery-reviews` — not merged into `main`, not deployed, and not
-yet run on a phone. Phase 5 is not started; it waits for decisions D3 and D4.
+**Status:** phases 1 to 4 are written and tested, and are in `main` (pull
+request #9, merged 2026-10-13) — not deployed, and not yet run on a phone.
+Production still needs the database script of section 7 BEFORE `main` is
+deployed. Phase 5 is not started; it waits for decisions D3 and D4.
 **Start with section 0.**
 **Date:** 2026-10-13. Section 2 describes the code at commit `fb7b4c8`, before
 this work.
@@ -22,18 +23,23 @@ riders, and delivery for Rent or AnimalTrade.
 
 ## 0. Where this stands (2026-10-13)
 
-**Phases 1 to 4 are written and tested. Nothing is merged, nothing is
-deployed, and nothing has been run on a phone.** The work is one commit on the
-branch `feat/seller-delivery-reviews`, pushed to GitHub. The same commit also
-carries product reviews, the in-app pop-ups that replaced system alerts, the
-Catalog QC review screen and the My Orders redesign; none of those change what
-this document describes.
+**Phases 1 to 4 are written, tested and merged into `main`. Nothing is
+deployed, and nothing has been run on a phone.** The work was one commit
+(`613d9f9`) on the branch `feat/seller-delivery-reviews`, merged as pull request
+#9. The same commit also carries product reviews, the in-app pop-ups that
+replaced system alerts, the Catalog QC review screen and the My Orders redesign;
+none of those change what this document describes.
+
+Built after the merge and described in their own files, not here: the payment
+state a seller sees on each order (`backend/src/services/sellerPayment.service.js`
+— display only, it records nothing, so it is not phase 5) and the farmer's
+order tracking timeline (`frontend/src/screens/AgriStore/orderTracking.js`).
 
 ### 0.1 What to do next, in order
 
 1. Answer the decisions in section 6. D3 and D4 unblock phase 5.
-2. Look through the branch and open a pull request into `main`. Do NOT merge it
-   until step 3's database script has run on production.
+2. `main` now carries this code. Do NOT deploy it until step 3's database
+   script has run on production.
 3. Deploy by section 7: the database script first, then the backend, then a
    new build of both apps.
 4. Run the phone test in 0.4. It has never been done.

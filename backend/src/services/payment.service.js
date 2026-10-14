@@ -122,7 +122,10 @@ export async function fetchPaymentOrder(orderId) {
  * @returns {boolean}
  */
 export function verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature) {
-  if (isMock()) return true;
+  // No keys means nothing can be verified. In development and tests that is the
+  // mock gateway and every payment passes; in production it must fail, or a
+  // keyless server marks any made-up payment id as paid.
+  if (isMock()) return ENV.NODE_ENV !== 'production';
 
   const body = `${razorpayOrderId}|${razorpayPaymentId}`;
   const expectedSignature = crypto

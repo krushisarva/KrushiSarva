@@ -468,9 +468,9 @@ const fs = StyleSheet.create({
   inputShellMultiline: { minHeight: 116, alignItems: 'stretch', paddingVertical: SP.md },
   // Focus is a colour change ONLY. It used to add a shadow and `elevation: 2`,
   // so on Android every focus change also changed the depth of the view that
-  // holds the text box while the keyboard was opening. On web the
-  // :focus-visible ring from App.js sits on top of this; the two are
-  // deliberately different (keyboard focus vs "this is the field you are in").
+  // holds the text box while the keyboard was opening. On web this is the
+  // field's ONE focus mark: no ring is drawn round the input inside it, or the
+  // field would show two borders (shared/utils/webFocusCss.js).
   inputShellFocused: {
     borderColor: C.brand,
     backgroundColor: C.surfaceRaised,
@@ -479,10 +479,15 @@ const fs = StyleSheet.create({
   inputShellDisabled: { backgroundColor: C.surfaceSunken, borderColor: C.border },
   input: {
     flex: 1,
+    // On the web an <input> will not shrink below the width of 20 characters in
+    // its own font. In the large, widely spaced digits of the delivery code
+    // that is wider than a phone-width shell, so the input stuck out of its
+    // border — centred text sat off-centre and the sheet scrolled sideways.
+    minWidth: 0,
     ...T.bodyLg,
     color: C.text,
     paddingVertical: Platform.OS === 'ios' ? SP.md : SP.sm,
-    // RN-Web renders a focus ring on top of ours.
+    // The browser's own focus ring, which would sit inside the shell's border.
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null),
   },
   inputMultiline: { minHeight: 96, paddingTop: SP.xs },

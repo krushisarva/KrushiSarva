@@ -52,7 +52,10 @@ export function CommandPalette() {
             }}
             placeholder="Jump to…"
             aria-label="Jump to a page"
-            className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-slate-500"
+            // No ring: this input has no border of its own — the palette card
+            // around it is the box — and the global focus ring would draw a
+            // second one inside the card every time the palette opens.
+            className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
         <ul className="max-h-80 overflow-y-auto py-1">

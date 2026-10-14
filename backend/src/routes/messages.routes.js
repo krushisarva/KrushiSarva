@@ -165,7 +165,8 @@ router.post(
   authenticate,
   [
     body('text').optional().trim(),
-    body('imageUrl').optional(),
+    body('imageUrl').optional({ values: 'falsy' }).isString().isLength({ max: 500 })
+      .matches(/^https:\/\/\S+$/i).withMessage('imageUrl must be an https URL'),
   ],
   validate,
   async (req, res) => {

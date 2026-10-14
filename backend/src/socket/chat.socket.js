@@ -31,9 +31,22 @@ import prisma from '../config/db.js';
 import { isAccessTokenDenylisted } from '../services/tokenDenylist.service.js';
 import { ENV } from '../config/env.js';
 import logger from '../utils/logger.js';
-import { createConnectionLimiter, onLimited } from './socketRateLimit.js';
+import { createConnectionLimiter, onLimited as onLimitedRaw, isId } from './socketRateLimit.js';
 import { ConnectionRegistry } from './connectionLimiter.js';
 import { cancelVoiceStream, cancelVoiceStreamsForUser } from '../services/voiceStream.registry.js';
+
+// Message text off the wire: strings only, tags stripped, capped — the same
+// rule send_message has always applied. Returns null when nothing is left.
+function cleanText(value) {
+  if (typeof value !== 'string') return null;
+  return value.trim().replace(/<[^>]*>/g, '').substring(0, 2000) || null;
+}
+
+// An image a recipient's device will fetch: https only, bounded length.
+function cleanImageUrl(value) {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  return /^https:\/\/[^\s]+$/i.test(value) ? value : null;
+}
 
 // Per-user socket cap (SCALE-5). One registry per process; entries are dropped
 // as users' last sockets disconnect, so it stays bounded.
@@ -140,6 +153,11 @@ export function registerChatSocket(io) {
     // client can't flood DB writes / broadcast fan-out. `allow(category)` returns
     // false once this socket exceeds its token-bucket budget for that category.
     const allow = createConnectionLimiter();
+    // A handler that throws or rejects is logged, never left to escape: socket.io
+    // calls listeners unguarded, so an escaped throw is an uncaught exception.
+    const onLimited = (sock, allowFn, event, category, handler) => onLimitedRaw(sock, allowFn, event, category, handler, {
+      onError: (err, ev) => logger.warn('[Socket] %s handler failed for %s: %s', ev, userId, err?.message),
+    });
 
     // Auto-join personal room for DMs
     socket.join(`user:${userId}`);
@@ -160,7 +178,7 @@ export function registerChatSocket(io) {
 
     // ── Animal Trade Chat ──────────────────────────────────────────────────────
     onLimited(socket, allow, 'join_chat', 'join', async ({ chatId }) => {
-      if (!chatId) return;
+      if (!isId(chatId)) return;
       const chat = await prisma.chat.findFirst({
         where: { id: chatId, OR: [{ sellerId: userId }, { buyerId: userId }] },
       });
@@ -173,7 +191,7 @@ export function registerChatSocket(io) {
     });
 
     onLimited(socket, allow, 'send_message', 'message', async ({ chatId, text, clientMsgId }) => {
-      if (!chatId || !text?.trim()) return;
+      if (!isId(chatId) || typeof text !== 'string' || !text.trim()) return;
       const chat = await prisma.chat.findFirst({
         where: { id: chatId, OR: [{ sellerId: userId }, { buyerId: userId }] },
       });
@@ -210,7 +228,7 @@ export function registerChatSocket(io) {
     });
 
     onLimited(socket, allow, 'mark_read', 'read', async ({ chatId }) => {
-      if (!chatId) return;
+      if (!isId(chatId)) return;
       // Membership check, the same one join_chat and send_message already do.
       // Without it this handler took an arbitrary chatId from the wire and wrote
       // readAt across a conversation the caller has nothing to do with — so a
@@ -237,7 +255,7 @@ export function registerChatSocket(io) {
 
     // ── Group Chat ──────────────────────────────────────────────────────────────
     onLimited(socket, allow, 'join_group', 'join', async ({ groupId }) => {
-      if (!groupId) return;
+      if (!isId(groupId)) return;
       const member = await prisma.groupMember.findUnique({
         where: { groupId_userId: { groupId, userId } },
       });
@@ -253,11 +271,15 @@ export function registerChatSocket(io) {
     });
 
     onLimited(socket, allow, 'leave_group_room', 'join', ({ groupId }) => {
+      if (!isId(groupId)) return;
       socket.leave(`group:${groupId}`);
     });
 
-    onLimited(socket, allow, 'group_message', 'message', async ({ groupId, text, imageUrl }) => {
-      if (!groupId || (!text?.trim() && !imageUrl)) return;
+    onLimited(socket, allow, 'group_message', 'message', async ({ groupId, text: rawText, imageUrl: rawImageUrl }) => {
+      if (!isId(groupId)) return;
+      const text = cleanText(rawText);
+      const imageUrl = cleanImageUrl(rawImageUrl);
+      if (!text && !imageUrl) return;
       const member = await prisma.groupMember.findUnique({
         where: { groupId_userId: { groupId, userId } },
       });
@@ -270,11 +292,11 @@ export function registerChatSocket(io) {
 
       const [message] = await prisma.$transaction([
         prisma.groupMessage.create({
-          data: { groupId, senderId: userId, text: text?.trim() || null, imageUrl: imageUrl || null },
+          data: { groupId, senderId: userId, text, imageUrl },
         }),
         prisma.group.update({
           where: { id: groupId },
-          data: { lastMessage: text?.trim() || '📷 Photo', lastMessageAt: new Date() },
+          data: { lastMessage: text || '📷 Photo', lastMessageAt: new Date() },
         }),
       ]);
 
@@ -282,19 +304,20 @@ export function registerChatSocket(io) {
     });
 
     onLimited(socket, allow, 'group_typing', 'typing', ({ groupId, isTyping }) => {
-      if (!groupId) return;
-      socket.to(`group:${groupId}`).emit('group_typing_update', { groupId, userId, isTyping });
+      if (!isId(groupId) || !socket.rooms.has(`group:${groupId}`)) return;
+      socket.to(`group:${groupId}`).emit('group_typing_update', { groupId, userId, isTyping: isTyping === true });
     });
 
     // ── Direct Messages ─────────────────────────────────────────────────────────
-    onLimited(socket, allow, 'dm_send', 'message', async ({ receiverId, text, imageUrl }) => {
-      if (!receiverId || (!text?.trim() && !imageUrl)) return;
-      if (receiverId === userId) return;
+    onLimited(socket, allow, 'dm_send', 'message', async ({ receiverId, text, imageUrl: rawImageUrl }) => {
+      if (!isId(receiverId) || receiverId === userId) return;
 
       // [FIX] Sanitize DM text to prevent stored XSS
-      const safeText = text ? text.trim().replace(/<[^>]*>/g, '').substring(0, 2000) : null;
+      const safeText = cleanText(text);
+      const imageUrl = cleanImageUrl(rawImageUrl);
+      if (!safeText && !imageUrl) return;
       const message = await prisma.directMessage.create({
-        data: { senderId: userId, receiverId, text: safeText, imageUrl: imageUrl || null },
+        data: { senderId: userId, receiverId, text: safeText, imageUrl },
       });
       const sender = await prisma.user.findUnique({
         where: { id: userId },
@@ -305,12 +328,12 @@ export function registerChatSocket(io) {
     });
 
     onLimited(socket, allow, 'dm_typing', 'typing', ({ receiverId, isTyping }) => {
-      if (!receiverId) return;
-      io.to(`user:${receiverId}`).emit('dm_typing_update', { senderId: userId, isTyping });
+      if (!isId(receiverId)) return;
+      io.to(`user:${receiverId}`).emit('dm_typing_update', { senderId: userId, isTyping: isTyping === true });
     });
 
     onLimited(socket, allow, 'dm_read', 'read', async ({ senderId: msgSenderId }) => {
-      if (!msgSenderId) return;
+      if (!isId(msgSenderId)) return;
       await prisma.directMessage.updateMany({
         where: { senderId: msgSenderId, receiverId: userId, readAt: null },
         data: { readAt: new Date() },
@@ -327,8 +350,9 @@ export function registerChatSocket(io) {
     // running the pipeline sees the cancel). Nothing here needs the result, but
     // the rejection has to go somewhere or a Redis blip becomes an unhandled
     // rejection that takes the process down.
-    socket.on('voice:cancel', ({ streamId } = {}) => {
-      if (!streamId) return;
+    socket.on('voice:cancel', (payload) => {
+      const streamId = payload?.streamId;
+      if (!isId(streamId)) return;
       cancelVoiceStream(`${userId}:${streamId}`)
         .catch(err => logger.warn('[VoiceStream] cancel failed: %s', err?.message));
     });

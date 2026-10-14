@@ -381,10 +381,6 @@ router.post(
         return sendError(res, 'New number must be different from your current number', 400);
       }
 
-      // Reject if the number already belongs to someone else (phone is unique).
-      const taken = await prisma.user.findUnique({ where: { phone: newPhone }, select: { id: true } });
-      if (taken) return sendError(res, 'This number is already linked to another account', 409);
-
       // Prove ownership of the NEW number with a fresh Firebase challenge.
       if (!isFirebaseAuthEnabled()) {
         return sendError(res, 'Phone verification is not available on this server', 503);
@@ -408,6 +404,12 @@ router.post(
         logger.warn({ userId: me.id }, '[Auth] change-phone token/number mismatch');
         return sendError(res, 'Phone verification failed', 401);
       }
+
+      // Reject if the number already belongs to someone else (phone is unique).
+      // Checked only now, after the caller has proved they hold the number:
+      // asked first, this answered "is this phone registered?" for anyone.
+      const taken = await prisma.user.findUnique({ where: { phone: newPhone }, select: { id: true } });
+      if (taken) return sendError(res, 'This number is already linked to another account', 409);
 
       // Swap the number and bump the token version atomically.
       const updated = await prisma.$transaction(async (tx) => {

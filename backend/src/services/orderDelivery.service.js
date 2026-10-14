@@ -284,20 +284,26 @@ function readableCode(ciphertext) {
  *
  * A fixed number of queries per PAGE, never one per order (§8.2):
  *   1. users             names + phones for the sellers that need one
- *   2. order_deliveries  codes for the shipments that are out for delivery
+ *   2. order_deliveries  codes for the shipments that are out for delivery, and
+ *                        the reason for the ones that went out and came back
  * and neither runs when nothing on the page needs it — a page of delivered
- * orders with frozen seller names costs zero.
+ * orders, or of orders cancelled before they left the shop, with frozen seller
+ * names costs zero.
  *
  * Privacy is decided here, on the server, per shipment:
  *   sellerPhone   only CONFIRMED / SHIPPED. Not before the seller has accepted
  *                 the order, and not after it is delivered or cancelled.
  *   deliveryCode  only SHIPPED. It is useless before the van leaves and must
  *                 not linger on a delivered order.
+ *   failedReason  only CANCELLED, and only when the goods had gone out and came
+ *                 back: REFUSED | UNREACHABLE | ADDRESS_NOT_FOUND. It is what the
+ *                 farmer's order tracking says in place of a bare "Cancelled" —
+ *                 and it is about the farmer's own order, so it is theirs to see.
  *
  * ONLY call this for the order's own buyer. The route has already scoped the
  * read to `userId: req.user.id`; this function does not re-check ownership.
  *
- * @param {Array<object>} orders  with `items` (sellerId, sellerName, status)
+ * @param {Array<object>} orders  with `items` (sellerId, sellerName, status, shippedAt)
  * @returns {Promise<Array<object>>} copies, in the same order
  */
 export async function withOrderDeliveries(orders) {
@@ -311,31 +317,44 @@ export async function withOrderDeliveries(orders) {
       if (!item?.sellerId) continue;
       let s = bySeller.get(item.sellerId);
       if (!s) {
-        s = { sellerId: item.sellerId, sellerName: null, statuses: [] };
+        s = { sellerId: item.sellerId, sellerName: null, statuses: [], wentOut: false };
         bySeller.set(item.sellerId, s);
       }
       if (!s.sellerName && item.sellerName) s.sellerName = item.sellerName;
       s.statuses.push(item.status);
+      // A cancelled line that had been shipped: the goods went out and came back.
+      if (item.status === 'CANCELLED' && item.shippedAt) s.wentOut = true;
     }
-    return [...bySeller.values()].map((s) => ({
-      sellerId: s.sellerId,
-      sellerName: s.sellerName,
-      status: sellerShipmentStatus(s.statuses),
-    }));
+    return [...bySeller.values()].map((s) => {
+      const status = sellerShipmentStatus(s.statuses);
+      return {
+        sellerId: s.sellerId,
+        sellerName: s.sellerName,
+        status,
+        // The only shipments a failed-delivery reason can exist for: a reason is
+        // recorded only when a SHIPPED line is cancelled, and shipping always
+        // stamps `shippedAt`. An order cancelled before it left the shop — most
+        // cancelled orders — is known to have none without asking the database.
+        cameBack: status === 'CANCELLED' && s.wentOut,
+      };
+    });
   });
 
   const sellersToLoad = new Set();
-  const ordersOutForDelivery = new Set();
+  // Orders with a shipment whose delivery row has something to say: a code to
+  // show (out for delivery) or a reason it came back.
+  const ordersWithDeliveryRow = new Set();
   shipmentsByOrder.forEach((shipments, idx) => {
     for (const s of shipments) {
       if (!s.sellerName || PHONE_VISIBLE.has(s.status)) sellersToLoad.add(s.sellerId);
-      if (s.status === 'SHIPPED') ordersOutForDelivery.add(list[idx].id);
+      if (s.status === 'SHIPPED' || s.cameBack) ordersWithDeliveryRow.add(list[idx].id);
     }
   });
 
-  // Asked only when a code could be shown. No table (script not applied yet) →
-  // no codes exist, and the orders are served without them, quietly.
-  const codesReadable = ordersOutForDelivery.size > 0 && await deliveryTableReady();
+  // Asked only when there could be something to show. No table (script not
+  // applied yet) → no codes and no reasons exist, and the orders are served
+  // without them, quietly.
+  const codesReadable = ordersWithDeliveryRow.size > 0 && await deliveryTableReady();
 
   const [sellers, codeRows] = await Promise.all([
     sellersToLoad.size
@@ -346,8 +365,11 @@ export async function withOrderDeliveries(orders) {
       : [],
     codesReadable
       ? prisma.orderDelivery.findMany({
-          where: { orderId: { in: [...ordersOutForDelivery] }, code: { not: null } },
-          select: { orderId: true, sellerId: true, code: true },
+          where: {
+            orderId: { in: [...ordersWithDeliveryRow] },
+            OR: [{ code: { not: null } }, { failedReason: { not: null } }],
+          },
+          select: { orderId: true, sellerId: true, code: true, failedReason: true },
         }).catch((err) => {
           // The farmer's order list must not 500 because the optional part of
           // it could not be read — the field is optional for the reader (§8).
@@ -358,13 +380,14 @@ export async function withOrderDeliveries(orders) {
   ]);
 
   const sellerById = new Map(sellers.map((u) => [u.id, u]));
-  const codeByShipment = new Map(codeRows.map((r) => [`${r.orderId}:${r.sellerId}`, r.code]));
+  const rowByShipment = new Map(codeRows.map((r) => [`${r.orderId}:${r.sellerId}`, r]));
 
   return list.map((order, idx) => ({
     ...order,
     expectedBy: expectedByFor(order),
     deliveries: shipmentsByOrder[idx].map((s) => {
       const seller = sellerById.get(s.sellerId);
+      const stored = rowByShipment.get(`${order.id}:${s.sellerId}`);
       return {
         sellerId: s.sellerId,
         // The name frozen on the order line wins: it is what the farmer was
@@ -372,8 +395,11 @@ export async function withOrderDeliveries(orders) {
         sellerName: s.sellerName || seller?.name || null,
         status: s.status,
         sellerPhone: PHONE_VISIBLE.has(s.status) ? (seller?.phone || null) : null,
-        deliveryCode: s.status === 'SHIPPED'
-          ? readableCode(codeByShipment.get(`${order.id}:${s.sellerId}`))
+        deliveryCode: s.status === 'SHIPPED' ? readableCode(stored?.code) : null,
+        // Checked against the known reasons, so nothing else stored in the
+        // column can ever reach the farmer's screen as raw text.
+        failedReason: s.cameBack && FAILED_REASONS.includes(stored?.failedReason)
+          ? stored.failedReason
           : null,
       };
     }),

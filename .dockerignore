@@ -4,6 +4,10 @@
 **/.env
 **/.env.*
 !**/.env.example
+# Credential files that live next to the code on a developer machine.
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+**/play-store-credentials.json
 **/.git
 **/.DS_Store
 **/*.log

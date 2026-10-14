@@ -84,6 +84,16 @@
  * On a wide screen (a tablet, a browser) the column is capped and centred, so
  * the card is never stretched across a metre of glass with its buttons at
  * opposite ends.
+ *
+ * ── Tracking ────────────────────────────────────────────────────────────────
+ * The badge says what state an order is in; it never showed the road. Opening
+ * a card now leads with the timeline — placed, confirmed by the shop, out for
+ * delivery, delivered, each with the time it happened, or the cancel, the
+ * failed delivery and the refund where that is how it ended — with the receipt
+ * below it. While something is still on its way the button that opens it reads
+ * "Track order", because that is the question being asked; on a finished order
+ * it stays "View details". The steps are worked out in orderTracking.js and
+ * drawn by components/OrderTimeline.js, and only for a card that is open.
  */
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import {
@@ -107,6 +117,8 @@ import {
 } from '../AgriStore/shopUtils';
 import { cancelOrder } from '../AgriStore/shopClient';
 import { reviewableItems, myReviewOf, applyMyReview } from '../AgriStore/reviewUtils';
+import { isOrderLive } from '../AgriStore/orderTracking';
+import OrderTimeline from '../../components/OrderTimeline';
 import ReviewSheet from '../../components/ReviewSheet';
 import Stars from '@krushisarva/shared/components/Stars';
 // The app's one answer to "has this person asked for less motion?".
@@ -184,9 +196,9 @@ function StatusBadge({ status }) {
  * and one this build does not recognise both render nothing at all — silence
  * beats a wrong promise about money.
  */
-function RefundLine({ paymentStatus }) {
+function RefundLine({ paymentStatus, paymentMethod }) {
   const { t } = useLanguage();
-  const label = orderRefundLabel(paymentStatus);
+  const label = orderRefundLabel(paymentStatus, paymentMethod);
   if (!label) return null;
   // Dark enough to read: this is the line a farmer comes back to check, and the
   // gold and emerald it used to be printed in are about 2:1 on white.
@@ -433,6 +445,9 @@ const OrderCard = memo(function OrderCard({ order, index = 0, entrance, onCancel
     || it?.product?.name || t('orders.itemFallback');
   // The lines that have ARRIVED. Only those can be rated.
   const rateable = reviewableItems(order);
+  // Still on its way? Then opening the card is "Track order". A cheap check —
+  // the timeline itself is only built once the card is open.
+  const live = isOrderLive(order);
 
   const items = Array.isArray(order.items) ? order.items : [];
   const firstItem = items[0];
@@ -617,7 +632,7 @@ const OrderCard = memo(function OrderCard({ order, index = 0, entrance, onCancel
         {/* Where the money actually is. On the collapsed card: a farmer checking
             whether their refund has come should not have to open anything to
             find out. Once here, not again inside the detail. */}
-        <RefundLine paymentStatus={order.paymentStatus} />
+        <RefundLine paymentStatus={order.paymentStatus} paymentMethod={order.paymentMethod} />
 
         {/* ── Order detail ────────────────────────────────────────────────────
             This app has no separate order-detail screen, so the card is it.
@@ -625,8 +640,13 @@ const OrderCard = memo(function OrderCard({ order, index = 0, entrance, onCancel
             and a low-end phone should not build every line of every order to
             show ten of them. */}
         {mounted ? (
-          <Animated.View style={[styles.detail, detailStyle]}>
-            <OrderDetail order={order} shortId={shortId} payable={payable} paymentText={paymentText} />
+          <Animated.View style={[styles.detailWrap, detailStyle]}>
+            {/* The road first, the receipt second: someone opening an order that
+                is on its way is asking where it is, not what it cost. */}
+            <OrderTimeline order={order} />
+            <View style={styles.detail}>
+              <OrderDetail order={order} shortId={shortId} payable={payable} paymentText={paymentText} />
+            </View>
           </Animated.View>
         ) : null}
 
@@ -642,7 +662,9 @@ const OrderCard = memo(function OrderCard({ order, index = 0, entrance, onCancel
             accessibilityState={{ expanded }}
           >
             <Text style={styles.linkTxt}>
-              {expanded ? t('orders.hideDetails', 'Hide details') : t('orders.viewDetails', 'View details')}
+              {expanded
+                ? t('orders.hideDetails', 'Hide details')
+                : (live ? t('orders.trackOrder', 'Track order') : t('orders.viewDetails', 'View details'))}
             </Text>
             <Animated.View style={chevronStyle}>
               <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
@@ -1156,6 +1178,9 @@ const styles = StyleSheet.create({
   },
   codeHint:   { fontSize: 12, color: COLORS.textBody, textAlign: 'center', lineHeight: 17 },
 
+  // The opened part: the timeline, then the receipt, the same distance apart
+  // as everything else on the card.
+  detailWrap: { gap: 12 },
   // A tinted panel rather than more lines: the detail is a different KIND of
   // thing from the card around it — a receipt — and reads as one block.
   // Neutral grey and NO border, on purpose: on an order from two shops it sits

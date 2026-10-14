@@ -105,11 +105,19 @@ class PIIFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not PII_REDACTION_ENABLED:
             return True
-        # 1. Free-text message — handle both pre- and post-% formatting
-        if isinstance(record.msg, str):
-            record.msg = _scrub_text(record.msg)
-        # If args are present and stringy, scrub them too (they get %-joined).
-        if record.args:
+        # 1. Free-text message. Scrub it AFTER %-formatting: scrubbing the
+        #    template and the string args separately missed numbers, so
+        #    `"lat=%.2f lon=%.2f", lat, lon` logged a farmer's coordinates.
+        try:
+            formatted = record.getMessage()
+        except Exception:
+            formatted = None  # malformed format string — fall back below
+        if isinstance(formatted, str):
+            record.msg = _scrub_text(formatted)
+            record.args = None
+        else:
+            if isinstance(record.msg, str):
+                record.msg = _scrub_text(record.msg)
             if isinstance(record.args, tuple):
                 record.args = tuple(_scrub_value(a) for a in record.args)
             elif isinstance(record.args, dict):

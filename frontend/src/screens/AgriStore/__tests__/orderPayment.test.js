@@ -28,7 +28,8 @@ describe('paid through the gateway', () => {
   });
 
   test('still "Paid online" while a refund is on its way or done — it WAS paid; the refund line says the rest', () => {
-    for (const paymentStatus of ['refund_pending', 'partially_refunded', 'refunded']) {
+    // 'refund_initiated' is the Razorpay refund webhook's word for "on its way".
+    for (const paymentStatus of ['refund_pending', 'refund_initiated', 'partially_refunded', 'refunded']) {
       expect(orderPaymentLabel({ paymentMethod: 'upi', paymentStatus }).key).toBe('orders.paidOnline');
     }
   });

@@ -60,7 +60,11 @@ const PRODUCT_LANG_COLS = ['nameHi', 'nameMr'];
 
 // ── tiny RFC-4180-ish CSV helpers (no new dependency) ────────────────────────────
 function escapeCell(value) {
-  const s = value == null ? '' : String(value);
+  const raw = value == null ? '' : String(value);
+  // A cell starting with = + - @ is a formula to Excel/Sheets, and product
+  // names are seller-written. Prefix a quote so it stays text; plain numbers
+  // (negative prices, quantities) are left alone.
+  const s = /^[=+\-@\t\r]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

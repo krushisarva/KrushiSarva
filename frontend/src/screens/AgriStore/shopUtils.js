@@ -620,24 +620,41 @@ export function confirmFailureNotice(info, status) {
  *
  * Returns null for 'pending' and 'paid', and for anything unknown: nothing to
  * say about a refund is better than a wrong label, and an unrecognised value
- * must never reach the screen as raw text. Cash-on-delivery orders never reach a
- * refund status, so they cannot claim a refund through this.
+ * must never reach the screen as raw text.
+ *
+ * `done` is whether the money the line talks about has ARRIVED — it picks the
+ * tick or the clock. 'partially_refunded' is done: the server writes it only
+ * after the gateway has made the refund (orderRefund.service.js settleRefund),
+ * and it stays on the order for as long as the rest of it is still coming.
+ *
+ * Nothing automatic refunds a cash-on-delivery order, but an admin can mark one
+ * refunded (a return). It was paid at the door, so it is not told the money
+ * went back to "the account you paid from".
+ *
+ * @param {string} paymentStatus  orders.paymentStatus
+ * @param {string} [paymentMethod]  orders.paymentMethod — only 'cod' changes anything
  */
-export function orderRefundLabel(paymentStatus) {
+export function orderRefundLabel(paymentStatus, paymentMethod) {
+  const cash = typeof paymentMethod === 'string' && paymentMethod.trim().toLowerCase() === 'cod';
   switch (paymentStatus) {
     case 'refund_pending':
+    // The gateway's own word for the same thing: the Razorpay refund webhook
+    // writes it once the refund is accepted and before it has arrived.
+    case 'refund_initiated':
       return { key: 'orders.refundPending', fallback: 'Refund on the way — 5–7 working days', done: false };
     case 'partially_refunded':
-      return { key: 'orders.partiallyRefunded', fallback: 'Part of your payment was refunded', done: false };
+      return { key: 'orders.partiallyRefunded', fallback: 'Part of your payment was refunded', done: true };
     case 'refunded':
-      return { key: 'orders.refunded', fallback: 'Refunded to the account you paid from', done: true };
+      return cash
+        ? { key: 'orders.statusRefunded', fallback: 'Refunded', done: true }
+        : { key: 'orders.refunded', fallback: 'Refunded to the account you paid from', done: true };
     default:
       return null;
   }
 }
 
 /** paymentStatus values that mean the buyer's money DID reach us — even if it has since gone back. */
-const MONEY_MOVED = new Set(['paid', 'partially_refunded', 'refund_pending', 'refunded']);
+const MONEY_MOVED = new Set(['paid', 'partially_refunded', 'refund_pending', 'refund_initiated', 'refunded']);
 
 /**
  * How an order is paid for — the words that sit beside its total.

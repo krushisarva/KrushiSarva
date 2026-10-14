@@ -63,12 +63,19 @@ const FAILED_COPY = {
   ADDRESS_NOT_FOUND: { icon: 'location-outline', tKey: 'sellerOrders.failedAddressNotFound', fallback: 'Could not find the address' },
 };
 
+// The payment reminder's tone → the notice it is drawn as. Each also carries
+// its own icon and words, so the colour is never the only thing that differs.
+const PAYMENT_VARIANT = { collect: 'warning', warn: 'error', paid: 'success' };
+
 // A field focused the instant a Modal reports itself shown can lose the
 // keyboard on Android: the dialog window is up but not yet taking input.
 const FOCUS_DELAY_MS = 120;
 
 /**
- * @param request   null (closed) or `{ key, orderId, to, step, hasCode, lockedUntil }`
+ * @param request   null (closed) or `{ key, orderId, to, step, hasCode, lockedUntil, payment }`.
+ *                  `payment` is `{ tone, icon, text }` or null (utils/orderPayment.js
+ *                  handoverReminder): what to say about the money at the moment of
+ *                  hand-over. Shown on the delivered steps only.
  * @param busy      the status request for this order is in flight
  * @param offline   no connection — nothing can be sent
  * @param onSubmit  (request, sent) => Promise<{ ok, refusal?, message? }>. `sent`
@@ -271,6 +278,21 @@ function SheetBody({ request, busy, offline, inputRef, onClose, onSubmit }) {
         {offline ? (
           <InlineNotice variant="warning" style={s.notice}>
             {t('common.offlineAction', 'You are offline. Reconnect to save this.')}
+          </InlineNotice>
+        ) : null}
+
+        {/* The money, said at the door: "Collect ₹609.00 in cash" or "Paid
+            online. Do not collect cash." This sheet is what the seller is
+            holding when the goods change hands, so it is the place a wrong
+            assumption about payment costs someone money. Not on "could not
+            deliver" — nothing is handed over there. */}
+        {!failed && request.payment?.text ? (
+          <InlineNotice
+            variant={PAYMENT_VARIANT[request.payment.tone] || 'info'}
+            icon={request.payment.icon}
+            style={s.notice}
+          >
+            {request.payment.text}
           </InlineNotice>
         ) : null}
 

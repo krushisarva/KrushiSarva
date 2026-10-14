@@ -35,6 +35,10 @@ jest.unstable_mockModule('../../../src/utils/fastapi-signed.js', () => ({
 jest.unstable_mockModule('../../../src/middleware/auth.js', () => ({
   __esModule: true,
   authenticate: (req, _res, next) => { req.user = { id: 'farmer-1' }; next(); },
+  // /sync/trigger is admin-only; the stubbed farmer above is refused.
+  requireRole: (...roles) => (req, res, next) => (
+    roles.includes(req.user?.role) ? next() : res.status(403).json({ success: false })
+  ),
 }));
 
 const express = (await import('express')).default;

@@ -8,7 +8,7 @@
  */
 import { jest } from '@jest/globals';
 import {
-  TokenBucket, createConnectionLimiter, onLimited, DEFAULT_LIMITS,
+  TokenBucket, createConnectionLimiter, onLimited, isId, DEFAULT_LIMITS,
 } from '../../../src/socket/socketRateLimit.js';
 
 describe('TokenBucket', () => {
@@ -138,5 +138,45 @@ describe('onLimited', () => {
     const payload = { chatId: 'abc' };
     socket.fire('join_chat', payload);
     expect(handler).toHaveBeenCalledWith(payload);
+  });
+
+  // socket.io calls listeners unguarded: a handler that destructures a missing
+  // payload throws an uncaught exception and takes the process down.
+  it('drops a payload that is not a plain object without calling the handler', () => {
+    const socket = fakeSocket();
+    const handler = jest.fn(({ receiverId }) => receiverId);
+    onLimited(socket, createConnectionLimiter(), 'dm_typing', 'typing', handler);
+
+    expect(() => socket.fire('dm_typing')).not.toThrow();
+    expect(() => socket.fire('dm_typing', null)).not.toThrow();
+    expect(() => socket.fire('dm_typing', 'x')).not.toThrow();
+    expect(() => socket.fire('dm_typing', ['x'])).not.toThrow();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('reports a handler that throws or rejects instead of letting it escape', async () => {
+    const socket = fakeSocket();
+    const onError = jest.fn();
+    const allow = createConnectionLimiter();
+    onLimited(socket, allow, 'sync_boom', 'join', () => { throw new Error('sync'); }, { onError });
+    onLimited(socket, allow, 'async_boom', 'join', async () => { throw new Error('async'); }, { onError });
+
+    expect(() => socket.fire('sync_boom', {})).not.toThrow();
+    await expect(socket.fire('async_boom', {})).resolves.toBeUndefined();
+    expect(onError.mock.calls.map(([err, event]) => [err.message, event]))
+      .toEqual([['sync', 'sync_boom'], ['async', 'async_boom']]);
+  });
+});
+
+describe('isId', () => {
+  it('accepts only non-empty strings of bounded length', () => {
+    expect(isId('3f2c1e9a-chat')).toBe(true);
+    // A Prisma filter object in place of an id matched every row.
+    expect(isId({ not: '' })).toBe(false);
+    expect(isId(['a'])).toBe(false);
+    expect(isId('')).toBe(false);
+    expect(isId(undefined)).toBe(false);
+    expect(isId(42)).toBe(false);
+    expect(isId('x'.repeat(65))).toBe(false);
   });
 });

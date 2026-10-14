@@ -70,7 +70,26 @@ export async function getFarmDetail(farmId, farmerId) {
   });
 }
 
-export async function updateFarm(farmId, farmerId, data) {
+// The only columns a farmer may change on their own farm. updateFarm used to
+// hand the raw request body to Prisma, and Farm has a `farmer` relation — so
+// `{ farmer: { update: { role: 'ADMIN' } } }` was a nested write into the
+// caller's own user row. Anything not named here is dropped.
+const FARM_UPDATABLE = new Set([
+  'farmName', 'farmNameMr', 'farmNameHi', 'farmAlias',
+  'addressLine1', 'village', 'taluka', 'district', 'state', 'pincode',
+  'latitude', 'longitude',
+  'landSizeAcres', 'landOwnership',
+  'soilType', 'soilColor', 'irrigationSystem', 'waterSources',
+  'borewellDepthFt', 'hasElectricity', 'electricityHrsDaily',
+  'hasGreenhouse', 'hasColdStorage', 'hasFarmPond', 'hasSolarPump',
+  'ownedMachinery', 'nearbyMandis',
+]);
+
+export async function updateFarm(farmId, farmerId, raw) {
+  const data = {};
+  for (const [k, v] of Object.entries(raw || {})) {
+    if (FARM_UPDATABLE.has(k)) data[k] = v;
+  }
   if (data.landSizeAcres !== undefined) {
     data.landSizeAcres = parseFloat(data.landSizeAcres);
     data.landSizeHectares = acresToHectares(data.landSizeAcres);

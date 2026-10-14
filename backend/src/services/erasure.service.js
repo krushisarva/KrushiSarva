@@ -80,8 +80,10 @@ export function anonymizedUserFields(userId) {
 function toRef(value, { type = 'upload', resourceType = 'image' } = {}) {
   if (!value || typeof value !== 'string') return null;
   // KYC docs are stored as raw public_ids (private/authenticated); everything
-  // else is a secure_url we must parse the public_id out of.
-  const publicId = publicIdFromUrl(value) ?? value;
+  // else is a secure_url we must parse the public_id out of. A public ref that
+  // is not one of our URLs is never treated as a raw id — that fallback let a
+  // bare public_id typed into a text column name any asset for deletion.
+  const publicId = type === 'authenticated' ? (publicIdFromUrl(value) ?? value) : publicIdFromUrl(value);
   return publicId ? { publicId, type, resourceType } : null;
 }
 
@@ -95,13 +97,18 @@ async function collectMediaRefs(userId, avatar) {
 
   push(toRef(avatar)); // profile avatar (public upload)
 
-  const [sp, reports, soils, voices, farms, cycles, soilReports] = await Promise.all([
+  // NOT collected: farm.sevenTwelveImageUrl, farmCropCycle.photos and
+  // farmCropCycle.seedReceiptUrl. Those columns hold whatever URL the client
+  // sent, uploads share one folder with every seller's product photos, and
+  // nothing records who uploaded an asset — so a farmer could list other
+  // people's images there, delete their account, and have this purge destroy
+  // them. Until uploads carry an owner, those assets are left in place (the
+  // rows that pointed at them are still deleted with the account).
+  const [sp, reports, soils, voices, soilReports] = await Promise.all([
     prisma.sellerProfile.findUnique({ where: { userId }, select: { kycDocumentUrls: true } }),
     prisma.cropDiseaseReport.findMany({ where: { userId }, select: { imageUrls: true } }),
     prisma.soilHealthRecord.findMany({ where: { userId }, select: { scanImageUrl: true } }),
     prisma.voiceSession.findMany({ where: { userId }, select: { audioInputUrl: true, audioOutputUrl: true } }),
-    prisma.farm.findMany({ where: { farmerId: userId }, select: { sevenTwelveImageUrl: true } }),
-    prisma.farmCropCycle.findMany({ where: { farmerId: userId }, select: { photos: true, seedReceiptUrl: true } }),
     prisma.farmSoilReport.findMany({ where: { farmerId: userId }, select: { reportImageUrl: true, reportPdfUrl: true } }),
   ]);
 
@@ -110,8 +117,6 @@ async function collectMediaRefs(userId, avatar) {
   for (const r of reports)     for (const u of r.imageUrls || []) push(toRef(u));
   for (const s of soils)       push(toRef(s.scanImageUrl));
   for (const v of voices)    { push(toRef(v.audioInputUrl, { resourceType: 'video' })); push(toRef(v.audioOutputUrl, { resourceType: 'video' })); }
-  for (const f of farms)       push(toRef(f.sevenTwelveImageUrl));
-  for (const c of cycles)    { for (const p of c.photos || []) push(toRef(p)); push(toRef(c.seedReceiptUrl)); }
   for (const r of soilReports) { push(toRef(r.reportImageUrl)); push(toRef(r.reportPdfUrl)); }
 
   return refs;

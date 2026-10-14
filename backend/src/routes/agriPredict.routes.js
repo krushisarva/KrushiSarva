@@ -16,7 +16,7 @@
  *   GET  /sync/status?commodity=...&state=...
  */
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 import { sendError } from '../utils/response.js';
 import { reserveCredits, settleCredits, releaseCredits } from '../services/aiCredit.service.js';
 import { ENV } from '../config/env.js';
@@ -144,12 +144,15 @@ router.get('/compare', authenticate, (req, res) => {
 });
 
 // POST /api/v1/agripredict/sync/trigger  → non-blocking 202
-router.post('/sync/trigger', authenticate, (req, res) => {
-  const { commodity, state, district, max_pages = 10 } = req.body;
+// Admin only: each call starts up to `max_pages` of data.gov.in fetches on the
+// platform's API key, so it is not something any signed-in farmer may loop.
+router.post('/sync/trigger', authenticate, requireRole('ADMIN'), (req, res) => {
+  const { commodity, state, district } = req.body;
+  const max_pages = Math.min(Math.max(parseInt(req.body.max_pages, 10) || 10, 1), 50);
   if (!commodity || !state) return sendError(res, 'commodity and state are required', 400);
   return proxyPost(
     res, '/agripredict/sync/trigger',
-    { commodity, state, district: district || null, max_pages: Math.min(max_pages, 50) },
+    { commodity, state, district: district || null, max_pages },
     req.user?.id,
     10_000  // 202 comes back instantly; actual sync runs in FastAPI background
   );

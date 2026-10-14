@@ -148,6 +148,7 @@ describe('farmer order responses — expectedBy + deliveries (§8.2)', () => {
       status: 'PENDING',
       sellerPhone: null,
       deliveryCode: null,
+      failedReason: null,
     });
     expect(deliveryFor(order, kendraB)).toMatchObject({ sellerName: 'Delivery Kendra B', status: 'PENDING', sellerPhone: null });
   });
@@ -264,8 +265,34 @@ describe('farmer order responses — expectedBy + deliveries (§8.2)', () => {
     expect(res.body.data).toHaveLength(1);
     // Delivered, with the seller's name frozen on the line: nothing to look up.
     expect(res.body.data[0].deliveries).toEqual([{
-      sellerId: kendraA.user.id, sellerName: 'Delivery Kendra A', status: 'DELIVERED', sellerPhone: null, deliveryCode: null,
+      sellerId: kendraA.user.id, sellerName: 'Delivery Kendra A', status: 'DELIVERED', sellerPhone: null, deliveryCode: null, failedReason: null,
     }]);
+    expect(queries.filter((q) => /"order_deliveries"/.test(q))).toHaveLength(0);
+  });
+
+  test('an order cancelled before it left the shop reads no delivery row either', async () => {
+    // Most cancelled orders. A reason for a failed delivery can only exist for
+    // goods that went out, so this page must not ask the database for one.
+    const fresh = await createTestUser({ name: 'Delivery Cancel Counter', district: 'Pune' });
+    const pending = await placeOrder({ as: fresh, single: true });
+    await setStatus(kendraA, pending.orderId, 'CANCELLED');
+    const confirmed = await placeOrder({ as: fresh, single: true });
+    await setStatus(kendraA, confirmed.orderId, 'CONFIRMED');
+    await setStatus(kendraA, confirmed.orderId, 'CANCELLED');
+    await new Promise((r) => setTimeout(r, 400));
+
+    querySink = [];
+    const res = await request(app).get(`${API}/orders`).set(fresh.headers);
+    await new Promise((r) => setTimeout(r, 200));
+    const queries = querySink;
+    querySink = null;
+
+    expect(res.body.data).toHaveLength(2);
+    for (const order of res.body.data) {
+      expect(order.deliveries).toEqual([{
+        sellerId: kendraA.user.id, sellerName: 'Delivery Kendra A', status: 'CANCELLED', sellerPhone: null, deliveryCode: null, failedReason: null,
+      }]);
+    }
     expect(queries.filter((q) => /"order_deliveries"/.test(q))).toHaveLength(0);
   });
 
@@ -294,6 +321,7 @@ describe('farmer order responses — expectedBy + deliveries (§8.2)', () => {
       status: 'CONFIRMED',
       sellerPhone: kendraA.user.phone,
       deliveryCode: null,
+      failedReason: null,
     }]);
   });
 
@@ -935,6 +963,111 @@ describe('SHIPPED → CANCELLED, "could not deliver" (§8.4)', () => {
     expect(await stockOf(listingB)).toBe(19);
     expect(await statusesOf(orderId, kendraB)).toEqual(['SHIPPED']);
     expect((await row(orderId, kendraB)).failedReason).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Order tracking — the farmer is told WHY a delivery came back
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('farmer order responses — deliveries[].failedReason', () => {
+  test('nothing to say while the order is on its way, or once it has arrived', async () => {
+    const { orderId, code } = await shipped();
+    expect(deliveryFor(await farmerOrder(orderId), kendraA)).toMatchObject({ status: 'SHIPPED', failedReason: null });
+
+    await setStatus(kendraA, orderId, { status: 'DELIVERED', deliveryCode: code });
+    expect(deliveryFor(await farmerOrder(orderId), kendraA)).toMatchObject({ status: 'DELIVERED', failedReason: null });
+  });
+
+  test.each(['REFUSED', 'UNREACHABLE', 'ADDRESS_NOT_FOUND'])('"could not deliver" (%s) reaches the farmer on every read of the order', async (reason) => {
+    const { orderId } = await shipped();
+    expect((await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: reason })).status).toBe(200);
+
+    const detail = await farmerOrder(orderId);
+    expect(deliveryFor(detail, kendraA)).toEqual({
+      sellerId: kendraA.user.id,
+      sellerName: 'Delivery Kendra A',
+      status: 'CANCELLED',
+      sellerPhone: null,
+      deliveryCode: null,
+      failedReason: reason,
+    });
+    // The times the timeline is drawn from travel with the line.
+    const [line] = detail.items;
+    expect(line).toMatchObject({ status: 'CANCELLED' });
+    expect(new Date(line.shippedAt).getTime()).toBeLessThanOrEqual(new Date(line.cancelledAt).getTime());
+
+    for (const mode of [{}, { paginate: 'cursor' }]) {
+      const res = await request(app).get(`${API}/orders`).query({ limit: 50, ...mode }).set(buyer.headers);
+      expect(res.status).toBe(200);
+      expect(res.body.data.find((o) => o.id === orderId).deliveries).toEqual(detail.deliveries);
+    }
+  });
+
+  test('two shops: the reason sits on the delivery that came back, not on the other one', async () => {
+    const { orderId } = await placeOrder();
+    await setStatus(kendraA, orderId, 'SHIPPED');
+    await setStatus(kendraB, orderId, 'SHIPPED');
+    await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: 'UNREACHABLE' });
+
+    const order = await farmerOrder(orderId);
+    expect(deliveryFor(order, kendraA)).toMatchObject({ status: 'CANCELLED', failedReason: 'UNREACHABLE', deliveryCode: null });
+    // B is still on its way: its code is still shown, and it has no reason.
+    expect(deliveryFor(order, kendraB)).toMatchObject({ status: 'SHIPPED', failedReason: null });
+    expect(deliveryFor(order, kendraB).deliveryCode).toMatch(/^[0-9]{4}$/);
+  });
+
+  test('a cancel before the goods left carries no reason, even when one was sent', async () => {
+    const { orderId } = await placeOrder({ single: true });
+    await setStatus(kendraA, orderId, 'CONFIRMED');
+    await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: 'REFUSED' });
+    expect(deliveryFor(await farmerOrder(orderId), kendraA)).toMatchObject({ status: 'CANCELLED', failedReason: null });
+  });
+
+  test('the farmer cancelling their own order is not a failed delivery', async () => {
+    const { orderId } = await placeOrder({ single: true });
+    const res = await request(app).put(`${API}/orders/${orderId}/cancel`).set(buyer.headers);
+    expect(res.status).toBe(200);
+    expect(deliveryFor(await farmerOrder(orderId), kendraA)).toMatchObject({ status: 'CANCELLED', failedReason: null });
+  });
+
+  test('anything else stored in the column never reaches the farmer', async () => {
+    const { orderId } = await shipped();
+    await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: 'REFUSED' });
+    await prisma.orderDelivery.update({
+      where: { orderId_sellerId: { orderId, sellerId: kendraA.user.id } },
+      data: { failedReason: 'customer was rude <script>' },
+    });
+    expect(deliveryFor(await farmerOrder(orderId), kendraA)).toMatchObject({ status: 'CANCELLED', failedReason: null });
+  });
+
+  test('the reason is not shown to another buyer, and the seller is not shown the code through it', async () => {
+    const { orderId } = await shipped();
+    await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: 'REFUSED' });
+    expect((await request(app).get(`${API}/orders/${orderId}`).set(otherBuyer.headers)).status).toBe(404);
+    // The seller's own list still carries no code, cancelled or not.
+    for (const r of await sellerRows(kendraA, orderId)) expect(keysDeep(r)).not.toContain('deliveryCode');
+  });
+
+  test('a page of orders with a failed delivery is still one read of order_deliveries', async () => {
+    const fresh = await createTestUser({ name: 'Delivery Failed Counter', district: 'Pune' });
+    for (let i = 0; i < 3; i++) {
+      const { orderId } = await placeOrder({ as: fresh, single: true });
+      await setStatus(kendraA, orderId, 'SHIPPED');
+      await setStatus(kendraA, orderId, { status: 'CANCELLED', failedReason: 'ADDRESS_NOT_FOUND' });
+    }
+    await new Promise((r) => setTimeout(r, 400));
+
+    querySink = [];
+    const res = await request(app).get(`${API}/orders`).set(fresh.headers);
+    await new Promise((r) => setTimeout(r, 200));
+    const queries = querySink;
+    querySink = null;
+
+    expect(res.body.data).toHaveLength(3);
+    expect(res.body.data.flatMap((o) => o.deliveries).map((d) => d.failedReason))
+      .toEqual(['ADDRESS_NOT_FOUND', 'ADDRESS_NOT_FOUND', 'ADDRESS_NOT_FOUND']);
+    expect(queries.filter((q) => /FROM "public"\."order_deliveries"/.test(q))).toHaveLength(1);
   });
 });
 

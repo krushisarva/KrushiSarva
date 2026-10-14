@@ -29,6 +29,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { rateLimiter, clientIp } from '../middleware/rateLimit.js';
 import { authenticate, requireRole, blockMinors, MINOR_BLOCKED_MESSAGE } from '../middleware/auth.js';
+import { loadAdminContext, requireScope, ADMIN_SCOPES } from '../middleware/admin.js';
 import { uuidParamGuard } from '../middleware/uuidParams.js';
 import { isMinorDob } from '../utils/age.js';
 import { isSensitivePiiUpdate } from '../constants/pii.js';
@@ -379,7 +380,7 @@ router.put(
       let avatar;
       if (req.files?.length) {
         try {
-          const urls = await uploadFiles(req.files, 'avatars');
+          const urls = await uploadFiles(req.files.slice(0, 1), 'avatars');
           avatar = urls[0] || undefined;
         } catch (uploadErr) {
           logger.error({ err: uploadErr }, '[PUT /me] avatar upload failed');
@@ -782,7 +783,9 @@ router.get('/me/licence-documents', async (req, res) => {
 });
 
 // GET /:userId/kyc-documents — ADMIN fetches signed URLs to review a seller.
-router.get('/:userId/kyc-documents', requireRole('ADMIN'), async (req, res) => {
+// Scoped like the admin panel's own KYC routes: a role check alone let an admin
+// limited to, say, CMS_EDITOR pull any seller's Aadhaar/PAN images from here.
+router.get('/:userId/kyc-documents', requireRole('ADMIN'), loadAdminContext, requireScope(ADMIN_SCOPES.KYC_REVIEWER), async (req, res) => {
   try {
     const sp = await prisma.sellerProfile.findUnique({
       where:  { userId: req.params.userId },

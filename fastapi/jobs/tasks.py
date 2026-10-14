@@ -86,6 +86,9 @@ _MIME_TO_EXT = {
     "image/webp": ".webp",
 }
 _MAX_INLINE_BYTES_PER_IMAGE = 8 * 1024 * 1024
+# Largest image the worker will decode. 50 MP covers a full-resolution phone
+# camera frame; the app sends far smaller, compressed images.
+_MAX_IMAGE_PIXELS = 50_000_000
 
 
 def _materialise(images: list[dict]) -> tuple[list[dict], list[Path]]:
@@ -109,6 +112,20 @@ def _materialise(images: list[dict]) -> tuple[list[dict], list[Path]]:
             continue
         if len(raw) > _MAX_INLINE_BYTES_PER_IMAGE:
             logger.warning("[Worker] skipping oversized inline image (%d bytes)", len(raw))
+            continue
+        # The byte cap says nothing about decoded size: a flat-colour PNG under
+        # 1 MB can be 13000x13000 and cost ~1 GB to decode, killing the worker.
+        # Image.open only reads the header, so this check is cheap.
+        try:
+            import io
+            from PIL import Image
+            with Image.open(io.BytesIO(raw)) as _probe:
+                _pixels = _probe.width * _probe.height
+        except Exception:
+            logger.warning("[Worker] skipping image that could not be read")
+            continue
+        if _pixels > _MAX_IMAGE_PIXELS:
+            logger.warning("[Worker] skipping image with too many pixels (%d)", _pixels)
             continue
         mime = (img.get("mime_type") or "image/jpeg").lower()
         suffix = _MIME_TO_EXT.get(mime, ".jpg")

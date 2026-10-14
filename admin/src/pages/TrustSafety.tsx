@@ -10,9 +10,10 @@ import { useToast } from '../lib/toast';
 import { formatDateTime, relativeTime } from '../lib/format';
 
 // Hand-built tables on this page open a drawer from the row. Same contract as
-// DataTable rows: focusable, outlined on focus (a collapsed table row does not
-// paint the app-wide ring), and Enter/Space on the row itself opens it.
-const CLICKABLE_ROW = 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700';
+// DataTable rows: focusable, outlined on focus (with the app-wide ring switched
+// off, or the row shows two green lines), and Enter/Space on the row itself
+// opens it.
+const CLICKABLE_ROW = 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700 focus-visible:ring-0 focus-visible:ring-offset-0';
 const onRowKey = (open: () => void) => (e: KeyboardEvent<HTMLTableRowElement>) => {
   if (e.target !== e.currentTarget) return;
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
