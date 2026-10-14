@@ -197,6 +197,29 @@ npm run build         # tsc -b && vite build  → admin/dist
 npm run preview       # serve the production build locally
 ```
 
+### Hosting on Vercel (https://krushi-sarva.vercel.app)
+
+The admin panel is built for one origin with the API (cookies are `SameSite=Lax`,
+`backend/src/utils/cookies.js`), so [vercel.json](vercel.json) makes Vercel look
+like that origin to the browser:
+
+- `/api/*` is proxied to the VPS backend (`https://srv2061596.hstgr.cloud/api/*`),
+  so login cookies are first-party for the Vercel domain. Socket.IO is not
+  proxied; the admin panel does not use it.
+- The build goes to `out/admin`, matching Vite's `base: '/admin/'`; `/` redirects
+  to `/admin/`, and any `/admin/*` route falls back to `index.html`.
+
+Vercel project settings: root directory `admin`. Env vars: leave `VITE_API_URL`
+**unset** (the default `/api/v1` goes through the proxy) and set the four
+`VITE_FIREBASE_*` values from the section above. Add `krushi-sarva.vercel.app`
+under Firebase → Authentication → Authorized domains. The backend must list
+`https://krushi-sarva.vercel.app` in `ALLOWED_ORIGINS`.
+
+Known limit: the backend sees Vercel's servers, not the admin's own IP, so every
+admin shares the per-IP limits (global 200 requests / 15 min). That is fine for a
+few admins; with more, use the same-origin copy at
+`https://srv2061596.hstgr.cloud/admin/`, which the backend serves itself.
+
 ---
 
 ## What's inside
