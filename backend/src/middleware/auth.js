@@ -124,7 +124,20 @@ export async function optionalAuth(req, _res, next) {
       // the user's identity on anonymous-friendly routes.
       if (payload && typeof payload.sub === 'string' && payload.sub
           && !(await isAccessTokenDenylisted(payload.jti))) {
-        req.user = { id: payload.sub, role: payload.role };
+        // Same account checks as authenticate: a deactivated user, or one who
+        // signed out everywhere, is anonymous here too. Any failure (including
+        // the database being down) falls through to anonymous.
+        let user = getCachedAuth(payload.sub);
+        if (!user) {
+          user = await prisma.user.findUnique({
+            where:  { id: payload.sub },
+            select: { tokenVersion: true, isActive: true },
+          });
+          if (user) setCachedAuth(payload.sub, user);
+        }
+        if (user && user.isActive !== false && (payload.tv ?? 0) === (user.tokenVersion ?? 0)) {
+          req.user = { id: payload.sub, role: payload.role };
+        }
       }
     } catch {
       // token invalid — continue as anonymous

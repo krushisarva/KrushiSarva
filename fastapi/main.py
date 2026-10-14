@@ -104,6 +104,12 @@ async def lifespan(app: FastAPI):
                 f"[Config] FATAL: missing required production config: {', '.join(missing)}"
             )
 
+    # Request signing is the only thing between the public URL and the LLM
+    # budget. AI_AUTH_REQUIRED=false is a local-development switch; refuse to
+    # start with it in production rather than serve every /ai/* route unsigned.
+    if IS_PROD and os.getenv("AI_AUTH_REQUIRED", "true").strip().lower() == "false":
+        raise RuntimeError("[Config] FATAL: AI_AUTH_REQUIRED=false is not allowed in production")
+
     # Test DB connectivity at startup using the shared pool
     if DATABASE_URL:
         try:
@@ -200,13 +206,20 @@ app.add_middleware(
 
 # ── Request body-size guard (AISVC-12) ───────────────────────────────────────
 # Reject oversized POST bodies early (before they're buffered into memory or
-# reach the LLM token meter) with 413. Uses Content-Length when present; for
-# chunked uploads with no length header we let it through to the per-image size
-# checks downstream.
+# reach the LLM token meter) with 413. Uses Content-Length when present. A
+# chunked body carries no length, and request signing reads the whole body into
+# memory BEFORE it can reject the caller — so an unauthenticated chunked upload
+# of any size was buffered in full. Express always sends Content-Length, so a
+# chunked body is refused with 411.
 @app.middleware("http")
 async def _body_size_guard(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH"):
         cl = request.headers.get("content-length")
+        if not cl and "chunked" in request.headers.get("transfer-encoding", "").lower():
+            return JSONResponse(
+                {"success": False, "error": "length required"},
+                status_code=411,
+            )
         if cl:
             try:
                 if int(cl) > _MAX_BODY_BYTES:

@@ -7,6 +7,7 @@
  */
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { loadAdminContext, requireScope, ADMIN_SCOPES } from '../middleware/admin.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { invalidateCache } from '../services/featureFlag.service.js';
 import { auditAction, AUDIT_ACTIONS } from '../services/audit.service.js';
@@ -20,14 +21,19 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// The role check alone let any admin, whatever their scope, flip feature flags
+// here while the newer /admin/flags is OPS-only. Applied per route, not with
+// router.use: this router shares the /admin mount with the main admin router.
+const opsOnly = [authenticate, requireAdmin, loadAdminContext, requireScope(ADMIN_SCOPES.OPS)];
+
 // ── GET /api/v1/admin/features ────────────────────────────────────────────────
-router.get('/features', authenticate, requireAdmin, async (_req, res) => {
+router.get('/features', ...opsOnly, async (_req, res) => {
   const flags = await prisma.featureFlag.findMany({ orderBy: { featureKey: 'asc' } });
   return sendSuccess(res, flags);
 });
 
 // ── PATCH /api/v1/admin/features/:key ────────────────────────────────────────
-router.patch('/features/:key', authenticate, requireAdmin, async (req, res) => {
+router.patch('/features/:key', ...opsOnly, async (req, res) => {
   const { key } = req.params;
   const { isEnabled, disabledReason } = req.body;
 
@@ -67,7 +73,7 @@ router.patch('/features/:key', authenticate, requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/v1/health/apis ───────────────────────────────────────────────────
-router.get('/health/apis', authenticate, requireAdmin, async (req, res) => {
+router.get('/health/apis', ...opsOnly, async (req, res) => {
   const { hours = 24 } = req.query;
   const since = new Date(Date.now() - parseInt(hours, 10) * 60 * 60 * 1000);
 

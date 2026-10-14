@@ -46,7 +46,14 @@ import { routeCheckoutMessage } from './checkoutMessage';
 
 /** Escape a value for safe interpolation into the checkout HTML. */
 function jsString(value) {
-  return JSON.stringify(String(value ?? ''));
+  // JSON.stringify leaves `</script>` intact, and these values (a listing name
+  // someone else wrote) land inside an inline <script>. Escape the characters
+  // that could close it or end the line.
+  return JSON.stringify(String(value ?? ''))
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 /**

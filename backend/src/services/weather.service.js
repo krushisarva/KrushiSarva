@@ -18,6 +18,10 @@ export async function getWeatherData(pincode) {
     return null;
   }
 
+  // Six digits or nothing: anything else would be extra query parameters on a
+  // request made with our key.
+  if (!/^[1-9]\d{5}$/.test(String(pincode))) return null;
+
   try {
     const url = `${OWM_BASE}/weather?zip=${pincode},IN&appid=${apiKey}&units=metric`;
     const res = await fetch(url);
