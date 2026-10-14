@@ -1,10 +1,10 @@
 /**
- * OTP Service — send & verify phone OTPs via MSG91.
- * Falls back to console-log in development if MSG91 key is not set.
+ * OTP Service — the development login. No SMS is ever sent: the code is logged
+ * and returned to the caller for auto-fill. Production SMS sign-in is Firebase
+ * Phone Auth (firebaseAuth.service.js); outside development sendOtp() refuses.
  */
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import axios from 'axios';
 import prisma from '../config/db.js';
 import { ENV } from '../config/env.js';
 import logger from '../utils/logger.js';
@@ -22,12 +22,12 @@ function generateOtp() {
  * Returns { sessionId } on success.
  */
 export async function sendOtp(phone) {
-  // No SMS provider outside development means there is no way to deliver the
-  // code to the phone's owner. The fallback below hands the code back to the
-  // CALLER and prints it to the log — fine on a developer's machine, a complete
-  // sign-in bypass anywhere else (anyone could request a code for any number and
-  // read it from the response). Fail closed before a session is even created.
-  if (!ENV.MSG91_AUTH_KEY && !ENV.IS_DEV) {
+  // This path cannot deliver the code to the phone's owner: it hands the code
+  // back to the CALLER and prints it to the log — fine on a developer's machine,
+  // a complete sign-in bypass anywhere else (anyone could request a code for any
+  // number and read it from the response). Fail closed before a session is even
+  // created.
+  if (!ENV.IS_DEV) {
     const err = new Error('SMS sign-in is not available right now. Please try again later.');
     err.statusCode = 503;
     err.expose = true;
@@ -50,13 +50,7 @@ export async function sendOtp(phone) {
     data: { phone, otp: hashed, expiresAt },
   });
 
-  if (ENV.MSG91_AUTH_KEY) {
-    await sendViaMSG91(phone, otp);
-    return { sessionId: session.id };
-  }
-
-  // Development fallback — no SMS key configured. Unreachable in production:
-  // the guard at the top of this function throws first.
+  // Unreachable in production: the guard at the top of this function throws first.
   console.log(`[OTP DEV] Phone: ${phone} | OTP: ${otp}`);
   // Return the OTP in the response so the dev app can auto-fill it.
   return { sessionId: session.id, devOtp: otp };
@@ -165,28 +159,5 @@ async function notifyOtpLockout(phone, lockSeconds) {
     });
   } catch (err) {
     logger.warn('[OTP] lockout notification failed: %s', err.message);
-  }
-}
-
-// ── MSG91 integration ─────────────────────────────────────────────────────────
-
-async function sendViaMSG91(phone, otp) {
-  const url = 'https://control.msg91.com/api/v5/otp';
-  const params = {
-    authkey: ENV.MSG91_AUTH_KEY,
-    template_id: ENV.MSG91_TEMPLATE_ID,
-    mobile: `91${phone}`,  // India country code
-    otp,
-    sender: ENV.MSG91_SENDER_ID,
-  };
-
-  try {
-    const res = await axios.post(url, null, { params });
-    if (res.data?.type !== 'success') {
-      throw new Error(res.data?.message || 'MSG91 error');
-    }
-  } catch (err) {
-    console.error('[OTP] MSG91 send failed:', err.message);
-    throw new Error('Failed to send OTP. Please try again.');
   }
 }

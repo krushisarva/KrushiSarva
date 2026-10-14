@@ -79,16 +79,17 @@ export const CLOUDINARY_CLOUD_NAME =
 export const OTP_MAX_ATTEMPTS        = 5;
 
 /**
- * Route login through Firebase Phone Auth instead of the MSG91 backend OTP.
+ * Route login through Firebase Phone Auth — the only way a real sign-in SMS is
+ * sent. Off, the app uses the backend's dev OTP path (no SMS; the code comes back
+ * in the response), which works only against a development backend.
  *
- * WHY: SMS to Indian numbers requires a DLT-registered sender (TRAI). Until
- * KrushiSarva's own DLT registration is approved, MSG91 delivers nothing —
- * Firebase works because Google is the registered sender.
+ * WHY: SMS to Indian numbers requires a DLT-registered sender (TRAI); Google is
+ * one.
  *
- * OFF by default. Turning it on requires the native Firebase module in the build
- * (a dev-client / EAS rebuild — it will NOT work in Expo Go) AND
- * FIREBASE_AUTH_ENABLED=true on the backend. Set EXPO_PUBLIC_FIREBASE_AUTH=true
- * in frontend/.env or eas.json. Flip back to false once DLT is live.
+ * OFF by default so Expo Go keeps working. Turning it on requires the native
+ * Firebase module in the build (a dev-client / EAS rebuild — it will NOT work in
+ * Expo Go) AND FIREBASE_AUTH_ENABLED=true on the backend. eas.json sets
+ * EXPO_PUBLIC_FIREBASE_AUTH=true for every build that reaches users.
  */
 export const FIREBASE_AUTH_ENABLED = process.env.EXPO_PUBLIC_FIREBASE_AUTH === 'true';
 

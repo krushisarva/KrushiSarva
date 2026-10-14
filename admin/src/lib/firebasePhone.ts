@@ -1,15 +1,16 @@
 /**
  * Firebase phone auth for the admin login (Firebase JS web SDK).
  *
- * WHY: the MSG91 OTP route 503s until KrushiSarva's DLT registration lands. The
- * farmer and seller apps already sign in through Firebase (Google is the
- * registered SMS sender); this is the same proof for the admin panel. The ID
+ * WHY: the backend's own OTP route sends no SMS and 503s in production. The
+ * farmer and seller apps sign in through Firebase (Google is the registered
+ * SMS sender); this is the same proof for the admin panel. The ID
  * token goes to the SAME /auth/firebase-login route the apps use, with
  * `audience: 'admin'` (see auth.tsx) so the server refuses a non-ADMIN phone
  * without creating anything.
  *
  * OFF unless all four required VITE_FIREBASE_* values were set at build time.
- * Off, the login screen is exactly the MSG91 flow. The SDK itself is loaded with
+ * Off, the login screen uses the dev OTP flow, which works only against a
+ * development backend. The SDK itself is loaded with
  * a dynamic import() on first use, so it never runs, or loads, on an OTP-only
  * build.
  *

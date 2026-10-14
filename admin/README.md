@@ -22,9 +22,10 @@ npm run db:seed:admin -- 9876543210      # creates or promotes that phone to ADM
 (Use the 10-digit form the OTP flow normalises to.) Then sign in at the admin app
 with that number and the OTP.
 
-> Local dev tip: the backend has an OTP dev-bypass (`OTP_DEV_BYPASS_ENABLED=true`,
-> non-production, no live SMS key) where the OTP `000000` is accepted — handy for
-> signing in without an SMS provider.
+> Local dev tip: a development backend never sends an SMS from `/auth/send-otp`. It
+> prints the code to the backend log and returns it as `devOtp`, which the login
+> screen auto-fills. With `OTP_DEV_BYPASS_ENABLED=true` (non-production only) the
+> OTP `000000` is also accepted.
 
 ## 2. Configure & run the admin app
 
@@ -48,7 +49,7 @@ npm run dev                # http://localhost:5180/admin/  (served under /admin)
 | `VITE_API_URL` | `/api/v1` | Base path the client calls (`${VITE_API_URL}/admin/*`, `/auth/*`). Keep relative to use the dev proxy / a same-origin reverse proxy in prod. Set to an absolute origin only if the admin app is served from a **different** origin than the API. |
 | `VITE_API_PROXY` | `http://localhost:3000` | Dev only — where `vite dev` proxies `/api` to your running backend. |
 | `VITE_ENV_NAME` | `local` | Shown in the top-bar environment badge (`local` / `staging` / `production`). |
-| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | empty | Firebase **web** app config (public, not secrets). All four set → Firebase phone login; any empty → MSG91 OTP. See [Firebase phone login](#firebase-phone-login-optional). |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | empty | Firebase **web** app config (public, not secrets). All four set → Firebase phone login; any empty → the dev OTP flow, which only works against a development backend. See [Firebase phone login](#firebase-phone-login). |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_STORAGE_BUCKET` | empty | Optional; not used by phone auth, accepted so the console snippet can be pasted whole. |
 
 In dev, Vite proxies `/api` → the backend, so the browser stays **same-origin** and
@@ -75,11 +76,12 @@ The admin API lives in `backend/src/routes/admin/*` and is mounted at
   admin client sends `X-Auth-Transport: cookie`, `withCredentials`, and the
   `X-CSRF-Token` header on mutations — the same contract the mobile web build uses.
 
-## Firebase phone login (optional)
+## Firebase phone login
 
-MSG91 cannot send SMS until DLT registration is done, so `/auth/send-otp` returns
-503 in production. The farmer and seller apps already sign in with Firebase phone
-auth, where Google sends the SMS. The admin panel can sign in the same way.
+Firebase phone auth is the only production SMS sign-in: the backend's
+`/auth/send-otp` never sends an SMS and returns 503 in production. The farmer and
+seller apps sign in with Firebase, where Google sends the SMS, and the admin panel
+signs in the same way.
 
 **How it works.** When the build has the four required `VITE_FIREBASE_*` values,
 the login screen:
@@ -104,16 +106,17 @@ On the server:
   refresh rotation, `isActive` / `tokenVersion` checks, scopes read from the
   DB, and the idle logout.
 
-Without the values, the build uses the MSG91 OTP flow, unchanged. When Firebase
-is on, the MSG91 option is hidden.
+Without the values, the build uses the backend's dev OTP flow (`/auth/send-otp` +
+`/auth/verify-otp`), which only works against a development backend. When
+Firebase is on, the login screen never calls `/auth/send-otp`.
 
-> **Turning Firebase off later (for example once DLT is approved).** An admin
+> **Keep `FIREBASE_AUTH_ENABLED=true` on the production backend.** An admin
 > image built with the `VITE_FIREBASE_*` values logs in **only** through
-> Firebase. If you set `FIREBASE_AUTH_ENABLED=false` on the backend while that
-> image is running, the browser blocks the reCAPTCHA script (the CSP no longer
-> allows it) and `/auth/firebase-login` returns 503, so **no admin can log in**.
-> First rebuild and deploy the admin image **without** the `VITE_FIREBASE_*`
-> build args (it then uses MSG91), and only then turn the backend flag off.
+> Firebase. If the backend flag is off while that image is running, the browser
+> blocks the reCAPTCHA script (the CSP no longer allows it) and
+> `/auth/firebase-login` returns 503, so **no admin can log in**. An image built
+> without the values does not help either: in production its `/auth/send-otp`
+> returns 503 too.
 
 **One-time owner setup**
 
@@ -147,7 +150,8 @@ is on, the MSG91 option is hidden.
    - Local: put them in `admin/.env`.
    - Docker: the root `Dockerfile` stage 1 takes them as build args, for
      example `docker build --build-arg VITE_FIREBASE_API_KEY=… --build-arg VITE_FIREBASE_AUTH_DOMAIN=… --build-arg VITE_FIREBASE_PROJECT_ID=… --build-arg VITE_FIREBASE_APP_ID=… .`
-   - The args default to empty, so a build without them stays on MSG91.
+   - The args default to empty, so a build without them uses the dev OTP flow
+     and cannot log in to a production backend.
    - Vite inlines the values at build time, so changing them needs a rebuild.
    - Docker may warn `SecretsUsedInArgOrEnv` about `…_API_KEY`. That is a false
      positive: a Firebase web API key is public.
@@ -161,7 +165,7 @@ is on, the MSG91 option is hidden.
      reCAPTCHA script.
    - On the VPS, `ALLOWED_ORIGINS` must include `https://srv2061596.hstgr.cloud`.
      The backend only treats Railway domains as its own origin, and it refuses
-     a browser POST whose `Origin` it does not know. This applies to the MSG91
+     a browser POST whose `Origin` it does not know. This applies to the dev OTP
      flow too.
 7. **Limit SMS abuse.** Firebase sends the SMS straight from the browser, so
    the backend's OTP limiters and proof-of-work gate never see a send. Only
@@ -217,8 +221,7 @@ under Firebase → Authentication → Authorized domains. The backend must list
 
 Known limit: the backend sees Vercel's servers, not the admin's own IP, so every
 admin shares the per-IP limits (global 200 requests / 15 min). That is fine for a
-few admins; with more, use the same-origin copy at
-`https://srv2061596.hstgr.cloud/admin/`, which the backend serves itself.
+few admins.
 
 ---
 

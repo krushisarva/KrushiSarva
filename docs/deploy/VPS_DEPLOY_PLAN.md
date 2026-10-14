@@ -13,7 +13,7 @@ Citations are `path:line` against `main` at c718c5d.
 
 The whole backend runs on the one VPS as 6 Docker containers. **Caddy** handles automatic HTTPS for `srv2061596.hstgr.cloud`. Behind it are **backend** (Express API, Socket.IO, the admin SPA, the in-process BullMQ worker and node-cron, built from the existing root `Dockerfile`), **fastapi**, **celery** (both from one new Python image), **postgres:16** and **redis:7**. Only ports 22, 80 and 443 are reachable from the internet. The database is new and empty: it is created once with `prisma db push` plus one manual index. Then the two installed preview APKs are repointed with `eas update`, and the Razorpay webhook moves to the new host. The RAM fits with room to spare (about 1.4–2.0 GB in use out of 4 GB, see §3). **The biggest blocker is login, not infrastructure** (§11, decision 1).
 
-**Total time: about 3.5–4 hours of hands-on work**, which can be split over two sittings. This does not include waiting on DLT approval or collecting API keys.
+**Total time: about 3.5–4 hours of hands-on work**, which can be split over two sittings. This does not include collecting API keys.
 
 | # | Block | Time |
 |---|---|---|
@@ -416,9 +416,6 @@ RAZORPAY_WEBHOOK_SECRET=$(openssl rand -hex 24)
 FIREBASE_AUTH_ENABLED=true
 GEMINI_API_KEY=
 SARVAM_API_KEY=
-MSG91_AUTH_KEY=
-MSG91_TEMPLATE_ID=
-MSG91_SENDER_ID=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
@@ -473,8 +470,7 @@ apt -y install jq
 | `AI_BACKEND_URL` | backend | yes. The default is localhost (backend/src/config/env.js:323). | Fixed: `http://fastapi:8001` |
 | `ALLOWED_ORIGINS` | backend | yes. Without it the admin SPA white-screens, because self-origin only comes from the Railway vars (backend/src/app.js:134-138, 140-169). | Fixed: `https://srv2061596.hstgr.cloud` |
 | `AI_ALLOWED_ORIGINS` | fastapi | no, but an invalid value crashes boot in prod | Fixed: same origin |
-| `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | backend | **yes for app login on day one**. The apps were built with Firebase login on (frontend/eas.json:33). The backend needs all three key vars (backend/src/services/firebaseAuth.service.js:48). | Firebase console → Project settings → Service accounts |
-| `MSG91_AUTH_KEY` / `MSG91_TEMPLATE_ID` / `MSG91_SENDER_ID` | backend | **yes for admin login**: without them, prod returns 503 (backend/src/services/otp.service.js:30-36) | MSG91, plus a DLT-approved template |
+| `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | backend | **yes for login on day one**: Firebase is the only production SMS sign-in, for the apps and the admin panel. The apps were built with Firebase login on (frontend/eas.json:33). The backend needs all three key vars (backend/src/services/firebaseAuth.service.js:48). | Firebase console → Project settings → Service accounts |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | backend | strongly recommended. Without them, image uploads are silently dropped. | Cloudinary dashboard |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | backend | no (without them the backend runs COD-only mock mode) | Razorpay dashboard, test or live mode (decision 5) |
 | `RAZORPAY_WEBHOOK_SECRET` | backend | yes if Razorpay is used | **generate:** `openssl rand -hex 24`. Paste the same value into the Razorpay webhook (§10). |
@@ -681,7 +677,7 @@ Redis is not backed up. AOF survives restarts, and the cache can be rebuilt. Cad
    git -C ..\ks-ota commit -am "chore: point apps at the Hostinger VPS"
    ```
    Make the same edits on `main` too, for future builds.
-3. **Publish both OTAs.** `eas update` does **not** read `eas.json` `env`, so set the variables in the shell, and **include `EXPO_PUBLIC_FIREBASE_AUTH=true`, or login silently switches to MSG91**. Runtime 1.0.0 matches the installed builds (frontend/app.json:6-9, channel at frontend/eas.json:29 and seller-app/eas.json:26).
+3. **Publish both OTAs.** `eas update` does **not** read `eas.json` `env`, so set the variables in the shell, and **include `EXPO_PUBLIC_FIREBASE_AUTH=true`, or login silently switches to the dev OTP flow, which returns 503 in prod**. Runtime 1.0.0 matches the installed builds (frontend/app.json:6-9, channel at frontend/eas.json:29 and seller-app/eas.json:26).
    ```powershell
    $env:EXPO_PUBLIC_API_BASE_URL='https://srv2061596.hstgr.cloud/api/v1'
    $env:EXPO_PUBLIC_SOCKET_URL='wss://srv2061596.hstgr.cloud'
@@ -691,7 +687,7 @@ Redis is not backed up. AOF survives restarts, and the cache can be rebuilt. Cad
    npx eas update:list --branch preview      # in each app folder: runtime 1.0.0, android
    ```
 4. **Phone test:** open each app, swipe it away, and open it again. The update applies on the **second** cold start (`fallbackToCacheTimeout: 0`, frontend/app.json:12). Then check Firebase OTP login, a socket screen such as chat or notifications (the client is websocket-only, shared/services/socket.js:77), and the Terms and Privacy links.
-5. **Admin panel:** `https://srv2061596.hstgr.cloud/admin/`. No rebuild is needed because the SPA uses the relative `/api/v1` (Dockerfile:14). Login needs MSG91 (decision 1).
+5. **Admin panel:** lives only on Vercel, `https://krushi-sarva.vercel.app`. The VPS does not serve it; `https://srv2061596.hstgr.cloud/admin*` redirects there. Vercel proxies `/api/*` to the VPS (admin/vercel.json), so the SPA keeps the relative `/api/v1`. Login uses Firebase: set the four `VITE_FIREBASE_*` values in the Vercel project and add `krushi-sarva.vercel.app` to Firebase authorized domains (admin/README.md "Hosting on Vercel"); without them the SPA shows the dev OTP flow, which returns 503 in prod (decision 1).
 6. **Razorpay:** Dashboard → Settings → Webhooks. Point the URL at `https://srv2061596.hstgr.cloud/api/v1/shop-webhooks/razorpay`, the path the code calls the dashboard's current one (backend/src/app.js:289-304; route at backend/src/routes/paymentWebhooks.routes.js:124). Set the secret to `RAZORPAY_WEBHOOK_SECRET`, keep the existing events, send a test event, and check that `docker compose logs backend` shows no 400.
 7. **Play Console:** set the privacy policy URL to `https://srv2061596.hstgr.cloud/legal/privacy`, if a listing exists.
 8. **No change needed:** website/ (static), Expo push, Firebase phone auth (it uses SHA fingerprints, not domains), Cloudinary (uploads are signed on the server), FastAPI CORS (server-to-server only).
@@ -700,7 +696,7 @@ Redis is not backed up. AOF survives restarts, and the cache can be rebuilt. Cad
 
 ## 11. Owner decisions (each has a recommended default)
 
-1. **Login on day one.** The admin SPA only uses `/auth/send-otp` (admin/src/lib/auth.tsx:106), which returns 503 in prod without MSG91 (backend/src/services/otp.service.js:30-36). **Default:** the apps log in through Firebase (service-account env, §6). Start or finish MSG91 DLT registration now, and accept that the admin panel waits for it. Alternative: approve a small code task that adds Firebase login to the admin SPA. **Never** run `NODE_ENV=development` publicly to get `devOtp`, because that is an open sign-in bypass.
+1. **Login on day one.** Firebase is the only production SMS sign-in. **Decided:** the apps and the admin SPA both log in through Firebase (service-account env, §6; the admin SPA, hosted only on Vercel at `https://krushi-sarva.vercel.app`, also needs its `VITE_FIREBASE_*` values in the Vercel project). The backend's `/auth/send-otp` is a dev/test login only and returns 503 in prod. **Never** run `NODE_ENV=development` publicly to get `devOtp`, because that is an open sign-in bypass.
 2. **Hostname.** **Default:** keep `srv2061596.hstgr.cloud` now, and buy a domain before the first Play Store production build. Changing it later means another OTA, more eas.json edits and another Razorpay update.
 3. **OTA JS source.** **Default:** fb7b4c8 plus the URL edits (safe). HEAD adds seller payment status and order tracking, but runs Firebase JS 26.4.0 on native 26.3.3.
 4. **Gemini and Sarvam keys.** **Default:** real keys. Prod refuses to boot without them (backend/src/config/env.js:621-622), and so do `seed-categories.js` and `seed-admin.js` (§7 steps 5–6). Placeholders would boot, but AI and voice would then fail.
@@ -720,7 +716,7 @@ Redis is not backed up. AOF survives restarts, and the cache can be rebuilt. Cad
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | **Login lockout.** Admin needs MSG91 plus DLT (backend/src/services/otp.service.js:30-36). The apps need the Firebase env, and the OTA must carry `EXPO_PUBLIC_FIREBASE_AUTH=true` (shared/constants/config.js:81-93). | Decision 1. §10 step 3 sets the variable explicitly. |
+| 1 | **Login lockout.** Firebase is the only production SMS sign-in. The backend needs the Firebase env, the admin SPA needs its `VITE_FIREBASE_*` build values, and the OTA must carry `EXPO_PUBLIC_FIREBASE_AUTH=true` (shared/constants/config.js:81-93). | Decision 1. §10 step 3 sets the variable explicitly. |
 | 2 | **One small box is a single point of failure.** A Hostinger or VPS outage takes everything down, the DB included. | Nightly encrypted off-box dumps with a dead-man ping, snapshots, and the monthly drill that also decrypts the off-box copy from the PC (§9). Compose file and Caddyfile committed before cutover (decision 13). |
 | 3 | **Memory and CPU pressure.** A server-side build (1–1.5 GB) on top of the stack, and Celery image decode (fastapi/jobs/tasks.py:91 allows 50 MP; two children decoding at once peak near 750 MB). | `mem_limit` on every container (Celery 768m, §3), 2 GB swap, builds at quiet hours, option B later. If Celery still hits its limit, drop to `--concurrency=1`. |
 | 4 | **Schema trap.** Any later `prisma db push` drops the empty `ai_scan_*` tables or aborts (Dockerfile:50-66). The migration history is incomplete (Dockerfile:67-71). The mandi index lives outside schema.prisma. | Push exactly once (§7). Reviewed diffs after that. Decision 12. |

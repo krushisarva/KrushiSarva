@@ -5,7 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_ENV_NAME?: string;
   readonly VITE_API_PROXY?: string;
   // Firebase WEB app config (public, not secrets). All four required ones set →
-  // the login screen uses Firebase phone auth; any missing → the MSG91 OTP flow.
+  // the login screen uses Firebase phone auth; any missing → the dev OTP flow.
   readonly VITE_FIREBASE_API_KEY?: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
   readonly VITE_FIREBASE_PROJECT_ID?: string;

@@ -1,9 +1,9 @@
 /**
  * Unit tests for the Firebase Phone Auth login path.
  *
- * This path exists only because SMS to Indian numbers needs a DLT-registered
- * sender, which KrushiSarva does not yet have. It runs ALONGSIDE the MSG91 OTP
- * flow — these tests must never require otp.service.js to change.
+ * This is the production SMS sign-in: SMS to Indian numbers needs a
+ * DLT-registered sender, and Google is one. It runs ALONGSIDE the development
+ * OTP flow — these tests must never require otp.service.js to change.
  *
  * What matters here is the trust boundary: a Firebase ID token is Google-signed
  * and unforgeable, but we trust it for exactly ONE claim (phone_number) and
@@ -156,7 +156,7 @@ describe('verifyFirebaseIdToken', () => {
   });
 
   test('rejects a non-Indian number even though the token is validly signed', async () => {
-    // Google will happily verify a US number. Our phone column and the MSG91
+    // Google will happily verify a US number. Our phone column and the OTP
     // path are India-only, so the token being genuine is not sufficient.
     const { verifyFirebaseIdToken } = await loadService({
       decodedToken: { phone_number: '+14155552671', uid: 'us-user', firebase: { sign_in_provider: 'phone' } },

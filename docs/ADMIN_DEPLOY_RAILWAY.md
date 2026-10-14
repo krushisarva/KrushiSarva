@@ -27,7 +27,7 @@ both `admin/` and `backend/`.
    - The `fastapi` and `frontend` services keep their own root directories — unchanged.
 2. **Backend service → Variables** — confirm/add:
    - `DATABASE_URL` (already set — the Postgres plugin).
-   - `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID`, `MSG91_SENDER_ID` — **required to receive the login OTP by SMS in production.** Without a key, the server returns the OTP in the API response instead of sending it (a dev fallback you should not rely on in prod). Note: the `000000` dev bypass is hard-refused under `NODE_ENV=production`.
+   - `FIREBASE_AUTH_ENABLED=true`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — **required to log in by SMS in production.** Firebase phone auth is the only production SMS sign-in, and the admin build also needs the four `VITE_FIREBASE_*` values ([admin/README.md](../admin/README.md#firebase-phone-login)). The backend's own `/auth/send-otp` never sends an SMS and returns 503 under `NODE_ENV=production`. Note: the `000000` dev bypass is hard-refused under `NODE_ENV=production`.
    - You do **not** need `ALLOWED_ORIGINS` for the admin panel — it's same-origin.
 3. **Deploy.** Railway builds the Dockerfile (admin build → backend image) and starts with `npx prisma db push --skip-generate && node src/server.js`. Healthcheck stays on `/healthz`.
 
@@ -48,7 +48,7 @@ promotes that phone to `ADMIN`.
 ## Log in
 
 1. Open `https://<your-backend-domain>/admin`.
-2. Enter the seeded phone number → you receive an OTP by SMS (MSG91).
+2. Enter the seeded phone number → Firebase sends you the OTP by SMS.
 3. Enter the OTP. The server enforces `ADMIN` on every `/api/v1/admin/*` route, so a
    non-admin is rejected with 403 regardless of the UI.
 
@@ -69,4 +69,4 @@ committed build artifacts (`admin/dist` is git-ignored).
   the API on a *different* host than the page — verify the admin is opened at
   `…/admin` on the backend domain, not a separate URL, and that
   `VITE_API_URL` was `/api/v1` at build time (it's hard-set in the Dockerfile).
-- **No OTP arrives** → `MSG91_AUTH_KEY` isn't set on the backend service.
+- **No OTP arrives, or login returns 503** → the admin build lacks the `VITE_FIREBASE_*` values, or `FIREBASE_AUTH_ENABLED` and the three `FIREBASE_*` keys aren't set on the backend service, or the backend domain isn't under Firebase → Authentication → Authorized domains.

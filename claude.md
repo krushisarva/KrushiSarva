@@ -136,7 +136,7 @@ Sarvam
 Groq
 OpenAI
 Razorpay
-MSG91
+Firebase Authentication (SMS sign-in)
 Open-Meteo
 OpenWeatherMap
 IMD

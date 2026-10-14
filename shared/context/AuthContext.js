@@ -36,8 +36,8 @@ const INSTANT_VERIFY_WAIT_MS = Platform.OS === 'android' ? 1_000 : 0;
 // second SMS for the same number inside a minute — and the modular
 // signInWithPhoneNumber() of @react-native-firebase v26 takes no force-resend
 // argument (only the removed namespaced API did), so a resend before then
-// resolves as if it worked while no SMS is sent. MSG91 has no such window, so
-// that path keeps the shorter wait.
+// resolves as if it worked while no SMS is sent. The dev OTP path has no such
+// window, so it keeps the shorter wait.
 export const FIREBASE_RESEND_SECONDS = 60;
 export const OTP_RESEND_SECONDS = 30;
 
@@ -47,7 +47,7 @@ export const OTP_RESEND_SECONDS = 30;
  * Normally just `otpResendSeconds` from this context. The fallback — for a
  * value that never arrived, or arrived as 0/NaN — is the FIREBASE number on
  * purpose, because the two failure modes are not symmetric: waiting 60 s on
- * MSG91 costs a farmer half a minute, while offering "Resend" after 30 s on
+ * the dev OTP path costs half a minute, while offering "Resend" after 30 s on
  * Firebase burns their one chance (it resolves as if it sent, and no SMS
  * comes). Lives here so the screen reuses these constants instead of keeping
  * its own copy that could drift.
@@ -69,12 +69,13 @@ export function resendSeconds(otpResendSeconds) {
  * the one app that actually has it.
  *
  * Pass `{ sendFirebaseOtp, confirmFirebaseOtp, signOutFirebase, firebaseErrorMessage }`
- * (see shared/services/firebasePhoneAuth.js). When absent, the MSG91 path is used.
+ * (see shared/services/firebasePhoneAuth.js). When absent, the backend's dev OTP
+ * path is used (no SMS; it works only against a development backend).
  */
 export function AuthProvider({ children, phoneAuth = null }) {
   // Firebase is used only when the build enabled it AND the host app supplied the
   // adapter. Web is excluded: @react-native-firebase is native-only, so a web
-  // build must keep using MSG91 rather than crash on a missing module.
+  // build must keep using the dev OTP path rather than crash on a missing module.
   const useFirebase = Boolean(
     FIREBASE_AUTH_ENABLED && phoneAuth && Platform.OS !== 'web'
   );
@@ -316,9 +317,8 @@ export function AuthProvider({ children, phoneAuth = null }) {
   }, [markActivity]);
 
   const sendOtp = useCallback(async (phone) => {
-    // ── Firebase path (while DLT registration is pending) ────────────────────
-    // Google sends the SMS because it is the DLT-registered sender; MSG91 cannot
-    // deliver to Indian numbers until our own registration is approved. Returns
+    // ── Firebase path (every real SMS) ───────────────────────────────────────
+    // Google sends the SMS because it is the DLT-registered sender. Returns
     // no devOtp — there is nothing to auto-fill, a real SMS arrives.
     if (useFirebase) {
       let idToken = null;

@@ -147,7 +147,7 @@ There is **no clustering** in either service; horizontal scale is instance-level
 | Fact | Value |
 |---|---|
 | Runtime settings manifest (`AppSetting`, admin-**writable**) | **53** keys across 7 categories (AI Budget & Limits, AI Models, Broadcast, Compliance, General, Marketplace, Shop) — `SETTINGS_MANIFEST`, `backend/src/services/settings.service.js:62-193` |
-| Env-status manifest (`ENV_MANIFEST`, **read-only** presence panel) | **23** keys across 6 categories (Core, AI / LLM, SMS / OTP, Media, Payments, Market Data) — never persisted as `AppSetting` rows, never writable through `setSetting`; `settings.service.js:194-218` |
+| Env-status manifest (`ENV_MANIFEST`, **read-only** presence panel) | **24** keys across 6 categories (Core, AI / LLM, SMS / OTP, Media, Payments, Market Data) — never persisted as `AppSetting` rows, never writable through `setSetting`; `settings.service.js:194-218` |
 | Feature flags seeded | **17** (10 product + 7 AI kill switches) |
 | Admin RBAC scopes | **7** (`SUPER_ADMIN, KYC_REVIEWER, CONTENT_MODERATOR, FINANCE, SUPPORT, CMS_EDITOR, OPS`) |
 | `CACHE_SCHEMA_VERSION` | **1** |
@@ -170,7 +170,7 @@ There is **no clustering** in either service; horizontal scale is instance-level
 | **Anthropic** | adapters wired, **no `claude-*` id in any default or chain** | `ANTHROPIC_API_KEY` | unreachable in practice |
 | **Razorpay** | Express checkout + webhook | `RAZORPAY_KEY_ID/_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | no keys ⇒ COD-only; no webhook secret ⇒ every webhook rejected 400 |
 | **Cloudinary** | product/listing/avatar images, private KYC docs, scan photos, voice audio | `CLOUDINARY_*` | public uploads no-op to a placeholder URL; **KYC uploads throw** |
-| **MSG91** | OTP SMS | `MSG91_AUTH_KEY` | OTP returned in the API response (dev fallback) |
+| **Firebase Phone Auth** (Google) | the only production SMS sign-in, for all three clients: Google sends and verifies the SMS, Express verifies the ID token at `/auth/firebase-login` | `FIREBASE_AUTH_ENABLED`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | flag off or service account incomplete ⇒ `/auth/firebase-login` 503s (no production SMS sign-in); `/auth/send-otp` is a dev/test login that never sends SMS |
 | **Open-Meteo** | FastAPI weather; Express weather forecast | none (keyless) | serve stale L2 row, then 503 |
 | **OpenWeatherMap** | Express scan weather snapshot + `/crop-disease/weather` | `OPENWEATHER_API_KEY` | returns `null`, scan proceeds |
 | **IMD** (`city.imd.gov.in`) | Express weather alerts (HTML scraping) | none | `{alerts: [], imdAvailable:false}` |
@@ -211,7 +211,7 @@ flowchart TB
     GRQ["Groq (chat fallback)"]
     OAI["OpenAI (ensemble voter)"]
     ANT["Anthropic (wired, unreachable)"]
-    MSG["MSG91 (OTP SMS)"]
+    FBA["Firebase Phone Auth (SMS sign-in)"]
     RZP["Razorpay (payments)"]
     OMT["Open-Meteo (keyless)"]
     OWM["OpenWeatherMap"]
@@ -237,7 +237,7 @@ flowchart TB
   AIW -->|asyncpg| PG
   AIK -->|asyncpg| PG
 
-  BE --> MSG
+  BE -->|"verify ID token"| FBA
   BE --> RZP
   BE --> SRV
   BE --> GEM
@@ -432,7 +432,7 @@ There is **no clustering** — no `cluster`/PM2 fork logic anywhere in `src/`. H
 ##### Web boot sequence (`backend/src/server.js`)
 
 1. `src/config/env.js` is imported transitively and **can throw at import time** (missing `DATABASE_URL`/`JWT_SECRET`/`FIELD_ENCRYPTION_KEY`, or a prod config problem) — the process dies before any listener exists.
-2. Optional-key warnings for `MSG91_AUTH_KEY`, `CLOUDINARY_CLOUD_NAME`, `GEMINI_API_KEY`, `SARVAM_API_KEY`, `DATA_GOV_API_KEY` (`server.js:32-43`).
+2. Optional-key warnings for `FIREBASE_AUTH_ENABLED`, `CLOUDINARY_CLOUD_NAME`, `GEMINI_API_KEY`, `SARVAM_API_KEY`, `DATA_GOV_API_KEY` (`server.js:32-43`).
 3. HTTP server timeouts set **before** listen (`server.js:56-58`): `timeout=30_000`, `keepAliveTimeout=65_000`, `headersTimeout=70_000`. Comment states keepAlive must exceed the Railway 60 s LB idle timeout to avoid 502s on keep-alive races.
 4. Socket.IO constructed with a CORS callback and `transports: ['websocket','polling']` (`server.js:64-80`).
 5. **Redis adapter attach is a top-level `await` with a hard 5 s race** (`server.js:96-99`). The comment is explicit that without the race a hanging Redis at boot blocks ESM module evaluation, so `listen` never runs and the deploy healthcheck fails with no logs. On failure both clients are disconnected and the in-memory adapter is used; the fallback is logged at `info` (not `warn`) because `logger.warn` is suppressed in production.
@@ -530,7 +530,7 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `SESSION_ABSOLUTE_TIMEOUT_DAYS` | `30` | hard session cap from first login, anchored via `sessionStartedAt` |
 | `MAX_CONCURRENT_SESSIONS` | `5` | `enforceSessionLimit` evicts oldest lineages; `0` = unlimited |
 | `SOCKET_MAX_CONN_PER_USER` | `10` | per-instance Socket.IO cap |
-| `MSG91_AUTH_KEY` / `_TEMPLATE_ID` / `_SENDER_ID` | `''` / `''` / `FRMESY` | no SMS OTP delivery; also a precondition of the dev OTP bypass |
+| `FIREBASE_AUTH_ENABLED` | `false` unless `'true'` | off ⇒ `/auth/firebase-login` 503s. On also needs `FIREBASE_PROJECT_ID` / `_CLIENT_EMAIL` / `_PRIVATE_KEY`. This is the only production SMS sign-in |
 | `OTP_EXPIRE_MINUTES` / `OTP_MAX_ATTEMPTS` | `5` / `5` | OTP code lifetime / per-session attempts |
 | `OTP_LOCK_THRESHOLD` | `5` | failures before a phone lock |
 | `OTP_LOCK_BASE_SECONDS` / `OTP_LOCK_MAX_SECONDS` | `60` / `3600` | lock backoff `base × 2^(cycle-1)`, capped |
@@ -562,7 +562,7 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `OTP_VERIFY_RATE_LIMIT_WINDOW_MS` / `_MAX` / `OTP_VERIFY_IP_RATE_LIMIT_MAX` | `60000` / `10` / `30` | verify-attempt rate; kept above the lockout threshold so 423 surfaces before 429 |
 | `OTP_POW_SECRET` | `''` | **opt-in**; empty disables the proof-of-work gate entirely |
 | `OTP_POW_DIFFICULTY` / `_SUSPICION_THRESHOLD` / `_CHALLENGE_TTL_MS` | `18` bits / `3` / `180000` | PoW tuning |
-| `OTP_DEV_BYPASS_ENABLED` | unset | derived `ENV.OTP_DEV_BYPASS` requires **all three**: opt-in `'true'`, `NODE_ENV !== 'production'`, and empty `MSG91_AUTH_KEY`. Prod boot is refused if the opt-in is set |
+| `OTP_DEV_BYPASS_ENABLED` | unset | derived `ENV.OTP_DEV_BYPASS` requires **both**: opt-in `'true'` and `NODE_ENV !== 'production'`. Prod boot is refused if the opt-in is set |
 | `VELOCITY_ENABLED` | `NODE_ENV !== 'test'` | master switch for FRAUD-1 |
 | `VELOCITY_{ORDER,REFUND,LOGIN}_{WINDOW_SEC,FLAG,LIMIT,BLOCK}` | order `3600/6/12/true`, refund `86400/3/6/true`, login `3600/8/0/false` | per-action flag + block tiers |
 | `REFUND_ABUSE_ENABLED` | `NODE_ENV !== 'test'` | master switch for FRAUD-2 |
@@ -2338,7 +2338,7 @@ and refresh revocation.
 
 | Method | Path | Auth | Rate limit | Key request fields | Response shape | DB models written | Side effects |
 |---|---|---|---|---|---|---|---|
-| POST | `/api/v1/auth/send-otp` | public | `otpPowGate` → `otpIpLimiter` (50 / 3600 s / IP) → `otpPhoneLimiter` (5 / 3600 s / normalized phone) + global | `phone` (normalized to 10 digits by `indianMobileBody`) | 200 `{ sessionId, devOtp? }` | `OtpSession` create; `OtpSession.updateMany` sets prior unverified sessions' `attempts = OTP_MAX_ATTEMPTS` | MSG91 HTTP POST when `MSG91_AUTH_KEY` set; else console-log + `devOtp` in body |
+| POST | `/api/v1/auth/send-otp` | public | `otpPowGate` → `otpIpLimiter` (50 / 3600 s / IP) → `otpPhoneLimiter` (5 / 3600 s / normalized phone) + global | `phone` (normalized to 10 digits by `indianMobileBody`) | 200 `{ sessionId, devOtp }` | `OtpSession` create; `OtpSession.updateMany` sets prior unverified sessions' `attempts = OTP_MAX_ATTEMPTS` | dev/test login only: no SMS is sent, the code is console-logged + returned as `devOtp`; 503 `OTP_DELIVERY_UNAVAILABLE` under `NODE_ENV=production` |
 | POST | `/api/v1/auth/verify-otp` | public | `otpVerifyIpLimiter` (30 / 60 s / IP), `otpVerifyPhoneLimiter` (10 / 60 s / phone) + global | `phone`, `otp` (exactly 6 chars), `name?` (2–80) | 201 `{ accessToken, isNewUser, user, refreshToken \| csrfToken, stepUp? }` | `OtpSession` (attempts++ or `verified=true`), `User` create (new signup), `ConsentRecord` ×3 (signup), `RefreshToken` create + evictions, `AuditLog` (`AUTH_LOGIN`, optional `AUTH_LOGIN_RISKY`, `AUTH_LOGIN_GEO_ANOMALY`, `AUTH_OTP_FAILURE`, `AUTH_OTP_LOCKOUT`), `DeviceAccountLink` upsert, `SecurityIncident`+`IncidentUpdate` (fraud flags) | Redis OTP-lockout counters cleared; Expo push on risky/geo-anomalous login; velocity ZSETs written; sets `rt`+`csrf` cookies in cookie mode |
 | POST | `/api/v1/auth/refresh` | bearer-less; token from body or `rt` cookie | global only | `refreshToken?`, `userId?` (or cookie) | `{ accessToken, refreshToken }` or `{ accessToken, csrfToken }` | `RefreshToken` (claim `rotatedAt`, create successor, `deleteMany` family on reuse/expiry/disabled account), `AuditLog` `AUTH_TOKEN_REFRESH` / `AUTH_TOKEN_REUSE`, `SecurityIncident` on reuse | clears both cookies on any failure path; rotates `csrf` cookie in cookie mode |
 | POST | `/api/v1/auth/change-phone` | user (`authenticate`) | global only | `newPhone`, `otp` | `{ accessToken, phone, refreshToken \| csrfToken }` | `User.phone` + `tokenVersion` increment (one transaction), `RefreshToken` deleteMany + create, `OtpSession` | 409 if number already taken (pre-check **and** `P2002` catch); every other session killed |
@@ -2362,9 +2362,9 @@ and refresh revocation.
 2. `otpPowGate` (`services/proofOfWork.service.js:otpPowGate`). No-op unless `OTP_POW_SECRET` is set. Peeks the per-IP sliding send count (`pow:otp:ip:<ip>`, window `OTP_RATE_LIMIT_WINDOW_MS`). Below `OTP_POW_SUSPICION_THRESHOLD` (3) → record and continue. At/above → require a solved hashcash proof from header `X-OTP-PoW` or `body.proofOfWork`; a failure returns **428 Precondition Required** with `X-PoW-Required: 1` and a freshly issued challenge. The challenge is HMAC-signed (`challenge.difficulty.exp.scope`, scope = `send-otp:<ip>`) so verification is stateless; single use is enforced by `SET pow:used:<challenge> NX PX ttl`. Work = `sha256(challenge.nonce)` with ≥ `OTP_POW_DIFFICULTY` (18) leading zero bits. Placed before the limiters so a 428 does not burn a rate-limit slot. Any error fails open.
 3. `otpIpLimiter` then `otpPhoneLimiter` (sliding-window ZSETs in Redis, in-memory fallback). 429 + `Retry-After` on trip; rejected requests are **not** recorded, so a flood cannot extend its own window.
 4. `indianMobileBody('phone')` (`utils/phone.js`) normalizes `+91`/`0`/spaces via `libphonenumber-js` (digit fallback) and enforces `^[6-9]\d{9}$`; the sanitizer rewrites `req.body.phone` to the canonical 10 digits.
-5. `sendOtp(phone)` (`services/otp.service.js:sendOtp`): 6-digit code from `crypto.randomInt`; bcrypt hash at cost 10; `expiresAt = now + OTP_EXPIRE_MINUTES` (5); all prior unverified sessions for the phone are burned by setting `attempts = OTP_MAX_ATTEMPTS`; one `OtpSession` row created. With `MSG91_AUTH_KEY` → `POST https://control.msg91.com/api/v5/otp` with `mobile: 91<phone>`; without → the OTP is console-logged **and returned as `devOtp`**.
+5. `sendOtp(phone)` (`services/otp.service.js:sendOtp`): 6-digit code from `crypto.randomInt`; bcrypt hash at cost 10; `expiresAt = now + OTP_EXPIRE_MINUTES` (5); all prior unverified sessions for the phone are burned by setting `attempts = OTP_MAX_ATTEMPTS`; one `OtpSession` row created. No SMS is ever sent: the OTP is console-logged **and returned as `devOtp`** so the app auto-fills it. This is a local development/test login only; under `NODE_ENV=production` `send-otp` returns 503 `OTP_DELIVERY_UNAVAILABLE`, and production sign-in goes through Firebase Phone Auth (`POST /api/v1/auth/firebase-login`).
 6. **Client → `POST /api/v1/auth/verify-otp { phone, otp, name? }`.**
-7. `verifyOtp` (`services/otp.service.js:verifyOtp`): (a) `checkOtpLock` — a locked number is refused before the code is even compared; (b) find the newest `OtpSession` where `verified=false`, `expiresAt > now`, `attempts < OTP_MAX_ATTEMPTS` — none → "OTP expired or not found"; (c) dev bypass only when the frozen `ENV.OTP_DEV_BYPASS` flag is true **and** the code is `000000` (flag requires `OTP_DEV_BYPASS_ENABLED==='true'` **and** `NODE_ENV !== 'production'` **and** no `MSG91_AUTH_KEY`; a prod boot with the opt-in set refuses to start, `config/env.js:505-507`); (d) otherwise `bcrypt.compare`.
+7. `verifyOtp` (`services/otp.service.js:verifyOtp`): (a) `checkOtpLock` — a locked number is refused before the code is even compared; (b) find the newest `OtpSession` where `verified=false`, `expiresAt > now`, `attempts < OTP_MAX_ATTEMPTS` — none → "OTP expired or not found"; (c) dev bypass only when the frozen `ENV.OTP_DEV_BYPASS` flag is true **and** the code is `000000` (flag requires `OTP_DEV_BYPASS_ENABLED==='true'` **and** `NODE_ENV !== 'production'`; a prod boot with the opt-in set refuses to start, `config/env.js:505-507`); (d) otherwise `bcrypt.compare`.
 8. On mismatch: `attempts` incremented, `recordOtpFailure(phone)` called. Lockout (`services/otpLockout.service.js`) keys Redis `otp:fail:<phone>` (TTL `OTP_FAIL_WINDOW_SECONDS` = 900), `otp:lock:<phone>`, `otp:lockcycle:<phone>` (TTL `OTP_LOCK_CYCLE_WINDOW_SECONDS` = 86 400). At `OTP_LOCK_THRESHOLD` (5) failures the number locks for `OTP_LOCK_BASE_SECONDS × 2^(cycle−1)` capped at `OTP_LOCK_MAX_SECONDS` (60 s → 3600 s), the fail counter is cleared, and a SECURITY-category push goes to the owner if the number is registered. In-memory fallback mirrors the same state machine when Redis is not `ready`.
 9. On match: `OtpSession.verified = true`; `clearOtpLockout(phone)` deletes all three Redis keys; `User.findUnique({ phone })` decides `isNewUser`.
 10. **New user:** `prisma.user.create({ phone, name })` (`onboardingStep` defaults to `BASIC`), then `captureSignupConsent()` writes three `ConsentRecord` rows (`TERMS_OF_SERVICE`, `PRIVACY_POLICY`, `DATA_PROCESSING`) with `method:'signup'`, policy version, ip and user-agent. Best-effort — a failure is logged, never blocks registration.
@@ -2835,7 +2835,7 @@ is not added here will silently never rotate.
 Typed key/value config editable from the admin panel with no redeploy and no
 `.env` edit. Three invariants stated and enforced in the code:
 
-1. Only keys in `SETTINGS_MANIFEST` (**53 entries** across 7 categories, `settings.service.js:62-193`) are writable — `setSetting` throws `SettingError` (`expose: true`, `statusCode: 400`) on an unknown key. The separate `ENV_MANIFEST` (`:194-218`, 23 entries across 6 categories) is **not** part of this surface: those are read-only env-var *presence* indicators, never persisted as `AppSetting` rows and never accepted by `setSetting`. Summing the two — which yields the "76 keys / 13 categories" figure quoted in earlier drafts — conflates writable settings with read-only env status.
+1. Only keys in `SETTINGS_MANIFEST` (**53 entries** across 7 categories, `settings.service.js:62-193`) are writable — `setSetting` throws `SettingError` (`expose: true`, `statusCode: 400`) on an unknown key. The separate `ENV_MANIFEST` (`:194-218`, 24 entries across 6 categories) is **not** part of this surface: those are read-only env-var *presence* indicators, never persisted as `AppSetting` rows and never accepted by `setSetting`. Summing the two — which yields the "76 keys / 13 categories" figure quoted in earlier drafts — conflates writable settings with read-only env status.
 2. **Secrets are never stored here — but the guard that would enforce it is dead code today.** `setSetting` refuses any key whose manifest entry sets `isSecret` (`settings.service.js:365`) and `listSettings` masks such a key as `'••••'` (`:346`). However **no entry in `SETTINGS_MANIFEST` sets `isSecret`**, so `def.isSecret` is always `undefined` and *both* branches are unreachable. Secrets stay out of the settings table because nobody ever added a secret key to the manifest, not because the guard fires; it is neither exercised nor tested. (The `secret: true` fields visible at `:195-217` belong to `ENV_MANIFEST`, a different array, and are consumed by `getEnvStatus()` — which reports only whether each var is *present*, never its value.) Anyone extending the manifest with a genuine secret is relying on an untested path.
 3. Resolution order per key: DB `AppSetting` row → `envKey` env fallback → manifest `default`, so a fresh DB behaves exactly like the env-driven configuration.
 
@@ -5386,7 +5386,6 @@ the credit hold to a background pipeline.
 | **data.gov.in** (resource `9ef84268-…`, Agmarknet daily mandi prices) | Live mandi prices | `DATA_GOV_API_KEY` | key | 12 s (axios) | 30 min L1 Map (200 entries) + 4 h `expiresAt` on `MandiPrice` rows | DB rows up to 90 days old with `stale: true` and a farmer-visible disclaimer; every attempt writes an `APIHealthLog` row (`success`/`rate_limited`/`timeout`/`failure`) |
 | **OpenWeatherMap** (`api.openweathermap.org/data/2.5/weather?zip=<pin>,IN`) | Weather snapshot attached to a scan report, and `GET /crop-disease/weather` | `OPENWEATHER_API_KEY` | key | **none set** | none | returns `null`; scan proceeds (`Promise.race` with a 2.5 s cap on `/scan/submit`) |
 | **Cloudinary** | Scan photo storage (`farmeasy/scans/<userId>`), compressed to ≤1080 px JPEG `quality auto:eco` | `CLOUDINARY_*` | key/secret | 55 s per upload; `_persistDoneScan` waits at most 10 s for the batch | n/a | Skipped entirely when `CLOUDINARY_CLOUD_NAME` is unset; per-upload failures resolve to `null` and are filtered out; the report is written with `imageUrls: []` |
-| **MSG91** | **Not used by any route in this group** — only `services/otp.service.js` and `settings.service.js` | — | — | — | — | — |
 | **Razorpay** | **Not used by any route in this group** — only the shop/payment routers and services | — | — | — | — | — |
 
 `config/env.js:508-512` makes a missing `AI_SHARED_SECRET` (or <16 chars),
@@ -10903,7 +10902,7 @@ flowchart TB
     GRQ["Groq (optional chat fallback)"]
     OAI["OpenAI (optional voter)"]
     ANT["Anthropic (optional, WI-11)"]
-    MSG["MSG91 (OTP SMS)"]
+    FBA["Firebase Phone Auth (SMS sign-in)"]
     CLD["Cloudinary (images)"]
     RZP["Razorpay (payments)"]
     OWM["OpenWeatherMap"]
@@ -10919,7 +10918,7 @@ flowchart TB
   BE -->|"Prisma (pool)"| PG
   BE -->|"cache · rate limit · BullMQ · Socket.IO adapter"| RD
   BE -->|"HMAC-SHA256 signed<br/>x-sig-timestamp / x-sig-signature"| AIW
-  BE --> MSG
+  BE -->|"verify ID token"| FBA
   BE --> CLD
   BE --> RZP
   BE --> EXP
@@ -11046,7 +11045,7 @@ was read in code, not inferred.
 | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` | — | global per-IP limiter | defaults on in dev/prod, auto-off under tests |
 | `RATE_LIMIT_FAIL_CLOSED` | — | AI cost limiters on Redis outage | default ON in prod: reject 503 rather than allow unlimited AI spend fleet-wide |
 | `CACHE_WARMING_ENABLED`, `CACHE_HIT_RATE_ALERT_THRESHOLD`, `REDIS_MEMORY_ALERT_PCT` | — | cache warmer + `[ALERT]` thresholds | warmer on by default (`server.js:165-171`) |
-| `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID`, `MSG91_SENDER_ID` | SOFT | OTP SMS | **no SMS is sent**; the OTP is returned in the API response (dev fallback). Logged as a startup warning (`server.js:33-42`) |
+| `FIREBASE_AUTH_ENABLED`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | SOFT | Firebase phone sign-in, the only production SMS login | flag off or any key empty ⇒ `/auth/firebase-login` 503s, so production has no SMS sign-in (`/auth/send-otp` is a dev/test login and 503s in production) |
 | `OTP_EXPIRE_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_*_RATE_LIMIT_*`, `OTP_LOCK_*`, `OTP_FAIL_WINDOW_SECONDS` | — | OTP lifetime, throttling, lockout backoff | code defaults |
 | `OTP_DEV_BYPASS_ENABLED` | PROD-forbidden | accepts the fixed OTP `000000` | set `true` under `NODE_ENV=production` ⇒ **boot refused** (`env.js:503-505`) |
 | `VELOCITY_*` (12 vars) | — | FRAUD-1 order/refund/login velocity | read dynamically as `process.env['VELOCITY_'+prefix+'_'+suffix]` (`env.js:93-96`); generous defaults; auto-off under tests |

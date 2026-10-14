@@ -147,22 +147,20 @@ function parseVelocityRules() {
 
 // ── OTP development bypass (auth bypass — NEVER in production) ────────────────
 // Accepting the fixed OTP "000000" to skip real verification is strictly a
-// non-production convenience (local dev + automated tests with no SMS provider).
+// non-production convenience (local dev + automated tests).
 // Resolved ONCE here, FAIL-CLOSED, so verifyOtp() checks a single frozen flag and
-// absent / loose config can never enable it. ALL three must hold:
+// absent / loose config can never enable it. BOTH must hold:
 //   • explicit opt-in : OTP_DEV_BYPASS_ENABLED === 'true'
 //   • never in prod   : NODE_ENV must not be 'production'
-//   • no live SMS     : MSG91_AUTH_KEY must be empty
 // The opt-in is what closes the old hole: the previous gate keyed only on
 // NODE_ENV !== 'production', so a prod deploy that forgot to set NODE_ENV (unset,
-// "prod", "staging") with no SMS key silently accepted "000000". Requiring a
-// positive opt-in means a misconfigured prod box is safe by default, and the boot
-// guard below additionally REFUSES to start if the opt-in is set under
-// NODE_ENV=production — so it fails fast instead of exposing the bypass.
+// "prod", "staging") silently accepted "000000". Requiring a positive opt-in
+// means a misconfigured prod box is safe by default, and the boot guard below
+// additionally REFUSES to start if the opt-in is set under NODE_ENV=production —
+// so it fails fast instead of exposing the bypass.
 const _otpDevBypass =
   process.env.OTP_DEV_BYPASS_ENABLED === 'true' &&
-  process.env.NODE_ENV !== 'production' &&
-  !process.env.MSG91_AUTH_KEY;
+  process.env.NODE_ENV !== 'production';
 
 // ── Reverse-proxy trust (X-Forwarded-For) ────────────────────────────────────
 // Behind Railway / any load balancer the socket peer is the proxy, so per-IP
@@ -265,9 +263,6 @@ export const ENV = {
   // instance. Generous enough for phone + tablet + web + transient reconnects.
   SOCKET_MAX_CONN_PER_USER: parseInt(process.env.SOCKET_MAX_CONN_PER_USER || '10', 10),
 
-  MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY || '',
-  MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID || '',
-  MSG91_SENDER_ID: process.env.MSG91_SENDER_ID || 'FRMESY',
   // Short code TTL — expire OTPs quickly to shrink the guessing window.
   OTP_EXPIRE_MINUTES: parseInt(process.env.OTP_EXPIRE_MINUTES || '5', 10),
   OTP_MAX_ATTEMPTS: parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10),
@@ -283,11 +278,10 @@ export const ENV = {
   OTP_FAIL_WINDOW_SECONDS: parseInt(process.env.OTP_FAIL_WINDOW_SECONDS || '900', 10),
   OTP_LOCK_CYCLE_WINDOW_SECONDS: parseInt(process.env.OTP_LOCK_CYCLE_WINDOW_SECONDS || '86400', 10),
 
-  // ── Firebase Phone Auth (parallel login path — see firebaseAuth.service.js) ──
-  // SMS to Indian numbers needs a DLT-registered sender. Until KrushiSarva's own
-  // DLT registration is approved, MSG91 delivers nothing; Firebase works because
-  // Google is the registered sender. This path is ADDITIVE — the MSG91 OTP flow
-  // is untouched and stays the default. Turn this off once DLT is live.
+  // ── Firebase Phone Auth (the SMS sign-in — see firebaseAuth.service.js) ─────
+  // SMS to Indian numbers needs a DLT-registered sender; Google is one, so it
+  // sends and verifies the code. Off, production has no SMS sign-in at all: the
+  // /send-otp path is development-only (otp.service.js).
   FIREBASE_AUTH_ENABLED: process.env.FIREBASE_AUTH_ENABLED === 'true',
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || '',
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL || '',

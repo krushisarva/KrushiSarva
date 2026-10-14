@@ -148,7 +148,7 @@ cross-account isolation on read, edit, delete and set-default.
 | My Animal Listings | Fetched `/animals/my` unpaginated while the endpoint has paged since the animal-trade pass. |
 | My Animal Listings | A mount-time `useEffect` ran alongside `useFocusEffect`, firing the request twice on every open. |
 | Profile | The state picker called `setLanguageByState`, which `LanguageContext` **never provided** — every tap threw `is not a function`. The context half is now implemented. |
-| Profile | Privacy Center was a hard-coded English alert asserting data is "never shared with third parties" — **not true** (Razorpay, MSG91, Cloudinary, the model provider) and unreadable to most users. Replaced with translated copy describing the protections that are actually implemented. |
+| Profile | Privacy Center was a hard-coded English alert asserting data is "never shared with third parties" — **not true** (Razorpay, Firebase, Cloudinary, the model provider) and unreadable to most users. Replaced with translated copy describing the protections that are actually implemented. |
 | Profile | `Linking.openURL` was unguarded; it rejects when no app can handle the URL, so those rows looked like buttons that did nothing. |
 | All | Hard-coded `paddingTop: Platform.OS === 'android' ? 44 : 12` replaced with measured safe-area insets — the constant was wrong on every notched and punch-hole device. |
 | All | Failed pagination no longer wipes the list already on screen; only a failed first page shows an error. |
