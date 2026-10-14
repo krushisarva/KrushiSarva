@@ -83,7 +83,7 @@ function Chip({ tone, label, title, active, count, loading, onClick }: {
       title={title}
       aria-pressed={active}
       className={[
-        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all duration-150',
+        'focus-flush inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all duration-150',
         active ? `border-transparent ${style.on}` : style.off,
       ].join(' ')}
     >

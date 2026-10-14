@@ -121,10 +121,11 @@ export function DataTable<T>({
                 className={[
                   'transition-colors duration-150',
                   // Focus is an OUTLINE, not a background: a row tinted by
-                  // rowClassName must keep its own colour when focused, and the
-                  // app-wide focus ring is a box-shadow that a collapsed table
-                  // row does not paint.
-                  onRowClick ? 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700' : '',
+                  // rowClassName must keep its own colour when focused. The
+                  // app-wide ring is switched off here (ring-0): current
+                  // Chrome DOES paint that box-shadow on a table row, so the
+                  // row showed its outline and the ring — two green lines.
+                  onRowClick ? 'cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-700 focus-visible:ring-0 focus-visible:ring-offset-0' : '',
                   rowClassName?.(row) ?? '',
                 ].filter(Boolean).join(' ')}
                 tabIndex={onRowClick ? 0 : undefined}

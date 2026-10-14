@@ -103,7 +103,7 @@ export function AppShell() {
             <button className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
             <button
               onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-              className="hidden items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 sm:flex"
+              className="focus-flush hidden items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 sm:flex"
             >
               <Search className="h-3.5 w-3.5" /> Jump to… <kbd className="rounded bg-slate-100 px-1 text-[10px] text-slate-600">⌘K</kbd>
             </button>
