@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'ഈ അക്കൗണ്ടിൽ ഫോൺ നമ്പർ ഇല്ല.',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'പുതിയ പതിപ്പ് ലഭ്യമാണ്',
+    updateNow:       'ഇപ്പോൾ അപ്ഡേറ്റ് ചെയ്യുക',
+    later:           'പിന്നീട്',
+    updating:        'അപ്ഡേറ്റ് ചെയ്യുന്നു…',
+    restartToUpdate: 'അപ്ഡേറ്റിനായി റീസ്റ്റാർട്ട് ചെയ്യുക',
+    failed:          'അപ്ഡേറ്റ് ചെയ്യാനായില്ല. ഇന്റർനെറ്റ് പരിശോധിക്കുക.',
+    retry:           'വീണ്ടും ശ്രമിക്കുക',
+    versionLabel:    'ആപ്പ് പതിപ്പ്',
+    builtIn:         'അടിസ്ഥാന പതിപ്പ്',
+    check:           'അപ്ഡേറ്റ് പരിശോധിക്കുക',
+    checking:        'പരിശോധിക്കുന്നു…',
+    upToDate:        'ആപ്പ് പൂർണമായും അപ്ഡേറ്റ് ആണ്',
+    checkFailed:     'പരിശോധിക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക.',
+    bannerA11y:      'ആപ്പിന്റെ പുതിയ പതിപ്പ് ലഭ്യമാണ്',
+  },
+
   posts: 'പോസ്റ്റുകൾ',
   questions: 'ചോദ്യങ്ങൾ',
   helpful: 'സഹായകം',

@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'இந்தக் கணக்கில் தொலைபேசி எண் இல்லை.',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'புதிய பதிப்பு கிடைக்கிறது',
+    updateNow:       'இப்போது புதுப்பிக்கவும்',
+    later:           'பிறகு',
+    updating:        'புதுப்பிக்கப்படுகிறது…',
+    restartToUpdate: 'புதுப்பிக்க மீண்டும் தொடங்கவும்',
+    failed:          'புதுப்பிக்க முடியவில்லை. உங்கள் இணையத்தைச் சரிபார்க்கவும்.',
+    retry:           'மீண்டும் முயற்சிக்கவும்',
+    versionLabel:    'ஆப் பதிப்பு',
+    builtIn:         'அசல்',
+    check:           'புதுப்பிப்பைச் சரிபார்க்கவும்',
+    checking:        'சரிபார்க்கப்படுகிறது…',
+    upToDate:        'உங்களிடம் சமீபத்திய பதிப்பு உள்ளது',
+    checkFailed:     'சரிபார்க்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
+    bannerA11y:      'ஆப்பின் புதிய பதிப்பு கிடைக்கிறது',
+  },
+
   posts: 'இடுகைகள்',
   questions: 'கேள்விகள்',
   helpful: 'உதவிகரமானவை',

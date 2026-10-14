@@ -202,6 +202,24 @@ export default {
     errNoPhone:    'ಈ ಖಾತೆಯಲ್ಲಿ ಫೋನ್ ಸಂಖ್ಯೆ ಇಲ್ಲ.',
   },
 
+  // Over-the-air app update (banner + Profile row) — see shared/hooks/useAppUpdate.js.
+  appUpdate: {
+    available:       'ಹೊಸ ಆವೃತ್ತಿ ಲಭ್ಯವಿದೆ',
+    updateNow:       'ಈಗ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ',
+    later:           'ನಂತರ',
+    updating:        'ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತಿದೆ…',
+    restartToUpdate: 'ಅಪ್‌ಡೇಟ್‌ಗಾಗಿ ರೀಸ್ಟಾರ್ಟ್ ಮಾಡಿ',
+    failed:          'ಅಪ್‌ಡೇಟ್ ಆಗಲಿಲ್ಲ. ನಿಮ್ಮ ಇಂಟರ್ನೆಟ್ ಪರಿಶೀಲಿಸಿ.',
+    retry:           'ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ',
+    versionLabel:    'ಆಪ್ ಆವೃತ್ತಿ',
+    builtIn:         'ಮೂಲ',
+    check:           'ಅಪ್‌ಡೇಟ್ ಪರಿಶೀಲಿಸಿ',
+    checking:        'ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…',
+    upToDate:        'ಆಪ್ ಸಂಪೂರ್ಣ ಅಪ್‌ಡೇಟ್ ಆಗಿದೆ',
+    checkFailed:     'ಪರಿಶೀಲಿಸಲು ಆಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    bannerA11y:      'ಆಪ್‌ನ ಹೊಸ ಆವೃತ್ತಿ ಲಭ್ಯವಿದೆ',
+  },
+
   posts: 'ಪೋಸ್ಟ್‌ಗಳು',
   questions: 'ಪ್ರಶ್ನೆಗಳು',
   helpful: 'ಸಹಾಯಕ',

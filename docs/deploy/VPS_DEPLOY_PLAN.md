@@ -733,3 +733,31 @@ Redis is not backed up. AOF survives restarts, and the cache can be rebuilt. Cad
 | 15 | **IPv6 clients collapsing onto one IP.** The hostname has an AAAA record. If Caddy is ever moved back to `ports:` on the IPv4-only compose network, every IPv6 user shares the bridge gateway's rate-limit bucket (200 req / 15 min, 50 OTP sends per IP) and gets 429s. | Caddy on `network_mode: host` (§5.1, §5.2); the `rl:global:ip:*` check in §8 after any Caddy or network change. |
 | 16 | **A SIGKILLed Celery scan hangs for up to 1 h.** Kombu's Redis `visibility_timeout` defaults to 3600 s and fastapi/jobs/queue.py:57-70 does not set it, so an unacked task is redelivered only an hour later. An OOM-killed child fails its scan outright. | `stop_grace_period: 310s` on celery (§5.1). Follow-up code task: `broker_transport_options={'visibility_timeout': 900}` in fastapi/jobs/queue.py (above `task_time_limit=300`). |
 | 17 | **Postgres superuser exposure.** `ks` is the image's superuser. | Apps use the non-superuser owner `ks_app` (§6, §7 step 0); `ks` only for psql, pg_dump and drills. Slow-query log drops bind values (`log_parameter_max_length=0`). |
+
+---
+
+## 13. Manual app updates
+
+Users now choose when an update is applied. The apps only **check** for an update by themselves, on launch and when they come back to the foreground, at most once every 30 minutes (2 minutes after a check that failed). They never download one in the background (shared/hooks/useAppUpdate.js). Nothing runs in dev builds (`__DEV__`), in Expo Go or development builds (no EAS channel), or when expo-updates is disabled. A failed automatic check is silent; only a check the user started shows an error.
+
+**What users see**
+
+- **Banner** at the top of any screen (shared/components/AppUpdateBanner.js): "New version available" with **Update now** and **Later**. **Update now** downloads the update, shows "Updating…" and restarts the app. If the update is already downloaded, the button reads "Restart to update". When the download fails, the banner says "Couldn't update. Check your internet." with **Try again**. Every state, the download included, has **Later**, which hides the banner for that update until the app is next opened. Automatic checks continue after **Later**, so a newer update brings the banner back.
+- **No surprise restart.** If the user taps **Later** during the download, or leaves the app before it finishes, the app does not restart. The update waits as "Restart to update", and the next cold start applies it anyway.
+- **Profile → App version**: shows `1.0.1 · <first 8 characters of the update id>`, or "built-in" when the app runs the bundle inside the APK, with a **Check for updates** button. It answers "You're up to date", "New version available" (with **Update now**), "Couldn't check. Try again." or, after a failed download, "Couldn't update…" with **Try again**. A downloaded update reads **Restart to update**. Both rows take their text from `describeUpdateRow` in the same hook file.
+- **Crash screen.** If a published update crashes on launch, the error screen's **Reload** first checks for and downloads a newer update, then restarts (shared/components/RootErrorBoundary.js). That is the path for any error the boundary catches, because expo-updates' own crash recovery does not run for those. A crash the boundary cannot catch (a JS error before React mounts) is covered natively by `checkAutomatically: ON_ERROR_RECOVERY` (below). Test every update on a phone before publishing it to `preview`.
+
+**Native setting, new builds only.** `"checkAutomatically": "ON_ERROR_RECOVERY"` in `expo.updates` (frontend/app.json:10-14, seller-app/app.json:10-14) means the native layer never checks or downloads during normal use. It checks only after an update failed to launch, so it can roll back and fetch a hotfix (`NEVER` would leave such an app stuck until reinstall). The value is written into the Android manifest at build time, so it takes effect only in a **new APK build**. The first builds with it are the **1.0.1** APKs built from `main` on 2026-10-14. The **1.0.0** preview APKs from 2026-10-12 (fb7b4c8) are retired: reinstall the 1.0.1 APKs over them. Their last over-the-air update is the VPS host switch, and the `..\ks-ota` checkout used for it is deleted.
+
+**Publishing an update.** Publish from **this checkout** (`main`). The installed 1.0.1 APKs were built from it, so its JS matches their native code. Never publish JS whose native dependencies differ from the installed build: if a change adds or upgrades a native module, build a new APK instead, and bump `expo.version` so older builds stop receiving updates they cannot run. `eas update` does **not** read `eas.json` `env`, so set the variables in the shell first. **Without `EXPO_PUBLIC_FIREBASE_AUTH=true`, login silently switches to the dev OTP flow, which returns 503 in prod** (shared/constants/config.js:94). As in §10 step 3, run `npm ci` and `--clear-cache`, so stale Metro output or old env values do not get baked into the bundle:
+
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL='https://srv2061596.hstgr.cloud/api/v1'
+$env:EXPO_PUBLIC_SOCKET_URL='wss://srv2061596.hstgr.cloud'
+$env:EXPO_PUBLIC_FIREBASE_AUTH='true'
+cd frontend;      npm ci; npx eas update --channel preview --platform android --clear-cache --message "What changed"
+cd ..\seller-app; npm ci; npx eas update --channel preview --platform android --clear-cache --message "What changed"
+npx eas update:list --branch preview      # in each app folder: runtime 1.0.1, android
+```
+
+The `preview` channel (frontend/eas.json:29, seller-app/eas.json:26) maps to the EAS branch `preview` (the mapping was created on 2026-10-14; the channel had none before). An update reaches only builds with the same runtime version. The policy is `appVersion` (frontend/app.json:7-9), so it is `1.0.1` now. Updates published for 1.0.1 never reach the retired 1.0.0 APKs.

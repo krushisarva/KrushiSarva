@@ -30,11 +30,28 @@ import * as phoneAuth from '@krushisarva/shared/services/firebasePhoneAuth';
 import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
 import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
+import AppUpdateBanner from '@krushisarva/shared/components/AppUpdateBanner';
 
 import BootScreen from './src/components/BootScreen';
-import { FeedbackProvider } from './src/components/ui';
+import { Button, FeedbackProvider } from './src/components/ui';
 import { NetworkProvider } from './src/hooks/useNetwork';
 import { KEYBOARD_RING_SELECTOR, TEXT_FIELD_NO_RING_CSS } from '@krushisarva/shared/utils/webFocusCss';
+
+// The shared update banner in the seller look: ember accent, paper card, pill
+// buttons (only the primary one filled), as everywhere else in this app.
+const UPDATE_BANNER_PALETTE = { accent: C.brand, card: C.surface, border: C.border, warn: C.warning };
+function UpdateBannerButton({ title, primary, loading, onPress }) {
+  return (
+    <Button
+      label={title}
+      size="sm"
+      variant={primary ? 'primary' : 'ghost'}
+      loading={loading}
+      onPress={onPress}
+      style={{ maxWidth: '100%' }}
+    />
+  );
+}
 
 function RootNavigator() {
   const { isLoggedIn, loading, restoreFailed } = useAuth();
@@ -131,6 +148,9 @@ export default function App() {
                 <RootNavigator />
               </FeedbackProvider>
             </AuthProvider>
+            {/* "New version available" — floats over every screen, signed in
+                or not, so it sits outside AuthProvider. */}
+            <AppUpdateBanner palette={UPDATE_BANNER_PALETTE} ActionButton={UpdateBannerButton} />
           </LanguageProvider>
         </NetworkProvider>
       </SafeAreaProvider>
