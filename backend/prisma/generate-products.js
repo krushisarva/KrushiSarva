@@ -15,7 +15,15 @@
  * Env optional: LIMIT (process only first N), QUALITY (low|medium|high, default medium),
  *               SIZE (default 1024x1024), FORCE=yes (regenerate even if images exist)
  *
- * Run (see run command in chat — pulls secrets from Railway services).
+ * Run in production (the VPS):
+ *   Postgres is not reachable from outside the VPS, so run the script inside
+ *   the backend container over SSH. It gets DATABASE_URL (and the other
+ *   secrets) from /opt/krushisarva/env/backend.env, and it runs the copy baked
+ *   into the image (the root Dockerfile copies backend/, prisma/ included).
+ *   That includes CLOUDINARY_*; pass OPENAI_API_KEY if backend.env lacks it,
+ *   plus any optional knob, with -e (`-e NAME` alone copies the value from
+ *   your shell):
+ *     cd /opt/krushisarva && docker compose run --rm -e OPENAI_API_KEY -e LIMIT=2 backend node prisma/generate-products.js
  */
 import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';

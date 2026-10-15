@@ -15,7 +15,12 @@
 -- APPLY (any one):
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/mandi_prices_dedup.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f backend/prisma/manual/mandi_prices_dedup.sql
---   Railway → Postgres service → Data/Query tab → paste + run
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/mandi_prices_dedup.sql
+--   (The VPS database got the index from file 2 when it was built on 2026-10-14,
+--   so it holds no duplicates to collapse.)
 --
 -- NATURAL KEY: (commodity, variety, market, district, state, priceDate).
 -- `variety` is included deliberately — data.gov.in genuinely reports several

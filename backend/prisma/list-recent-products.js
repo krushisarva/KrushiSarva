@@ -4,8 +4,12 @@
  *
  * Uses a standalone Prisma client reading DATABASE_URL directly (no env.js).
  *
- * Run against Railway (public proxy URL injected as DATABASE_URL):
- *   DATABASE_URL="postgresql://...proxy.rlwy.net:PORT/railway" node prisma/list-recent-products.js
+ * Run in production (the VPS):
+ *   Postgres is not reachable from outside the VPS, so run the script inside
+ *   the backend container over SSH. It gets DATABASE_URL (and the other
+ *   secrets) from /opt/krushisarva/env/backend.env, and it runs the copy baked
+ *   into the image (the root Dockerfile copies backend/, prisma/ included).
+ *     cd /opt/krushisarva && docker compose run --rm backend node prisma/list-recent-products.js
  */
 import { PrismaClient } from '@prisma/client';
 

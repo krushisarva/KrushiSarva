@@ -69,11 +69,11 @@ Rules:
 | postgres | 300–450 MB | 768m | `shared_buffers=256MB`, `max_connections=60`, `work_mem=4MB` |
 | redis | 20–60 MB idle, but each queued or running scan holds its images inline as base64 (fastapi/jobs/tasks.py:12, up to 8 MB raw per image at tasks.py:88), plus unacked copies and 24 h results (fastapi/jobs/queue.py:65) | 384m | `maxmemory 256mb`, `noeviction`, AOF on (the extra limit is headroom for the AOF-rewrite fork). When Redis is full, writes fail and BullMQ enqueue falls back to running jobs inline on the request path (backend/src/queue/jobQueue.js:56-64) |
 | backend | 200–350 MB, with upload peaks of +100–175 MB | 700m | `NODE_OPTIONS=--max-old-space-size=384`, `UPLOAD_VIDEO_MAX_INFLIGHT=1` (default 4 × 100 MB, backend/src/config/env.js:397), `DB_CONNECTION_LIMIT=8` (default 12, backend/src/config/db.js:33) |
-| fastapi | 150–200 MB | 320m | `--workers 1` (Railway used 2, fastapi/railway.json:7) |
+| fastapi | 150–200 MB | 320m | `--workers 1` (the previous host ran 2) |
 | celery | 300–450 MB, with image-decode peaks of +150 MB per child (≈ 750 MB with both children decoding at once) | 768m | `--concurrency=2 --max-tasks-per-child=200`. An OOM-killed child fails its scan (WorkerLostError), it is not requeued (fastapi/jobs/queue.py:57-70 has no `task_reject_on_worker_lost`) |
 | **Total** | **~1.4–2.0 GB** | **sum of limits ≈ 3.07 GB (128+768+384+700+320+768 MB) + OS ≈ 0.45 GB ≈ 3.5 GB** | |
 
-**Verdict: it fits.** Even if every container hits its limit at once, the total (about 3.5 GB) stays under 4 GB. It **does not fit** with Railway's process counts (2 uvicorn workers + 2 Celery children + a separate BullMQ worker) **plus** a server-side image build running at the same time. A build adds about 1–1.5 GB at peak, so the 2 GB swap file below is required, not optional.
+**Verdict: it fits.** Even if every container hits its limit at once, the total (about 3.5 GB) stays under 4 GB. It **does not fit** with the previous host's process counts (2 uvicorn workers + 2 Celery children + a separate BullMQ worker) **plus** a server-side image build running at the same time. A build adds about 1–1.5 GB at peak, so the 2 GB swap file below is required, not optional.
 
 **Postgres connection budget** (`max_connections=60`):
 
@@ -350,7 +350,7 @@ Caddy sends `X-Forwarded-For` and `X-Forwarded-Proto`. `TRUST_PROXY=1`, the prod
 
 These two files go into the repo through a normal reviewed commit on the PC, and the server gets them from `git clone`. **Never paste them into `/opt/krushisarva/app/fastapi/` by hand.** An untracked copy there makes the first `git -C app pull --ff-only` in §8 abort with "untracked working tree files would be overwritten by merge".
 
-fastapi/ has no Dockerfile today. Railway built it with Nixpacks (fastapi/railway.json:4), and the root build excludes the folder (.dockerignore:19). Python 3.12 matches CI (.github/workflows/ci.yml:118). Every pinned dependency ships wheels, and there are no ML runtimes (fastapi/requirements.txt).
+fastapi/ had no Dockerfile before this plan. The previous host built it with Nixpacks, and the root build excludes the folder (.dockerignore:19). Python 3.12 matches CI (.github/workflows/ci.yml:118). Every pinned dependency ships wheels, and there are no ML runtimes (fastapi/requirements.txt).
 
 `fastapi/Dockerfile`:
 ```dockerfile
@@ -468,7 +468,7 @@ apt -y install jq
 | `REDIS_URL` | backend `…/0`, fastapi `…/0` | effectively yes. The default `localhost` is wrong inside Docker (backend/src/config/env.js:197), and without Redis the AI routes return 503 (backend/src/config/env.js:434-436). | Fixed: `redis://redis:6379/0` (layout from fastapi/.env.example:35-53) |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | fastapi, celery | yes. The default is localhost (fastapi/jobs/queue.py:35-36). | Fixed: `redis://redis:6379/1` |
 | `AI_BACKEND_URL` | backend | yes. The default is localhost (backend/src/config/env.js:323). | Fixed: `http://fastapi:8001` |
-| `ALLOWED_ORIGINS` | backend | yes. Without it the admin SPA white-screens, because self-origin only comes from the Railway vars (backend/src/app.js:134-138, 140-169). | Fixed: `https://srv2061596.hstgr.cloud` |
+| `ALLOWED_ORIGINS` | backend | yes. The backend refuses every browser origin not listed here (backend/src/app.js, the CORS block), so without it the admin SPA white-screens. | Fixed: `https://srv2061596.hstgr.cloud` |
 | `AI_ALLOWED_ORIGINS` | fastapi | no, but an invalid value crashes boot in prod | Fixed: same origin |
 | `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | backend | **yes for login on day one**: Firebase is the only production SMS sign-in, for the apps and the admin panel. The apps were built with Firebase login on (frontend/eas.json:33). The backend needs all three key vars (backend/src/services/firebaseAuth.service.js:48). | Firebase console → Project settings → Service accounts |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | backend | strongly recommended. Without them, image uploads are silently dropped. | Cloudinary dashboard |

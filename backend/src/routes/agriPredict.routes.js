@@ -25,8 +25,9 @@ import { getSigned, postSignedJSON } from '../utils/fastapi-signed.js';
 const router  = Router();
 
 // ── Generic proxy helpers (HMAC-signed) ───────────────────────────────────────
-// All Express → FastAPI calls go through the shared signed helper so the
-// FastAPI public URL on Railway cannot be hit directly. The same secret is
+// All Express → FastAPI calls go through the shared signed helper so FastAPI
+// accepts calls only from Express (it has no public URL in production, but the
+// network is never trusted on its own). The same secret is
 // shared with fastapi/security/auth.py.
 
 function _handleProxyError(res, err, fallbackMsg) {

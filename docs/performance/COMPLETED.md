@@ -519,8 +519,8 @@ Status:    COMPLETE — verified
 
 Two degradations the system could not observe about itself.
 
-**No worker deployed.** `fastapi/railway.json` switches web and worker roles off one
-`$ROLE` variable, so running one without the other is a single mistake — and then every
+**No worker deployed.** The previous host's FastAPI config switched web and worker roles
+off one `$ROLE` variable, so running one without the other is a single mistake — and then every
 scan is accepted, queued and never run while `/health` stays green. Nothing could tell.
 
 The signal is deliberately a **pair**: queue depth, and how long since *any* worker last

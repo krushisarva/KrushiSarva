@@ -1,7 +1,7 @@
 -- bookings.advanceAmount / paidAmount / paymentIntentId / paymentStatus —
 -- additive schema, safe to apply MANUALLY in production. PAY-002.
 --
--- WHY MANUAL: the Railway deploy runs `prisma db push`, which makes the DB match
+-- WHY MANUAL: the old deploy ran `prisma db push`, which makes the DB match
 -- schema.prisma EXACTLY and therefore tries to DROP the FastAPI-owned tables it
 -- doesn't know about (ai_scan_diagnoses, ai_scan_feedback). Once those hold
 -- data, db push aborts ("data loss") and NONE of the schema applies — so these
@@ -46,7 +46,11 @@
 -- APPLY (any one):
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/booking_payment_fields_additive.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f backend/prisma/manual/booking_payment_fields_additive.sql
---   Railway -> Postgres service -> Data/Query tab -> paste + run
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/booking_payment_fields_additive.sql
+--   (The VPS database, built by `prisma db push` on 2026-10-14, already has this.)
 --
 -- ON A VERY LARGE bookings TABLE: CREATE UNIQUE INDEX takes a SHARE lock
 -- (blocking writes) for its duration. If that is ever material, build it

@@ -2,10 +2,10 @@
 -- Additive schema, safe to apply MANUALLY in production.
 -- Contract: docs/SELLER_DELIVERY_DESIGN.md §8.6.
 --
--- WHY MANUAL: nothing in the deploy changes the schema. Railway builds the root
--- Dockerfile (railway.json), whose start command is `node src/server.js` and
--- nothing else — no `prisma db push`, no `prisma migrate deploy`. So this
--- script is the ONLY way the table reaches production.
+-- WHY MANUAL: nothing in the deploy changes the schema. The VPS runs the image
+-- built from the root Dockerfile, started with `node src/server.js` and nothing
+-- else (deploy/docker-compose.yml) — no `prisma db push`, no `prisma migrate
+-- deploy`. So this script is the ONLY way the table reaches an existing database.
 --
 -- Do not "fix" that by adding a db push to the start command. db push makes the
 -- DB match schema.prisma EXACTLY and therefore tries to DROP the FastAPI-owned
@@ -61,7 +61,11 @@
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/seller_delivery_additive.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/prisma/manual/seller_delivery_additive.sql
 --     (without ON_ERROR_STOP psql exits 0 even when the check at the end aborts)
---   Railway -> Postgres service -> Data/Query tab -> paste + run
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/seller_delivery_additive.sql
+--   (The VPS database, built by `prisma db push` on 2026-10-14, already has this.)
 
 BEGIN;
 

@@ -72,7 +72,7 @@ Earlier the same day, from `krushisarva-87`: #14 (Caddy redirects `/admin*` to V
 
 ## 6. Still owed (not touched here)
 
-1. **App cutover.** Installed APKs still point at the dead Railway URL. The fix is an OTA (over-the-air update) to both apps. The shell env for `eas update` must include `EXPO_PUBLIC_FIREBASE_AUTH=true`; without it, login falls back to the dev OTP path and gets 503 in production.
+1. **App cutover.** Installed APKs still point at the old, dead host URL. The fix is an OTA (over-the-air update) to both apps. The shell env for `eas update` must include `EXPO_PUBLIC_FIREBASE_AUTH=true`; without it, login falls back to the dev OTP path and gets 503 in production.
 2. The Razorpay webhook URL must point at the VPS.
 3. A Hostinger snapshot.
 4. An off-box backup: the rclone remote `ksbackup` and the healthchecks.io ping.

@@ -163,19 +163,20 @@ const _otpDevBypass =
   process.env.NODE_ENV !== 'production';
 
 // ── Reverse-proxy trust (X-Forwarded-For) ────────────────────────────────────
-// Behind Railway / any load balancer the socket peer is the proxy, so per-IP
+// Behind Caddy / any load balancer the socket peer is the proxy, so per-IP
 // rate limiting must resolve the real client from X-Forwarded-For. Express does
 // that SAFELY only when `trust proxy` is set to the exact number of proxy hops
 // in front of the app: it then reads the client from the right-most untrusted
 // hop, which a client cannot forge. Trusting too many hops (or `true`) lets a
 // client prepend a fake XFF entry, mint a fresh per-IP bucket every request, and
-// bypass the global limiter — i.e. silently disable it. Railway terminates at a
-// single edge proxy → 1. Override via TRUST_PROXY: a number (hop count),
-// true/false, or an Express trust-proxy string ('loopback', subnet list, …).
+// bypass the global limiter — i.e. silently disable it. In production Caddy is
+// the single reverse proxy in front of the app → 1. Override via TRUST_PROXY:
+// a number (hop count), true/false, or an Express trust-proxy string
+// ('loopback', subnet list, …).
 function parseTrustProxy() {
   const raw = process.env.TRUST_PROXY;
   if (raw == null || raw.trim() === '') {
-    // Default: 1 hop in production (Railway edge proxy); loopback in dev/test
+    // Default: 1 hop in production (Caddy); loopback in dev/test
     // where requests come straight from localhost and there is no real proxy.
     return process.env.NODE_ENV === 'production' ? 1 : 'loopback';
   }
@@ -285,7 +286,7 @@ export const ENV = {
   FIREBASE_AUTH_ENABLED: process.env.FIREBASE_AUTH_ENABLED === 'true',
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || '',
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL || '',
-  // Service-account PEM. Stored with literal "\n" in .env / Railway; the admin
+  // Service-account PEM. Stored with literal "\n" in .env files; the admin
   // SDK needs real newlines — firebaseAuth.service.js does that conversion.
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY || '',
   // How recent the Firebase SMS challenge must be for a token to re-authorise a
@@ -315,8 +316,10 @@ export const ENV = {
   // ── FastAPI AI Backend (CropGuard agentic pipeline) ───────────────────────────
   // Run: cd AI_CROP_DISESE_DETECTION && .venv/bin/uvicorn main:app --port 8001 --reload
   AI_BACKEND_URL: process.env.AI_BACKEND_URL || 'http://localhost:8001',
-  // Shared secret used to HMAC-sign every Express → FastAPI request so the
-  // FastAPI public URL on Railway cannot be hit directly by anyone else.
+  // Shared secret used to HMAC-sign every Express → FastAPI request so FastAPI
+  // accepts calls only from Express. In production FastAPI has no public URL
+  // (Caddy forwards only to Express), but the signature stays required:
+  // never trust the network.
   // Set BOTH services to the same value. In dev with AI_AUTH_REQUIRED=false
   // on FastAPI you can leave this empty.
   AI_SHARED_SECRET: process.env.AI_SHARED_SECRET || '',

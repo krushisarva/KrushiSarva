@@ -7,7 +7,8 @@ point of that is to stay under a 10k/day free tier while several uvicorn workers
 and several Celery workers all run crop scans.
 
 It never worked in production. The client was built as
-`Redis(host="localhost")` — where Redis lives on a laptop, not on Railway — so
+`Redis(host="localhost")` — where Redis lives on a laptop; on the server it is
+the compose service `redis` — so
 the ping at import failed, a module-level flag latched False for the life of the
 process, and every lookup fell through to a 200-entry per-process dict. Each
 worker kept its own cache, and orchestrator.py imports this, so every scan paid

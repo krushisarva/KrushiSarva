@@ -31,7 +31,7 @@ _WEATHER_NAMESPACE = "weather:om"
 # The shared half of this cache had never actually been shared in production.
 #
 # The client was built as Redis(host="localhost"), which is only where Redis
-# lives on a developer's laptop. On Railway the ping() at import failed, the flag
+# lives on a developer's laptop. In production the ping() at import failed, the flag
 # latched False for the life of the process, and every lookup silently fell
 # through to the 200-entry per-process dict below. So each uvicorn worker and
 # each Celery worker kept its own small cache, the 0.1°-bucket sharing that this

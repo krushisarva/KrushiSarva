@@ -5,43 +5,49 @@
  * known public-key hashes (SPKI pins). A request is allowed only if at least one
  * certificate in the verified chain matches one of the pins below.
  *
- * ── Current production pins (cropsetu-backend-production.up.railway.app) ───────
- * Railway serves a Let's Encrypt (ECDSA) chain:
- *     leaf  CN=*.up.railway.app            → intermediate CN=E7 → root ISRG Root X1
- * We pin all three levels so that normal certificate rotation does NOT brick the
- * app, while still rejecting any chain that doesn't terminate in this CA path:
+ * ── Current production pins (srv2061596.hstgr.cloud) ───────────────────────────
+ * Caddy on the VPS serves a Let's Encrypt (ECDSA) chain:
+ *     leaf CN=srv2061596.hstgr.cloud → intermediate CN=YE1 → CN=Root YE
+ *       → ISRG Root X2 (cross-signed by ISRG Root X1)
+ * The LEAF is not pinned: Caddy generates a new key at every renewal (~every 60
+ * days), so a leaf pin would go stale with no app update. We pin the CA levels,
+ * so renewals do NOT brick the app while any chain outside this CA path is
+ * rejected:
  *
- *   1. LEAF  — sha256/sGDbTDZa6e6YT2TE9XG0KNYPBuV/4YoqFrebzjQs1Ss=
- *              CN=*.up.railway.app, expires 2026-08-02. Exact production cert.
- *   2. INTERMEDIATE — sha256/y7xVm0TVJNahMr2sZydE2jQH8SquXV9yLF9seROHHHU=
- *              Let's Encrypt E7, expires 2027-03-12. Survives leaf renewals.
- *   3. BACKUP (ROOT) — sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=
- *              ISRG Root X1, expires 2035-06-04. Survives intermediate rotation
- *              (E7→E8/…); the long-lived safety net so a CA-side rotation can't
- *              lock users out before an app update ships.
+ *   1. INTERMEDIATE — sha256/brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=
+ *              Let's Encrypt YE1, expires 2028-09-02. Let's Encrypt may issue
+ *              from a sibling intermediate (YE2, …), so never rely on it alone.
+ *   2. ROOT YE — sha256/sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=
+ *              ISRG Root YE, cross-signed copy sent by the server, exp 2032-09-02.
+ *   3. ISRG ROOT X2 — sha256/diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=
+ *              Same key in the self-signed root (exp 2040-09-17) and the
+ *              X1-cross-signed copy the server sends.
+ *   4. BACKUP (ISRG ROOT X1) — sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=
+ *              Expires 2035-06-04. The long-lived safety net for devices whose
+ *              trust store ends the chain at X1.
  *
- * These values were extracted from the live production endpoint and the backup
- * was validated by confirming the production leaf chains to ISRG Root X1
- * (`openssl verify -CAfile isrgrootx1.pem -untrusted <E7> <leaf>` → OK).
+ * Extracted from the live endpoint on 2026-10-15 (leaf then expired 2027-01-12).
  *
  * ── Re-extracting / rotating the pins ─────────────────────────────────────────
- *   Leaf + intermediate (what the server sends):
- *     openssl s_client -connect cropsetu-backend-production.up.railway.app:443 \
- *       -servername cropsetu-backend-production.up.railway.app -showcerts \
+ *   Chain (what the server sends):
+ *     openssl s_client -connect srv2061596.hstgr.cloud:443 \
+ *       -servername srv2061596.hstgr.cloud -showcerts \
  *       </dev/null 2>/dev/null > chain.pem
  *     # then for each cert block:
  *     openssl x509 -in cert.pem -pubkey -noout \
  *       | openssl pkey -pubin -outform DER \
  *       | openssl dgst -sha256 -binary | openssl base64   # → prefix with "sha256/"
  *
- *   Root (backup), independent of the server:
+ *   Roots (backup), independent of the server:
  *     curl -s https://letsencrypt.org/certs/isrgrootx1.pem | \
  *       openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | \
  *       openssl dgst -sha256 -binary | openssl base64
+ *     (same for isrg-root-x2.pem)
  *
  * IMPORTANT:
- *   - Refresh the LEAF pin BEFORE 2026-08-02 and the INTERMEDIATE pin BEFORE
- *     2027-03-12. The root pin gives slack, but never rely on it alone.
+ *   - Refresh the INTERMEDIATE pin BEFORE 2028-09-02 and ROOT YE BEFORE
+ *     2032-09-02. The ISRG root pins give slack, but re-check the chain whenever
+ *     the production host or its CA changes.
  *   - Always keep ≥2 valid pins live at once (rotate the new one in, ship, THEN
  *     drop the old) so a renewal mid-deploy never leaves users unable to connect.
  *   - Test pin validation against staging before shipping to production.
@@ -53,16 +59,17 @@
  */
 
 export const SSL_PINS = {
-  // Production API host — must match API_BASE_URL's host in constants/config.js.
-  // The wildcard leaf (*.up.railway.app) covers this subdomain.
-  'cropsetu-backend-production.up.railway.app': {
-    includeSubdomains: true,
+  // Production API host — must match API_BASE_URL's host in shared/constants/config.js.
+  'srv2061596.hstgr.cloud': {
+    includeSubdomains: false,
     pins: [
-      // Primary — current production leaf (*.up.railway.app), exp 2026-08-02
-      'sha256/sGDbTDZa6e6YT2TE9XG0KNYPBuV/4YoqFrebzjQs1Ss=',
-      // Intermediate — Let's Encrypt E7, exp 2027-03-12 (survives leaf renewals)
-      'sha256/y7xVm0TVJNahMr2sZydE2jQH8SquXV9yLF9seROHHHU=',
-      // Backup — ISRG Root X1, exp 2035-06-04 (survives intermediate rotation)
+      // Intermediate — Let's Encrypt YE1, exp 2028-09-02
+      'sha256/brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=',
+      // ISRG Root YE, exp 2032-09-02
+      'sha256/sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=',
+      // ISRG Root X2, exp 2040-09-17
+      'sha256/diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=',
+      // Backup — ISRG Root X1, exp 2035-06-04
       'sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=',
     ],
   },

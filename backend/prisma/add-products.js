@@ -10,7 +10,7 @@
  *           b) local file paths    -> uploaded to Cloudinary, the returned URL is stored.
  *              (needs CLOUDINARY_* env vars; path is relative to this script or absolute)
  *      - Leave `images: []` to fall back to the in-app category placeholder.
- *   2. Run it (see "RUNNING AGAINST RAILWAY" below).
+ *   2. Run it (see "RUNNING IN PRODUCTION" below).
  *
  * Idempotent: matches by (name, categoryId). Re-running UPDATES the existing
  * product (price/stock/images/etc.) instead of creating a duplicate — safe to
@@ -19,14 +19,16 @@
  * RUNNING LOCALLY:
  *   node prisma/add-products.js
  *
- * RUNNING AGAINST RAILWAY (production DB):
- *   Grab the Postgres connection string from the Railway dashboard
- *   (Postgres service -> Variables -> DATABASE_URL, the public proxy URL), then:
+ * RUNNING IN PRODUCTION (the VPS):
+ *   Postgres is not reachable from outside the VPS, so run the script inside
+ *   the backend container over SSH. It gets DATABASE_URL (and the other
+ *   secrets) from /opt/krushisarva/env/backend.env, and it runs the copy baked
+ *   into the image (the root Dockerfile copies backend/, prisma/ included).
+ *   So merge your edited PRODUCTS array and deploy it (/root/update.sh) first,
+ *   and use HTTPS image URLs: a local path works only for a file committed
+ *   under backend/. Then:
  *
- *     DATABASE_URL="postgresql://USER:PASS@HOST:PORT/railway" node prisma/add-products.js
- *
- *   Or from the Railway CLI (auto-injects the service vars):
- *     railway run node prisma/add-products.js
+ *     cd /opt/krushisarva && docker compose run --rm backend node prisma/add-products.js
  */
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';

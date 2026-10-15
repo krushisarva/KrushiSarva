@@ -1,10 +1,10 @@
 """
 Auth — CropGuard
 
-The FastAPI service sits behind an Express proxy in normal operation,
-but on Railway it has a public URL anyone can curl. Without a shared
-secret between Express and FastAPI, an attacker can hit /ai/scan
-directly and burn LLM spend.
+The FastAPI service sits behind an Express proxy and has no public URL
+(Caddy forwards only to Express), but the network is never trusted.
+Without a shared secret between Express and FastAPI, anything that does
+reach it could hit /ai/scan directly and burn LLM spend.
 
 Solution
   Express signs every request to FastAPI with an HMAC over the request
@@ -54,9 +54,10 @@ def _required() -> bool:
 
 
 def _skew() -> int:
-    # 30s default (was 15): Express and FastAPI run as separate Railway services
-    # whose clocks can drift a few seconds; a 15s window risked 401-ing EVERY
-    # signed request (total AI outage) on minor NTP skew. 30s stays tight and the
+    # 30s default (was 15): Express and FastAPI run as separate containers. They
+    # share one host clock today, but on separate hosts clocks can drift a few
+    # seconds, and a 15s window risked 401-ing EVERY signed request (total AI
+    # outage) on minor NTP skew. 30s stays tight and the
     # single-use replay nonce still bounds reuse. Override via AI_AUTH_SKEW_SEC.
     try:
         return int(os.environ.get("AI_AUTH_SKEW_SEC", "30"))

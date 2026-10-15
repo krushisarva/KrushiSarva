@@ -55,8 +55,9 @@ let inProcessWorkers = [];
 
 // ── HTTP server timeouts ──────────────────────────────────────────────────────
 // Default Node has no timeout (0) which lets Slowloris and stuck downstreams
-// pile up open connections. keepAlive must exceed the LB's idle timeout
-// (Railway: 60 s) to avoid 502s under keepalive races; headersTimeout must
+// pile up open connections. keepAlive must exceed the proxy's idle timeout
+// (Caddy reuses upstream sockets for 55 s, deploy/Caddyfile) to avoid 502s
+// under keepalive races; headersTimeout must
 // exceed keepAliveTimeout per Node docs.
 // NOTE: this is the DEFAULT socket inactivity timeout. The long AI routes raise
 // it per-request in app.js (`socketTimeout`), because 30 s sits far below the
@@ -93,7 +94,7 @@ const io = new SocketIO(httpServer, {
 // For single-instance demo deployments, Redis is not required.
 let pubClient, subClient;
 try {
-  // family: 0 → resolve IPv6 too (Railway private networking is IPv6-only).
+  // family: 0 → resolve IPv6 too, so IPv6-only Redis hosts/networks work.
   pubClient = new Redis(ENV.REDIS_URL, { lazyConnect: true, retryStrategy: () => null, connectTimeout: 5000, family: 0 });
   subClient = pubClient.duplicate();
   pubClient.on('error', () => {});
@@ -208,7 +209,7 @@ async function start() {
     // The deploy healthcheck hits /healthz (dependency-free liveness), so the
     // HTTP server must start before any DB/Redis work. Every dependency below is
     // attached AFTER listen and NON-BLOCKING, so a slow/unreachable Redis (e.g.
-    // Railway private networking still warming up at boot) can never prevent the
+    // a Redis container still starting at boot) can never prevent the
     // server from listening and never fail the healthcheck. Prisma connects
     // lazily on first query, so warming it eagerly is a nicety, not a gate.
     httpServer.listen(ENV.PORT, '0.0.0.0', () => {

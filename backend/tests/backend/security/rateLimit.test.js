@@ -69,8 +69,8 @@ describe('Global per-IP rate limiter', () => {
   });
 
   test('prepending a forged X-Forwarded-For hop cannot escape the per-IP bucket', async () => {
-    // Mirror the production config: a fixed number of trusted proxy hops (Railway
-    // edge = 1) rather than `trust proxy: true`. Express then resolves req.ip from
+    // Mirror the production config: a fixed number of trusted proxy hops (Caddy
+    // = 1) rather than `trust proxy: true`. Express then resolves req.ip from
     // the RIGHT-most untrusted hop, so junk prepended to the LEFT of XFF — what an
     // attacker controls — is ignored and the real client stays in one bucket.
     const max = 3;

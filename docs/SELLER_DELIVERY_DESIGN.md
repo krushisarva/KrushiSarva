@@ -702,13 +702,13 @@ placed before this have no breakdown and show none.
   Marathi labels, screen readers.
 - That Call opens the dialler and Map finds a rural address.
 - Push tap handling from a closed app, on both apps.
-- The production PostgreSQL version (the script needs 12 or newer) and whether
-  the Railway query tab runs it as written.
+- That production runs the script as written (it needs PostgreSQL 12 or newer;
+  the VPS runs 16).
 
 ### 9.4 Separate from this feature
 
-`frontend/railway.toml` has a start command containing
-`prisma db push --accept-data-loss`. The root `railway.json` builds the
-Dockerfile, whose start command does not. Which one Railway actually uses was
-not checked. If anything still reads the old file it could drop tables, so it
-is worth checking and then deleting.
+An old deploy config for the previous host in `frontend/` has a start command
+containing `prisma db push --accept-data-loss`. Production on the VPS never
+reads it: the backend starts with `node src/server.js`
+(`deploy/docker-compose.yml`). It could still drop tables if anything ran it,
+so delete it if it is still in the repo.

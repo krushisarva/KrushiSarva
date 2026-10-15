@@ -29,24 +29,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Patch config.js so the debug APK hits Railway, not LAN IP
-      - name: Patch API URL to production
-        run: |
-          node -e "
-            const fs = require('fs');
-            let c = fs.readFileSync('src/constants/config.js', 'utf8');
-            c = c.replace(
-              /export const API_BASE_URL[\s\S]*?(?=\nexport|\n\/\/|$)/,
-              \"export const API_BASE_URL = 'https://resilient-vision-production-e784.up.railway.app/api/v1';\n\"
-            );
-            c = c.replace(
-              /export const SOCKET_URL[\s\S]*?(?=\nexport|\n\/\/|$)/,
-              \"export const SOCKET_URL = 'wss://resilient-vision-production-e784.up.railway.app';\n\"
-            );
-            fs.writeFileSync('src/constants/config.js', c);
-            console.log('API_BASE_URL patched to production');
-          "
-
       # Generate android/ folder from app.json + plugins
       - name: Expo Prebuild (generate android folder)
         run: npx expo prebuild --platform android --clean --no-install
