@@ -2301,7 +2301,7 @@ router.post('/scan', authenticate, requireFeature('ai_scan'), aiScanLimit, (req,
         reserved: hold.reserved, holdId: hold.holdId,
         model: diagnosisMethod === 'fastapi-agentic'
           ? (rawDiagnosis?.meta?.model_diagnose || 'fastapi-agentic')
-          : 'gemini-2.5-flash',
+          : ENV.GEMINI_MODEL,
         tokensUsed: tokenUsage.total_tokens,
         costUsd: tokenUsage.total_cost_usd,
         description: `Crop scan: ${diagnosis?.disease || 'analysis'}`,

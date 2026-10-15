@@ -20,7 +20,7 @@ function client() {
   return _client;
 }
 
-const MODEL = ENV.GEMINI_MODEL || 'gemini-2.5-flash';
+const MODEL = ENV.GEMINI_MODEL || 'gemini-3.6-flash';
 
 /**
  * Non-streaming Gemini call (single system + user turn) for scheme Q&A.

@@ -57,11 +57,12 @@ SARVAM_API_KEY: str = os.environ.get("SARVAM_API_KEY", "")
 # "Fast vs Best" toggle. The constants below are kept ONLY for non-pipeline
 # call sites (e.g. ad-hoc scripts) and should not be referenced from the
 # scan/diagnose/treatment path.
-MODEL_IMAGE_QUALITY  = "gemini-2.5-pro"      # vision capable, highest accuracy
-MODEL_WEATHER        = "gemini-2.5-flash"    # fast + cheap
-MODEL_DIAGNOSIS      = "gemini-2.5-pro"      # highest accuracy
-MODEL_TREATMENT      = "gemini-2.5-flash"    # balanced
-MODEL_REPORT         = "gemini-2.5-flash"    # speed > reasoning
+# Free-tier Gemini only: 2.5 is closed to new API keys and Pro has no free quota.
+MODEL_IMAGE_QUALITY  = "gemini-3.6-flash"    # vision capable
+MODEL_WEATHER        = "gemini-3.6-flash"    # fast + cheap
+MODEL_DIAGNOSIS      = "gemini-3.6-flash"    # vision capable
+MODEL_TREATMENT      = "gemini-3.6-flash"    # balanced
+MODEL_REPORT         = "gemini-3.6-flash"    # speed > reasoning
 
 # ── Pipeline tier ─────────────────────────────────────────────────────────────
 # Default tier when the client does not send `params.tier`. Operators can flip
@@ -73,7 +74,7 @@ PIPELINE_DEFAULT_TIER: str = os.environ.get("PIPELINE_DEFAULT_TIER", "fast").str
 ALLOW_BEST_TIER: bool = os.environ.get("ALLOW_BEST_TIER", "true").strip().lower() != "false"
 
 # ── Chat / alert model assignment ────────────────────────────────────────────
-MODEL_GEMINI_CHAT = os.environ.get("GEMINI_CHAT_MODEL",  "gemini-2.5-flash")
+MODEL_GEMINI_CHAT = os.environ.get("GEMINI_CHAT_MODEL",  "gemini-3.6-flash")
 
 # ── Quality / confidence thresholds ──────────────────────────────────────────
 IMAGE_QUALITY_THRESHOLD   = 0.6

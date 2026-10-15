@@ -72,6 +72,9 @@ _PIPELINE_TIMEOUT_SECONDS = 240
 # empirical per-model top-1). Frontier vision models vote heavier than the
 # cheap/fast tier; the primary (no `_model`) and any unlisted model default to 1.0.
 _MODEL_ACCURACY_WEIGHTS = {
+    "gemini-3.6-flash":          1.00,
+    "gemini-3.5-flash-lite":     0.85,
+    # Gemini 2.5 (paid projects that still have it).
     "gemini-2.5-pro":            1.25,
     "gemini-2.5-flash":          0.90,
 }

@@ -50,6 +50,12 @@ _PRICING = {
     # Google — $0.30/$2.50 and $1.25/$10.00 per 1M (Pro: prompts ≤200k).
     "gemini-2.5-flash":            {"input": 0.00030, "output": 0.00250},
     "gemini-2.5-pro":              {"input": 0.00125, "output": 0.01000},
+    # Gemini 3.x free-tier models (the defaults since 2026-10-15; 2.5 is closed to
+    # new keys). Free of charge on the free tier; these are the PAID rates so the
+    # spend cap still has a number. 3.6 Flash $0.75/$3.75 per 1M through
+    # 2026-12-31 (then $1.50/$7.50); 3.5 Flash-Lite $0.30/$2.50.
+    "gemini-3.6-flash":            {"input": 0.00075, "output": 0.00375},
+    "gemini-3.5-flash-lite":       {"input": 0.00030, "output": 0.00250},
     # Groq — chat fallback only. gpt-oss-120b $0.15/$0.60 per 1M (verified
     # 2026-10-15, console.groq.com/docs/model/openai/gpt-oss-120b). Llama 3.3 70B
     # $0.59/$0.79 — retired for free/developer plans 2026-08-16; the row stays so
@@ -159,6 +165,10 @@ def _gemini_thinking_config(model: str, max_tokens: int) -> dict | None:
     Pro's documented minimum budget.
     """
     m = (model or "").lower()
+    if "flash-lite" in m:
+        # Gemini 3.5 Flash-Lite rejects thinkingBudget 0 with HTTP 400 and does
+        # not think unless asked, so send no thinkingConfig at all.
+        return None
     if "flash" in m:
         return {"thinkingBudget": 0}
     if "pro" in m:
@@ -340,7 +350,7 @@ async def call_gemini_vision(
     images_b64: list[dict],       # [{"data": str, "mime_type": str}]
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -482,7 +492,7 @@ async def call_gemini_text(
     user_prompt: str,
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -699,7 +709,7 @@ async def stream_gemini_text(
     user_prompt: str,
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 512,
     temperature: float = 0.3,
     system_instruction: str | None = None,

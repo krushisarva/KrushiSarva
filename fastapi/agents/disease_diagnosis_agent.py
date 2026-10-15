@@ -354,7 +354,7 @@ async def run_disease_diagnosis_agent(
     """
     Returns (diagnosis_dict, token_info).
 
-    SINGLE-model diagnosis (AI_CROP_DIAGNOSE_MODEL, e.g. gemini-2.5-pro). There
+    SINGLE-model diagnosis (AI_CROP_DIAGNOSE_MODEL, e.g. gemini-3.6-flash). There
     is intentionally NO cross-model fallback: silently answering with a weaker
     model when the primary is down degrades accuracy in a way that's hard to
     detect and maintain. If the provider is unavailable (503 "high demand",

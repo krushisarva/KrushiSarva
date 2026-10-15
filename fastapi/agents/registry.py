@@ -32,19 +32,20 @@ Tier     = Literal["fast", "best"]
 #   json      — emits well-formed JSON reliably (used for treatment + diagnosis)
 #   long_ctx  — > 128k context (only relevant for very long reports)
 MODEL_CATALOG: dict[str, dict] = {
-    "gemini-2.5-flash": {
-        "provider":     "gemini",
-        "capabilities": {"vision", "json"},
-        "api_key":      GEMINI_API_KEY,
-        "display":      "Gemini 2.5 Flash",
-        "tier_hint":    "fast",
-    },
-    "gemini-2.5-pro": {
+    # Free-tier Gemini (2.5 is closed to new API keys; Pro has no free quota).
+    "gemini-3.6-flash": {
         "provider":     "gemini",
         "capabilities": {"vision", "json", "long_ctx"},
         "api_key":      GEMINI_API_KEY,
-        "display":      "Gemini 2.5 Pro",
-        "tier_hint":    "best",
+        "display":      "Gemini 3.6 Flash",
+        "tier_hint":    "fast",
+    },
+    "gemini-3.5-flash-lite": {
+        "provider":     "gemini",
+        "capabilities": {"vision", "json", "long_ctx"},
+        "api_key":      GEMINI_API_KEY,
+        "display":      "Gemini 3.5 Flash-Lite",
+        "tier_hint":    "fast",
     },
     # OpenAI cross-vendor voter for the crop-disease ENSEMBLE only (not a primary
     # chain). resolve_chain() drops this entry automatically when OPENAI_API_KEY
@@ -63,9 +64,9 @@ MODEL_CATALOG: dict[str, dict] = {
 # ── Default tier → stage → fallback chain ────────────────────────────────────
 # Each chain is (primary, *fallbacks). The router walks left-to-right on
 # 429 / 5xx / timeout / parse-fail. Env vars override any chain (see below).
-# KrushiSarva is Gemini-first. Every primary chain uses Gemini Flash (fast) and
-# Gemini Pro (best/accuracy); "fallback" within a chain means Pro → Flash
-# (capacity fallback within the same provider). The ONE cross-vendor entry is
+# KrushiSarva is Gemini-first and on Google's FREE tier, which has no Pro quota.
+# Every primary chain uses Gemini 3.6 Flash; the Best tier adds 3.5 Flash-Lite as
+# the capacity fallback within the same provider. The ONE cross-vendor entry is
 # the OpenAI voter in the ENSEMBLE chain (parallel votes, not a fallback).
 STAGE_TIER_CHAINS: dict[Stage, dict[Tier, list[str]]] = {
     "diagnose": {
@@ -74,14 +75,14 @@ STAGE_TIER_CHAINS: dict[Stage, dict[Tier, list[str]]] = {
         # outage returns a clear "service unavailable" rather than a weaker
         # model's guess. This chain is retained ONLY as a seed for ensemble
         # member selection (ensemble_agent.select) when the ensemble chain is empty.
-        "fast": ["gemini-2.5-flash"],
-        "best": ["gemini-2.5-pro", "gemini-2.5-flash"],
+        "fast": ["gemini-3.6-flash"],
+        "best": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
     },
     "treatment": {
-        # Flash produces the full structured treatment JSON in 5-10s; Pro is the
-        # higher-accuracy option on the Best tier with Flash as capacity fallback.
-        "fast": ["gemini-2.5-flash"],
-        "best": ["gemini-2.5-pro", "gemini-2.5-flash"],
+        # Flash produces the full structured treatment JSON in 5-10s; on the Best
+        # tier Flash-Lite is the capacity fallback (free tier has no Pro quota).
+        "fast": ["gemini-3.6-flash"],
+        "best": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
     },
     # Report is template-only today; chain kept empty so callers can detect
     # "no LLM step" cleanly. Switch to a model id here if you ever want
@@ -95,26 +96,26 @@ STAGE_TIER_CHAINS: dict[Stage, dict[Tier, list[str]]] = {
     # stages, the chain is NOT a fallback chain — every entry runs concurrently
     # and votes (see agents/ensemble_agent.py). Tier is ignored (always "best").
     #
-    # Two Gemini voters of different size (Pro + Flash) PLUS a cross-vendor
+    # Two Gemini voters of different size (Flash + Flash-Lite) PLUS a cross-vendor
     # OpenAI voter (GPT-4o, only when OPENAI_API_KEY is set — resolve_chain drops
     # it otherwise) give the reconciler real model-diversity; combined with the
     # primary cheap-pass result the orchestrator splices in, it sees ≥3-4 votes.
     "ensemble": {
-        "fast": ["gemini-2.5-pro", "gemini-2.5-flash", OPENAI_DIAGNOSE_MODEL],
-        "best": ["gemini-2.5-pro", "gemini-2.5-flash", OPENAI_DIAGNOSE_MODEL],
+        "fast": ["gemini-3.6-flash", "gemini-3.5-flash-lite", OPENAI_DIAGNOSE_MODEL],
+        "best": ["gemini-3.6-flash", "gemini-3.5-flash-lite", OPENAI_DIAGNOSE_MODEL],
     },
     # ── FarmMind chat (text-only Q&A with farm context) ────────────────────
-    # Used by services/chat_service.py. Flash for speed; Pro on the Best tier
-    # for nuanced advisory answers, Flash as capacity fallback.
+    # Used by services/chat_service.py. Flash on both tiers; the Best tier adds
+    # Flash-Lite as capacity fallback (free tier has no Pro quota).
     "chat": {
-        "fast": ["gemini-2.5-flash"],
-        "best": ["gemini-2.5-pro", "gemini-2.5-flash"],
+        "fast": ["gemini-3.6-flash"],
+        "best": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
     },
     # ── Smart farm alerts (structured JSON list of 4-6 alerts) ─────────────
     # Used by services/alert_service.py. Same models as chat, tuned for JSON.
     "alert": {
-        "fast": ["gemini-2.5-flash"],
-        "best": ["gemini-2.5-pro", "gemini-2.5-flash"],
+        "fast": ["gemini-3.6-flash"],
+        "best": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
     },
 }
 
@@ -135,8 +136,8 @@ def _env_override(stage: Stage, tier: Tier) -> list[str] | None:
     Allow ops to override a chain without a code change.
 
     Example:
-      DIAGNOSE_FAST_CHAIN="gemini-2.5-flash,gemini-2.5-pro"
-      TREATMENT_BEST_CHAIN="claude-sonnet-4-6,gemini-2.5-pro"
+      DIAGNOSE_FAST_CHAIN="gemini-3.6-flash,gemini-3.5-flash-lite"
+      TREATMENT_BEST_CHAIN="claude-sonnet-4-6,gemini-3.6-flash"
     """
     name = f"{stage.upper()}_{tier.upper()}_CHAIN"
     raw = os.environ.get(name)
