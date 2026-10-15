@@ -1,11 +1,10 @@
 /**
  * Payment endpoints — purpose-agnostic.
  *
- * KrushiSarva takes money for three different things (shop orders, rent
- * bookings, AI credit packs) through one gateway and one WebView checkout. The
- * shop's client (screens/AgriStore/shopClient.js) got there first and is
- * hard-wired to `/agristore/*`, so rent and credits would each have had to grow
- * their own copy of initiate → confirm → status. This is that layer, once.
+ * KrushiSarva takes money for shop orders and rent bookings through one gateway
+ * and one WebView checkout. The shop's client (screens/AgriStore/shopClient.js)
+ * got there first and is hard-wired to `/agristore/*`, so rent would have had to
+ * grow its own copy of initiate → confirm → status. This is that layer, once.
  *
  * ── Thin on purpose ──────────────────────────────────────────────────────────
  * Same split shopClient.js uses: this file is URLs and response shapes only.
@@ -16,7 +15,7 @@
  * An amount. Every initiate body below is built by PICKING named fields, not by
  * spreading the caller's object, so a screen cannot accidentally (or a tampered
  * build deliberately) put a price on the wire. The server prices the booking
- * from the listing and the pack from the pack id, mints a gateway order that
+ * from the listing, mints a gateway order that
  * carries that amount, and re-verifies the HMAC on confirm with a secret key
  * that never leaves it. CLAUDE.md §51: the client is not trusted for money.
  *
@@ -124,8 +123,7 @@ export async function confirmRentBooking({
 /**
  * Ask whether an interrupted rent payment actually went through.
  *
- * The most important call in the module, together with its credits twin:
- * without it a farmer whose connection dropped after approving a UPI mandate
+ * The most important call in the module: without it a farmer whose connection dropped after approving a UPI mandate
  * sees a failure and pays again.
  *
  * @returns {Promise<{status: string, paid: boolean, amount: number}|null>}
@@ -133,67 +131,6 @@ export async function confirmRentBooking({
 export async function fetchRentPaymentStatus(providerOrderId, signal) {
   const { data } = await api.get(
     `/rent/bookings/payment-status/${encodeURIComponent(providerOrderId)}`,
-    { signal },
-  );
-  return data?.data || null;
-}
-
-// ── AI credit packs ───────────────────────────────────────────────────────────
-/**
- * The packs the server is willing to sell, with server-set prices.
- *
- * Returns an array whichever shape the route answers with (a bare list or
- * `{ packs: [...] }`), and an EMPTY array rather than null on an unexpected
- * body — a screen that maps over this should render "no packs", not crash.
- */
-export async function fetchCreditPacks(signal) {
-  const { data } = await api.get('/ai/credits/packs', { signal });
-  const payload = data?.data;
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.packs)) return payload.packs;
-  return [];
-}
-
-/**
- * Raise a gateway order for a credit pack.
- *
- * `{ packId }` and nothing else — deliberately destructured rather than spread.
- * The price of a pack is the server's to know; a body that could carry an
- * amount is a body someone will eventually set to ₹1 for the ₹500 pack.
- *
- * @returns {Promise<{razorpayOrderId, amount, amountInPaise, currency, receipt,
- *                    mock, pack}|null>}
- */
-export async function initiateCreditPurchase({ packId } = {}) {
-  const { data } = await api.post('/ai/credits/purchase/initiate', { packId });
-  return data?.data || null;
-}
-
-/**
- * Credit the pack against a verified payment.
- *
- * `alreadyProcessed: true` is a SUCCESS, not a duplicate error: it means the
- * webhook beat this call to it and the credits are already on the balance. The
- * farmer must be shown their new balance, not an apology.
- *
- * @returns {Promise<{credited: number, balance: number, alreadyProcessed: boolean}|null>}
- */
-export async function confirmCreditPurchase({
-  razorpayOrderId, razorpayPaymentId, razorpaySignature,
-} = {}) {
-  const { data } = await api.post('/ai/credits/purchase/confirm', {
-    razorpayOrderId, razorpayPaymentId, razorpaySignature,
-  });
-  return data?.data || null;
-}
-
-/**
- * Ask whether an interrupted credit purchase actually went through.
- * @returns {Promise<{status: string, paid: boolean, amount: number}|null>}
- */
-export async function fetchCreditPurchaseStatus(providerOrderId, signal) {
-  const { data } = await api.get(
-    `/ai/credits/purchase/status/${encodeURIComponent(providerOrderId)}`,
     { signal },
   );
   return data?.data || null;

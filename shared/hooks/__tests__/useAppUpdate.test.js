@@ -668,6 +668,16 @@ describe('describeUpdateRow (both Profile rows)', () => {
     expect(row({ status: 'ready', restarting: true }).busy).toBe(true);
   });
 
+  test('the update pill gets a one-word label only while an update is offered', () => {
+    const shortOf = (state) => { const m = row(state); return m.short ? m.short[0] : null; };
+    expect(shortOf({ status: 'available' })).toBe('appUpdate.updateShort');
+    expect(shortOf({ status: 'downloading' })).toBe('appUpdate.updateShort');
+    expect(shortOf({ status: 'ready' })).toBe('appUpdate.restartShort');
+    expect(shortOf({ status: 'error', errorKind: 'download' })).toBe('appUpdate.retryShort');
+    ['idle', 'checking', 'upToDate', 'disabled'].forEach((status) => expect(shortOf({ status })).toBeNull());
+    expect(shortOf({ status: 'error', errorKind: 'check' })).toBeNull();
+  });
+
   test('every key it names exists in all 10 languages', () => {
     const { translations } = require('../../i18n/translations');
     const keys = new Set();
@@ -675,11 +685,13 @@ describe('describeUpdateRow (both Profile rows)', () => {
       const m = row({ status });
       if (m.note) keys.add(m.note[0]);
       keys.add(m.action[0]);
+      if (m.short) keys.add(m.short[0]);
     });
     ['check', 'download'].forEach((errorKind) => {
       const m = row({ status: 'error', errorKind });
       keys.add(m.note[0]);
       keys.add(m.action[0]);
+      if (m.short) keys.add(m.short[0]);
     });
     const langs = ['en', 'hi', 'mr', 'bn', 'gu', 'kn', 'ml', 'pa', 'ta', 'te'];
     langs.forEach((lang) => {

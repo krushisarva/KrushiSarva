@@ -270,7 +270,6 @@ import FarmCalendarScreen    from '../screens/AI/FarmCalendarScreen';
 import IrrigationScreen      from '../screens/AI/IrrigationScreen';
 import InputCalculatorScreen from '../screens/AI/InputCalculatorScreen';
 import VoiceChatScreen      from '../screens/AI/VoiceChatScreen';
-import AICreditsScreen      from '../screens/AI/AICreditsScreen';
 
 // Animal Trade
 import AnimalTradeHome  from '../screens/AnimalTrade/AnimalTradeHome';
@@ -278,6 +277,7 @@ import AnimalDetail     from '../screens/AnimalTrade/AnimalDetail';
 import AddAnimalListing from '../screens/AnimalTrade/AddAnimalListing';
 import MyAnimalChatsScreen from '../screens/AnimalTrade/MyAnimalChatsScreen';
 import ChatScreen       from '../screens/AnimalTrade/ChatScreen';
+import BlockedUsersScreen from '../screens/AnimalTrade/BlockedUsersScreen';
 
 // Rent
 import RentHome           from '../screens/Rent/RentHome';
@@ -385,7 +385,6 @@ function AINavigator() {
       <AIStack.Screen name="Irrigation"        component={IrrigationScreen}       options={{ headerShown: false }} />
       <AIStack.Screen name="InputCalculator"   component={InputCalculatorScreen}  options={{ headerShown: false }} />
       <AIStack.Screen name="VoiceChat"        component={VoiceChatScreen}        options={{ headerShown: false }} />
-      <AIStack.Screen name="AICredits"        component={AICreditsScreen}        options={{ headerShown: false }} />
       {/* Farm Profile — accessible from AI tab (cosmic screens draw own header) */}
       <AIStack.Screen name="FarmList"               component={FarmListScreen}         options={{ headerShown: false }} />
       <AIStack.Screen name="FarmDetail"             component={FarmDetailScreen}       options={{ headerShown: false }} />
@@ -421,6 +420,7 @@ function AnimalTradeNavigator() {
       <AnimalStack.Screen name="AddAnimalListing" component={AddAnimalListing} options={{ title: t('sellYourAnimal'), headerBackAccessibilityLabel: t('common.goBack', 'Go back') }} />
       <AnimalStack.Screen name="MyAnimalChats"    component={MyAnimalChatsScreen} options={{ headerShown: false }} />
       <AnimalStack.Screen name="Chat"             component={ChatScreen}       options={{ headerShown: false }} />
+      <AnimalStack.Screen name="BlockedUsers"     component={BlockedUsersScreen} options={{ headerShown: false }} />
     </AnimalStack.Navigator>
   );
 }
@@ -475,6 +475,8 @@ function ProfileNavigator() {
       <ProfileStack.Screen name="SavedAddresses"     component={SavedAddressesScreen}    options={{ headerShown: false }} />
       <ProfileStack.Screen name="SavedPosts"          component={SavedPostsScreen}        options={{ headerShown: false }} />
       <ProfileStack.Screen name="MyAnimalListings"    component={MyAnimalListingsScreen}  options={{ headerShown: false }} />
+      {/* Also in the animal stack (chats inbox); the screen only goes back, so both entries work. */}
+      <ProfileStack.Screen name="BlockedUsers"        component={BlockedUsersScreen}      options={{ headerShown: false }} />
       {/* Farm Profile Module — cosmic screens draw own header */}
       <ProfileStack.Screen name="FarmList"                component={FarmListScreen}          options={{ headerShown: false }} />
       <ProfileStack.Screen name="FarmDetail"              component={FarmDetailScreen}        options={{ headerShown: false }} />

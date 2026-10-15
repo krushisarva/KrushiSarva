@@ -58,7 +58,9 @@ export type PaymentPurpose = (typeof PAYMENT_PURPOSES)[number];
 const PURPOSE_LABEL: Record<string, string> = {
   SHOP_ORDER: 'AgriStore order',
   RENT_BOOKING: 'Rent booking',
-  AI_CREDITS: 'AI credits',
+  // AI credit packs are no longer sold. The enum value stays so historical
+  // pack-purchase intents still render and can still be filtered.
+  AI_CREDITS: 'AI credits (retired)',
   ANIMAL_TOKEN: 'AnimalTrade token',
 };
 

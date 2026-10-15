@@ -1,13 +1,14 @@
 import { useState, type KeyboardEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost, errorMessage } from '../lib/api';
-import { PageHeader, Card, Button, Badge, StatusBadge, Spinner, ErrorState, Field, Textarea, Select } from '../components/ui';
+import { PageHeader, Card, Button, Badge, StatusBadge, Spinner, ErrorState, Field, Textarea, Select, CopyValue } from '../components/ui';
 import { Toolbar, FilterSelect, DescList } from '../components/filters';
 import { Drawer } from '../components/Modal';
 import { useConfirm } from '../components/confirm';
 import { useToast } from '../lib/toast';
-import { formatDateTime, relativeTime } from '../lib/format';
+import { formatDateTime, relativeTime, titleCase } from '../lib/format';
 
 // Hand-built tables on this page open a drawer from the row. Same contract as
 // DataTable rows: focusable, outlined on focus (with the app-wide ring switched
@@ -20,7 +21,47 @@ const onRowKey = (open: () => void) => (e: KeyboardEvent<HTMLTableRowElement>) =
 };
 
 // ── Moderation ────────────────────────────────────────────────────────────────
-interface Flag { id: string; entityType: string; entityId: string; reasons: string[]; score: number; status: string; createdAt: string; resolution?: string | null }
+interface Flag { id: string; entityType: string; entityId: string; authorId?: string | null; reasons: string[]; score: number; status: string; createdAt: string; reviewedAt?: string | null; resolution?: string | null }
+
+/** One person's report, newest first (GET /admin/moderation/:id → report.reports). */
+interface ReportEntry { reporterId: string; reporterName: string | null; reason: string; details: string | null; clientTargetId?: string; at: string }
+interface ReportSummary {
+  reporterCount: number;
+  snapshot: string | null;
+  snapshotSource: 'server' | 'client' | null;
+  author: { id: string; name: string | null } | null;
+  reports: ReportEntry[];
+  previousResolutions: { status: string; note: string | null; reviewedAt: string | null }[];
+}
+interface FlagDetail { flag: Flag; entity: unknown; report: ReportSummary | null }
+/** An animal listing's own report rows (entity.reports), some filed before the queue mirrored them. */
+interface ListingReportRow { reason: string; details: string | null; status: string; createdAt: string; reporter: { id: string; name: string | null } | null }
+
+// Review/Product come from the fraud signals (score = signal strength). Every
+// other type is a user report (score = number of distinct reporters).
+const FRAUD_SIGNAL_TYPES = ['Review', 'Product'];
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  AI_MESSAGE: 'AI chat reply',
+  AI_VOICE_MESSAGE: 'AI voice reply',
+  AI_DIAGNOSIS: 'AI crop-scan result',
+  USER: 'User',
+  CHAT_MESSAGE: 'Chat message',
+  AnimalListing: 'Animal listing',
+  MACHINERY_LISTING: 'Machinery listing',
+  LABOUR_LISTING: 'Labour listing',
+  PRODUCT_REVIEW: 'Product review',
+  // Seller app: a farmer's scan photos and note, shared with a Krushi Seva Kendra.
+  CROP_REPORT_SHARE: 'Shared crop report',
+  Review: 'Review (fraud signal)',
+  Product: 'Product (fraud signal)',
+};
+const isUserReport = (entityType: string) => !FRAUD_SIGNAL_TYPES.includes(entityType);
+const typeLabel = (entityType: string) => ENTITY_TYPE_LABELS[entityType] ?? entityType;
+const reasonLabel = (reason: string) => titleCase(reason.replace(/^user_report:/, ''));
+
+function UserRef({ id, name }: { id: string; name: string | null }) {
+  return <Link to={`/users/${id}`} className="font-medium text-brand-700 hover:underline">{name || id}</Link>;
+}
 
 export function ModerationPage() {
   const toast = useToast();
@@ -30,16 +71,25 @@ export function ModerationPage() {
   const [entityType, setEntityType] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const q = useQuery({ queryKey: ['moderation', status, entityType], queryFn: () => apiGet<{ flags: Flag[] }>('/admin/moderation', { status: status || undefined, entityType: entityType || undefined, limit: 100 }).then((r) => r.data.flags) });
-  const detail = useQuery({ queryKey: ['flag', openId], queryFn: () => apiGet<{ flag: Flag; entity: any }>(`/admin/moderation/${openId}`).then((r) => r.data), enabled: !!openId });
+  // The API reads a missing status as PENDING, so "All" has to be asked for.
+  const q = useQuery({ queryKey: ['moderation', status, entityType], queryFn: () => apiGet<{ flags: Flag[] }>('/admin/moderation', { status: status || 'ALL', entityType: entityType || undefined, limit: 100 }).then((r) => r.data.flags) });
+  const detail = useQuery({ queryKey: ['flag', openId], queryFn: () => apiGet<FlagDetail>(`/admin/moderation/${openId}`).then((r) => r.data), enabled: !!openId });
 
   const resolve = useMutation({
     mutationFn: (vars: { status: 'APPROVED' | 'REJECTED'; note: string }) => apiPost(`/admin/moderation/${openId}/resolve`, vars),
-    onSuccess: () => { toast.success('Flag resolved'); setOpenId(null); qc.invalidateQueries({ queryKey: ['moderation'] }); },
+    onSuccess: () => { toast.success('Flag resolved'); setOpenId(null); qc.invalidateQueries({ queryKey: ['moderation'] }); qc.invalidateQueries({ queryKey: ['flag'] }); },
     onError: (e) => toast.error(errorMessage(e)),
   });
-  const onResolve = async (decision: 'APPROVED' | 'REJECTED') => {
-    const { confirmed, reason } = await confirm({
+  const onResolve = async (decision: 'APPROVED' | 'REJECTED', userReport: boolean) => {
+    const { confirmed, reason } = await confirm(userReport ? {
+      title: decision === 'APPROVED' ? 'Dismiss this report?' : 'Uphold this report?',
+      message: decision === 'APPROVED'
+        ? 'The content stays as it is. A report from someone new puts it back in the queue.'
+        : 'This records the violation. Remove the content or suspend the account from its own admin page.',
+      tone: decision === 'REJECTED' ? 'danger' : 'default',
+      reasonLabel: 'Moderator note (optional)',
+      confirmLabel: decision === 'APPROVED' ? 'Dismiss' : 'Uphold',
+    } : {
       title: decision === 'APPROVED' ? 'Approve (keep) content?' : 'Reject (remove) content?',
       tone: decision === 'REJECTED' ? 'danger' : 'default',
       reasonLabel: 'Moderator note (optional)',
@@ -48,23 +98,32 @@ export function ModerationPage() {
     if (confirmed) resolve.mutate({ status: decision, note: reason });
   };
 
+  const d = detail.data;
+  const report = d?.report ?? null;
+  const userReport = d ? isUserReport(d.flag.entityType) : false;
+  // Animal-listing reports filed before they were mirrored here exist only on the listing.
+  const mirrored = new Set((report?.reports ?? []).map((r) => r.reporterId));
+  const earlierListingReports = d?.flag.entityType === 'AnimalListing'
+    ? ((d.entity as { reports?: ListingReportRow[] } | null)?.reports ?? []).filter((r) => !r.reporter || !mirrored.has(r.reporter.id))
+    : [];
+
   return (
     <div>
-      <PageHeader title="Moderation queue" subtitle="Review content flagged by the fraud/abuse signals." />
+      <PageHeader title="Moderation queue" subtitle="Content reported by users, and content flagged by the fraud/abuse signals." />
       <Toolbar>
         <FilterSelect label="Status" value={status} onChange={setStatus} options={['PENDING', 'APPROVED', 'REJECTED'].map((s) => ({ label: s, value: s }))} allLabel="All" />
-        <FilterSelect label="Type" value={entityType} onChange={setEntityType} options={[{ label: 'Review', value: 'Review' }, { label: 'Product', value: 'Product' }]} />
+        <FilterSelect label="Type" value={entityType} onChange={setEntityType} options={Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({ label, value }))} />
       </Toolbar>
       {q.isLoading ? <div className="flex justify-center py-10"><Spinner /></div> : q.error ? <ErrorState message="Failed to load queue." /> : (
         <Card className="overflow-hidden">
           <table className="min-w-full divide-y divide-slate-100">
-            <thead className="bg-slate-50"><tr><th className="table-th">Type</th><th className="table-th">Reasons</th><th className="table-th">Score</th><th className="table-th">Status</th><th className="table-th">Flagged</th></tr></thead>
+            <thead className="bg-slate-50"><tr><th className="table-th">Type</th><th className="table-th">Reasons</th><th className="table-th">Reporters / score</th><th className="table-th">Status</th><th className="table-th">Flagged</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {(q.data ?? []).map((f) => (
                 <tr key={f.id} className={CLICKABLE_ROW} tabIndex={0} onClick={() => setOpenId(f.id)} onKeyDown={onRowKey(() => setOpenId(f.id))}>
-                  <td className="table-td"><Badge>{f.entityType}</Badge></td>
-                  <td className="table-td">{f.reasons.map((r) => <Badge key={r} tone="amber" className="mr-1">{r}</Badge>)}</td>
-                  <td className="table-td font-medium">{f.score}</td>
+                  <td className="table-td"><Badge tone={isUserReport(f.entityType) ? 'blue' : 'slate'}>{typeLabel(f.entityType)}</Badge></td>
+                  <td className="table-td">{f.reasons.map((r) => <Badge key={r} tone="amber" className="mr-1">{reasonLabel(r)}</Badge>)}</td>
+                  <td className="table-td font-medium">{isUserReport(f.entityType) ? `${f.score} reporter${f.score === 1 ? '' : 's'}` : `Score ${f.score}`}</td>
                   <td className="table-td"><StatusBadge value={f.status} /></td>
                   <td className="table-td text-xs text-slate-500">{relativeTime(f.createdAt)}</td>
                 </tr>
@@ -75,23 +134,118 @@ export function ModerationPage() {
         </Card>
       )}
 
-      <Drawer open={!!openId} onClose={() => setOpenId(null)} title="Flagged content">
+      <Drawer open={!!openId} onClose={() => setOpenId(null)} title={userReport ? 'User report' : 'Flagged content'} width="max-w-2xl">
         {detail.isLoading && <div className="flex justify-center py-8"><Spinner /></div>}
-        {detail.data && (
-          <div className="space-y-4">
+        {detail.error && <ErrorState message="Failed to load this flag." />}
+        {d && (
+          <div className="space-y-5">
             <DescList items={[
-              { label: 'Entity', value: <Badge>{detail.data.flag.entityType}</Badge> },
-              { label: 'Score', value: detail.data.flag.score },
-              { label: 'Reasons', value: detail.data.flag.reasons.join(', ') },
-              { label: 'Status', value: <StatusBadge value={detail.data.flag.status} /> },
+              { label: 'Type', value: <Badge tone={userReport ? 'blue' : 'slate'}>{typeLabel(d.flag.entityType)}</Badge> },
+              { label: 'Status', value: <StatusBadge value={d.flag.status} /> },
+              userReport ? { label: 'Reporters', value: report?.reporterCount ?? d.flag.score } : { label: 'Score', value: d.flag.score },
+              { label: 'Reasons', value: d.flag.reasons.map(reasonLabel).join(', ') || '—' },
+              { label: 'Author', value: report?.author ? <UserRef id={report.author.id} name={report.author.name} /> : (d.flag.authorId ? <UserRef id={d.flag.authorId} name={null} /> : <span className="text-slate-500">Not known (AI content or no stored author)</span>) },
+              { label: 'Content id', value: d.flag.entityId.startsWith('snap_') ? <span className="text-slate-500">None — keyed on the reported text</span> : <CopyValue value={d.flag.entityId} label="content id" /> },
+              { label: 'First flagged', value: formatDateTime(d.flag.createdAt) },
+              ...(d.flag.reviewedAt ? [{ label: 'Resolved', value: `${formatDateTime(d.flag.reviewedAt)}${d.flag.resolution ? ` — ${d.flag.resolution}` : ''}` }] : []),
             ]} />
-            <Card className="bg-slate-50 p-3 text-sm">
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-slate-600">{JSON.stringify(detail.data.entity, null, 2)}</pre>
-            </Card>
-            {detail.data.flag.status === 'PENDING' && (
-              <div className="flex gap-2">
-                <Button variant="primary" className="flex-1" onClick={() => onResolve('APPROVED')} loading={resolve.isPending}><Check className="h-4 w-4" /> Approve</Button>
-                <Button variant="danger" className="flex-1" onClick={() => onResolve('REJECTED')} loading={resolve.isPending}><X className="h-4 w-4" /> Reject</Button>
+
+            {report && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-medium text-slate-700">Reported content</h4>
+                  {report.snapshotSource && (
+                    <Badge tone={report.snapshotSource === 'server' ? 'green' : 'amber'}>
+                      {report.snapshotSource === 'server' ? 'Stored content (verified)' : 'As sent by the reporter (unverified)'}
+                    </Badge>
+                  )}
+                </div>
+                <Card className="bg-slate-50 p-3">
+                  {report.snapshot
+                    ? <p className="whitespace-pre-wrap break-words text-sm text-slate-800">{report.snapshot}</p>
+                    : <p className="text-sm text-slate-500">No text was captured with this report.</p>}
+                </Card>
+              </div>
+            )}
+
+            {report && (
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-slate-700">
+                  Reports ({report.reports.length}{report.reports.length < report.reporterCount ? ` newest of ${report.reporterCount}` : ''})
+                </h4>
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+                  {report.reports.map((r) => (
+                    <li key={`${r.reporterId}-${r.at}`} className="space-y-1 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <UserRef id={r.reporterId} name={r.reporterName} />
+                        <Badge tone="amber">{reasonLabel(r.reason)}</Badge>
+                        <span className="text-xs text-slate-500" title={formatDateTime(r.at)}>{relativeTime(r.at)}</span>
+                      </div>
+                      {r.details && <p className="whitespace-pre-wrap break-words text-slate-600">{r.details}</p>}
+                      {r.clientTargetId && <p className="text-xs text-slate-500">App-side id (not matched on the server): <span className="font-mono">{r.clientTargetId}</span></p>}
+                    </li>
+                  ))}
+                  {report.reports.length === 0 && <li className="px-3 py-2 text-slate-500">No report entries recorded.</li>}
+                </ul>
+              </div>
+            )}
+
+            {earlierListingReports.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-slate-700">Earlier reports on this listing ({earlierListingReports.length})</h4>
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+                  {earlierListingReports.map((r, i) => (
+                    <li key={r.reporter?.id ?? i} className="space-y-1 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {r.reporter ? <UserRef id={r.reporter.id} name={r.reporter.name} /> : <span className="text-slate-500">Unknown reporter</span>}
+                        <Badge tone="amber">{reasonLabel(r.reason.toLowerCase())}</Badge>
+                        <StatusBadge value={r.status} />
+                        <span className="text-xs text-slate-500" title={formatDateTime(r.createdAt)}>{relativeTime(r.createdAt)}</span>
+                      </div>
+                      {r.details && <p className="whitespace-pre-wrap break-words text-slate-600">{r.details}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {report && report.previousResolutions.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-slate-700">Earlier decisions (re-opened by a new reporter)</h4>
+                <ul className="space-y-1 text-sm">
+                  {report.previousResolutions.map((p, i) => (
+                    <li key={i} className="flex flex-wrap items-center gap-2">
+                      <StatusBadge value={p.status} />
+                      <span className="text-xs text-slate-500">{p.reviewedAt ? formatDateTime(p.reviewedAt) : '—'}</span>
+                      {p.note && <span className="text-slate-600">{p.note}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {userReport ? (
+              <details className="text-sm">
+                <summary className="cursor-pointer text-slate-600">Stored record now{d.entity ? '' : ' (none)'}</summary>
+                <Card className="mt-2 bg-slate-50 p-3">
+                  {d.entity
+                    ? <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-slate-600">{JSON.stringify(d.entity, null, 2)}</pre>
+                    : <p className="text-xs text-slate-500">No stored row: an AI reply known only by its text, or the content has been deleted.</p>}
+                </Card>
+              </details>
+            ) : (
+              <Card className="bg-slate-50 p-3 text-sm">
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-slate-600">{JSON.stringify(d.entity, null, 2)}</pre>
+              </Card>
+            )}
+
+            {d.flag.status === 'PENDING' && (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button variant="primary" className="flex-1" onClick={() => onResolve('APPROVED', userReport)} loading={resolve.isPending}><Check className="h-4 w-4" /> {userReport ? 'Dismiss (no violation)' : 'Approve'}</Button>
+                  <Button variant="danger" className="flex-1" onClick={() => onResolve('REJECTED', userReport)} loading={resolve.isPending}><X className="h-4 w-4" /> {userReport ? 'Uphold (violation)' : 'Reject'}</Button>
+                </div>
+                {userReport && <p className="text-xs text-slate-500">Resolving records the decision only. Remove the content or suspend the author from its own admin page.</p>}
               </div>
             )}
           </div>

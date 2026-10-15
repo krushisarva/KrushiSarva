@@ -1,0 +1,57 @@
+<!--
+  How to delete a KrushiSarva account — the "Delete account URL" Google Play asks
+  for (Play Console → App content → Data safety), one page for both apps.
+
+  This page is NOT held back by LEGAL_DOCS_APPROVED (see constants/legal.js), and
+  its one fact, {{supportEmail}}, falls back to the owner's published contact
+  when LEGAL_SUPPORT_EMAIL is not set — so it is live in production from the
+  first deploy. That also means an untrue sentence here goes live with no
+  review step, so state only what the code does and keep it in step with:
+    - backend/src/services/erasure.service.js — what is erased and what is kept
+    - backend/src/constants/retention.js       — how long the logs are kept
+    - section 6 of privacy.html
+    - the in-app entry points: frontend ProfileScreen, seller-app
+      SellerProfileScreen and BusinessProfileScreen.
+  Never put an owner-todo marker, or a placeholder without a fallback, in this
+  file: either one takes the page down in production, and Play then rejects
+  both apps. Open decisions belong in the privacy policy.
+-->
+<h1>Delete your KrushiSarva account</h1>
+<p class="meta">Apps: KrushiSarva (farmer app) and KrushiSarva Seller</p>
+
+<p>The KrushiSarva farmer app and the KrushiSarva Seller app use one shared account, tied to your mobile number. Deleting it removes your account from <strong>both</strong> apps at once. It cannot be undone.</p>
+
+<h2>Option 1: delete it in the app</h2>
+<ul>
+  <li><strong>KrushiSarva (farmer app):</strong> open the <strong>Account</strong> tab, scroll to the bottom and tap <strong>Delete my account</strong>.</li>
+  <li><strong>KrushiSarva Seller:</strong> on the dashboard, tap <strong>Profile</strong>, then <strong>Delete my account</strong>. If you have not finished setting up your shop yet, <strong>Delete my account</strong> is on the business profile screen the app opens on.</li>
+</ul>
+<p>The app shows what will be erased and what will be kept, then sends a code by SMS to your registered mobile number. Once you enter the code, your account is deleted straight away and you are signed out.</p>
+
+<h2>Option 2: ask us without the app</h2>
+<p>If you no longer have the app or cannot sign in, email <a href="mailto:{{supportEmail}}">{{supportEmail}}</a> with the subject "Delete my account" and the mobile number your account is registered with. Before deleting anything, we confirm that the request comes from the person who holds that number. We then delete the account in the same way the app does and reply to tell you it is done.</p>
+
+<h2>What is deleted</h2>
+<ul>
+  <li>Your profile: name, mobile number, email, photo, location and the other personal details you added.</li>
+  <li>Farm records: farms, crop cycles, soil and irrigation records, crop calendars and planner tasks.</li>
+  <li>AI chats, voice sessions, crop and soil scans, and your AI usage history.</li>
+  <li>Saved addresses, cart, notifications, price alerts and scheme applications.</li>
+  <li>Seller details: business profile, bank account, Aadhaar, PAN and KYC documents.</li>
+  <li>Your sign-in sessions, your phones' registration for notifications, likes, saved posts, group memberships and the record of the consents you gave.</li>
+  <li>Your profile photo, crop and soil scan photos, voice recordings and KYC documents are also deleted from our file storage.</li>
+</ul>
+<p>Your mobile number is freed, so you can sign up with it again later as a new account.</p>
+
+<h2>What is kept</h2>
+<ul>
+  <li><strong>Past orders and bookings</strong>, with their payment, refund and return records. Tax law requires these records, and the buyer or seller on the other side of each one needs them. The delivery address and notes are removed (only the delivery PIN code stays with the order), and your name shows as "Deleted User".</li>
+  <li><strong>If you sold on KrushiSarva:</strong> your payout records and the seller licence details you added (licence number, issuing office, validity dates and the licence documents).</li>
+  <li><strong>Community posts, comments, reviews and the messages you sent to other people.</strong> They stay visible to others under the name "Deleted User".</li>
+  <li><strong>Your listings</strong> (products, animals, machinery and labour) are taken off the app. The records stay so that past orders and bookings still make sense.</li>
+  <li><strong>Fraud-prevention records:</strong> a scrambled identifier of each phone you used to sign in or order, and the last internet (IP) address it used. These are not yet deleted automatically.</li>
+  <li><strong>Security and audit logs</strong>, including the record that your account was deleted, are kept for up to 365 days and then deleted automatically. Server error logs are deleted after 90 days.</li>
+  <li><strong>Your sign-in record at Google Firebase</strong>, the service that sends our SMS codes, which holds your mobile number.</li>
+</ul>
+
+<p>The <a href="/legal/privacy">Privacy Policy</a> explains in full what we collect and how long we keep it.</p>

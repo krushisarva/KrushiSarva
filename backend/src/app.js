@@ -59,6 +59,7 @@ import consentRoutes       from './routes/consent.routes.js';
 import incidentRoutes      from './routes/incident.routes.js';
 import fraudRoutes         from './routes/fraud.routes.js';
 import moderationRoutes    from './routes/moderation.routes.js';
+import reportsRoutes       from './routes/reports.routes.js';
 // Admin panel API (users, KYC, catalog, orders, listings, community, AI, CMS,
 // broadcast, ops, compliance) — ADMIN-gated + audited (routes/admin/index.js).
 import adminRoutes         from './routes/admin/index.js';
@@ -507,6 +508,7 @@ app.use(`${API}/legal`,        legalApiRouter);
 app.use(`${API}/admin/incidents`, incidentRoutes);
 app.use(`${API}/admin/fraud`,  fraudRoutes);
 app.use(`${API}/admin/moderation`, moderationRoutes);
+app.use(`${API}/reports`,      reportsRoutes);
 app.use(`${API}/telemetry`,    telemetryRoutes);
 
 // ── New AI Services ───────────────────────────────────────────────────────────

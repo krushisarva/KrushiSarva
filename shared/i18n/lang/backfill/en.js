@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 872 keys.
 
 export default {
   "aiChat.attachHint": "Share a photo of your crop for a quick diagnosis.",
@@ -16,10 +16,6 @@ export default {
   "aiChat.newChatTitle": "Start a new chat?",
   "aiChat.photoAttached": "Photo attached",
   "aiChat.photoNote": "Add a note (optional)…",
-  "aiCredits.balanceLeft": "Balance Left",
-  "aiCredits.buySoon": "Buy Soon",
-  "aiCredits.monthlyBudget": "Monthly Budget",
-  "aiCredits.usedThisMonth": "Used This Month",
   "aiHome.history.chat": "Chat",
   "aiHome.history.scan": "Scan",
   "aiHome.history.voice": "Voice",

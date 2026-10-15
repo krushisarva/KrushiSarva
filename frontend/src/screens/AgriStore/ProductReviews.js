@@ -25,7 +25,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
+import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import Stars from '@krushisarva/shared/components/Stars';
+import ReportSheet from '../../components/ReportSheet';
 import { classifyError } from './shopUtils';
 import { fetchReviews } from './shopClient';
 import {
@@ -36,7 +38,10 @@ const PAGE = 5;
 
 export default function ProductReviews({ productId, ratingCount }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const hasAny = Number(ratingCount) > 0;
+  // "Report" on someone else's review (Google Play user-content rule).
+  const [reportTarget, setReportTarget] = useState(null);
 
   const [reviews, setReviews] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -139,31 +144,48 @@ export default function ProductReviews({ productId, ratingCount }) {
             const word = ratingWord(r.rating);
             const who = reviewerFirstName(r.user) || t('reviews.anonymous', 'A farmer');
             const day = reviewDay(r.createdAt);
+            // Not on your own review; the server refuses that anyway.
+            const canReport = !!user?.id && !!r.id && r.user?.id !== user.id;
             return (
-              <View
-                key={r.id}
-                style={s.review}
-                accessible
-                accessibilityLabel={[
-                  who,
-                  t('reviews.starLabel', { count: r.rating, defaultValue: '{{count}} of 5 stars' }),
-                  r.comment,
-                ].filter(Boolean).join('. ')}
-              >
-                <View style={s.reviewHead}>
-                  <Stars value={r.rating} size={13} />
-                  {word ? <Text style={s.reviewWord}>{t(word.key, word.fallback)}</Text> : null}
+              <View key={r.id} style={s.review}>
+                {/* The review reads as one item to a screen reader; Report sits
+                    outside it so it stays its own button. */}
+                <View
+                  style={s.reviewBody}
+                  accessible
+                  accessibilityLabel={[
+                    who,
+                    t('reviews.starLabel', { count: r.rating, defaultValue: '{{count}} of 5 stars' }),
+                    r.comment,
+                  ].filter(Boolean).join('. ')}
+                >
+                  <View style={s.reviewHead}>
+                    <Stars value={r.rating} size={13} />
+                    {word ? <Text style={s.reviewWord}>{t(word.key, word.fallback)}</Text> : null}
+                  </View>
+                  {r.comment ? <Text style={s.comment}>{r.comment}</Text> : null}
+                  <View style={s.byRow}>
+                    <Text style={s.by} numberOfLines={1}>{[who, day].filter(Boolean).join(' · ')}</Text>
+                    {r.verifiedPurchase ? (
+                      <View style={s.verified}>
+                        <Ionicons name="checkmark-circle" size={12} color={COLORS.primary} />
+                        <Text style={s.verifiedTxt}>{t('reviews.verified', 'Verified purchase')}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-                {r.comment ? <Text style={s.comment}>{r.comment}</Text> : null}
-                <View style={s.byRow}>
-                  <Text style={s.by} numberOfLines={1}>{[who, day].filter(Boolean).join(' · ')}</Text>
-                  {r.verifiedPurchase ? (
-                    <View style={s.verified}>
-                      <Ionicons name="checkmark-circle" size={12} color={COLORS.primary} />
-                      <Text style={s.verifiedTxt}>{t('reviews.verified', 'Verified purchase')}</Text>
-                    </View>
-                  ) : null}
-                </View>
+                {canReport ? (
+                  <TouchableOpacity
+                    style={s.reportBtn}
+                    onPress={() => setReportTarget({ targetType: 'PRODUCT_REVIEW', targetId: r.id })}
+                    hitSlop={{ top: 6, bottom: 6 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('report.titleReview', 'Report review')}
+                  >
+                    <Ionicons name="flag-outline" size={13} color={COLORS.textMedium} />
+                    <Text style={s.reportTxt}>{t('report.action', 'Report')}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             );
           })}
@@ -183,6 +205,8 @@ export default function ProductReviews({ productId, ratingCount }) {
           ) : null}
         </>
       )}
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
   );
 }
@@ -220,6 +244,10 @@ const s = StyleSheet.create({
   barCount: { minWidth: 22, fontSize: 11, color: COLORS.textMedium, textAlign: 'right' },
 
   review: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 5 },
+  reviewBody: { gap: 5 },
+  // Quiet, but a real 36dp target with the hitSlop above.
+  reportBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4, minHeight: 36, paddingRight: 10 },
+  reportTxt: { fontSize: 12, fontWeight: '600', color: COLORS.textMedium },
   reviewHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   reviewWord: { fontSize: 13, fontWeight: '700', color: COLORS.textDark },
   comment: { fontSize: 14, lineHeight: 20, color: COLORS.textBody },

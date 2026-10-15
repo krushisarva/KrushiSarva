@@ -50,7 +50,8 @@
  *     unmounted screen and pop the screen behind it.
  *   - An account that is not a seller yet has nothing behind this screen, so it
  *     offers a way to log out instead of trapping someone who signed in with
- *     the wrong number.
+ *     the wrong number — and a way to delete the account, which it otherwise
+ *     could not do from this app at all.
  *   - A stale offline flag is re-checked when Save is tapped.
  *   - Becoming a seller is asked for, not assumed. Every save used to send
  *     `sellerConsent: true`, so the API recorded a consent the person had never
@@ -68,6 +69,7 @@ import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { DISTRICT_LIST, getTalukas, BUSINESS_TYPES } from '@krushisarva/shared/constants/locations';
 import { hasSellerRole } from '@krushisarva/shared/utils/roles';
 import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
+import DeleteAccountModal from '@krushisarva/shared/components/DeleteAccountModal';
 import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
 import { matchDistrict, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 
@@ -111,26 +113,45 @@ export default function BusinessProfileScreen({ navigation }) {
   const { logout } = useAuth();
   const confirm = useConfirm();
   const { hydrated, error, retry } = useProfileSync();
+  // Delete account sits wherever Log out does. An account that has not
+  // finished setting up its shop never reaches SellerProfileScreen, so without
+  // this it could sign out but never be deleted (a Google Play requirement).
+  // The modal is mounted here, outside both branches, so the profile finishing
+  // loading mid-flow does not unmount it and lose the code being typed.
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const openDeleteAccount = useCallback(() => setShowDeleteAccount(true), []);
 
   const handleLogout = useCallback(async () => {
     if (await confirmLogout(confirm, t)) logout();
   }, [confirm, logout, t]);
 
-  if (hydrated) return <BusinessProfileForm navigation={navigation} />;
-
   return (
-    <Screen edges={['left', 'right']} background={C.bgAlt}>
-      {error ? (
-        <ErrorState error={error} onRetry={retry} />
+    <>
+      {hydrated ? (
+        <BusinessProfileForm navigation={navigation} onDeleteAccount={openDeleteAccount} />
       ) : (
-        <SkeletonList count={3} thumb={false} lines={4} />
+        <Screen edges={['left', 'right']} background={C.bgAlt}>
+          {error ? (
+            <ErrorState error={error} onRetry={retry} />
+          ) : (
+            <SkeletonList count={3} thumb={false} lines={4} />
+          )}
+          {!navigation.canGoBack() ? (
+            <View style={b.gateExit}>
+              <Button label={t('logout', 'Log out')} variant="ghost" size="sm" icon="log-out-outline" onPress={handleLogout} />
+              <Button
+                label={t('deleteAccount.entry', 'Delete my account')}
+                variant="dangerSoft"
+                size="sm"
+                icon="trash-outline"
+                onPress={openDeleteAccount}
+              />
+            </View>
+          ) : null}
+        </Screen>
       )}
-      {!navigation.canGoBack() ? (
-        <View style={b.gateExit}>
-          <Button label={t('logout', 'Log out')} variant="ghost" size="sm" icon="log-out-outline" onPress={handleLogout} />
-        </View>
-      ) : null}
-    </Screen>
+      <DeleteAccountModal visible={showDeleteAccount} onClose={() => setShowDeleteAccount(false)} />
+    </>
   );
 }
 
@@ -147,7 +168,7 @@ function confirmLogout(confirm, t) {
 
 // ── Form ─────────────────────────────────────────────────────────────────────
 
-function BusinessProfileForm({ navigation }) {
+function BusinessProfileForm({ navigation, onDeleteAccount }) {
   const { user, updateUser, logout } = useAuth();
   const { t } = useLanguage();
   const toast = useToast();
@@ -534,19 +555,34 @@ function BusinessProfileForm({ navigation }) {
               </View>
 
               {!canGoBack ? (
-                <View style={b.exit}>
-                  <Text style={b.exitTxt}>
-                    {t('sellerBizProfile.wrongAccount', 'Signed in with the wrong number?')}
-                  </Text>
-                  <Button
-                    label={t('logout', 'Log out')}
-                    variant="ghost"
-                    size="sm"
-                    icon="log-out-outline"
-                    onPress={handleLogout}
-                    disabled={saving}
-                  />
-                </View>
+                <>
+                  <View style={b.exit}>
+                    <Text style={b.exitTxt}>
+                      {t('sellerBizProfile.wrongAccount', 'Signed in with the wrong number?')}
+                    </Text>
+                    <Button
+                      label={t('logout', 'Log out')}
+                      variant="ghost"
+                      size="sm"
+                      icon="log-out-outline"
+                      onPress={handleLogout}
+                      disabled={saving}
+                    />
+                  </View>
+                  {/* On its own line under Log out, not beside it, so a thumb
+                      aiming for one does not land on the other. The modal still
+                      asks for confirmation and a fresh SMS code. */}
+                  <View style={b.deleteRow}>
+                    <Button
+                      label={t('deleteAccount.entry', 'Delete my account')}
+                      variant="dangerSoft"
+                      size="sm"
+                      icon="trash-outline"
+                      onPress={onDeleteAccount}
+                      disabled={saving}
+                    />
+                  </View>
+                </>
               ) : null}
             </Card>
           </View>
@@ -1022,7 +1058,7 @@ function SellerConsent({ fieldRef, checked, onToggle, error, disabled }) {
 }
 
 const b = StyleSheet.create({
-  gateExit: { alignItems: 'center', paddingBottom: SP.xxl },
+  gateExit: { alignItems: 'center', gap: SP.sm, paddingBottom: SP.xxl },
 
   intro: { marginBottom: SP.lg, ...E.raised },
   introHead: { flexDirection: 'row', alignItems: 'flex-start', gap: SP.lg },
@@ -1069,6 +1105,7 @@ const b = StyleSheet.create({
     borderTopColor: C.divider,
   },
   exitTxt: { ...T.caption, color: C.textMuted, flexShrink: 1 },
+  deleteRow: { alignItems: 'flex-end', marginTop: SP.sm },
 
   notice: { marginBottom: SP.lg },
 

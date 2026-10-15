@@ -16,6 +16,9 @@
  *   POST   /api/v1/animals/:id/report      (auth) report a listing
  *   POST   /api/v1/animals/sellers/:sellerId/block    (auth) block / unblock a seller
  *   DELETE /api/v1/animals/sellers/:sellerId/block
+ *   GET    /api/v1/animals/blocks          (auth) users I have blocked, newest first, cursor paged
+ *
+ *   Every refusal a block causes carries `error.code: 'USER_BLOCKED'`.
  *
  * Chat
  *   GET    /api/v1/animals/chats/my                 (auth) inbox
@@ -51,6 +54,8 @@ import {
 } from '../utils/response.js';
 import { stripHtml } from '../utils/encrypt.js';
 import { haversineKm, geoPageIds } from '../utils/geo.js';
+import { decodeCursor } from '../utils/keyset.js';
+import { keysetList } from '../utils/adminList.js';
 import { archiveResource } from '../services/softDelete.service.js';
 import { sendPushToUser } from '../services/push.service.js';
 import { auditLog } from '../services/audit.service.js';
@@ -63,13 +68,17 @@ import {
   NS_ANIMALS, ANIMALS_TTL_SEC, LIST_SELECT, DETAIL_SELECT,
   toPublicListing, toPublicDetail, blockedUserIds, isBlockedBetween,
   listingExpiry, findRecentDuplicate, coarseDistanceKm,
+  USER_BLOCKED, BLOCKED_SEND_MESSAGE, blockStatesWith, blockStateFrom,
 } from '../services/animalListing.service.js';
+import { recordUserReport, ANIMAL_LISTING_ENTITY } from '../services/userReport.service.js';
 
 const router = Router();
 router.param('id', uuidParamGuard);       // animal listing id
 router.param('chatId', uuidParamGuard);   // animal chat id
 router.param('sellerId', uuidParamGuard); // block/unblock target
 const imageUpload = createUploader(6);    // 1–6 photos per the post-ad flow
+// UserBlock ids are uuid(); a /blocks cursor carrying anything else is malformed.
+const BLOCK_CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
 // Every one of these is keyed on the authenticated user (falling back to the
@@ -415,15 +424,19 @@ router.get('/chats/my', authenticate, async (req, res) => {
     // Both of these were Prisma includes above. Neither compiled to SQL that
     // was bounded by the page — see the helpers for the plans they emitted.
     const chatIds = chats.map((c) => c.id);
-    const [lastByChat, unreadByChat] = await Promise.all([
+    // Block state for the whole page in one query, not one per row.
+    const counterpartIds = [...new Set(chats.map((c) => (c.buyerId === me ? c.sellerId : c.buyerId)))];
+    const [lastByChat, unreadByChat, blockStates] = await Promise.all([
       lastMessagesByChat(chatIds),
       unreadCountsByChat(chatIds, me),
+      blockStatesWith(me, counterpartIds),
     ]);
 
     const rows = chats.map((c) => {
       const isBuyer = c.buyerId === me;
       const counterpart = isBuyer ? c.seller : c.buyer;
       const last = lastByChat.get(c.id) || null;
+      const { blockedByMe, canMessage } = blockStateFrom(blockStates, isBuyer ? c.sellerId : c.buyerId);
       return {
         id: c.id,
         listingId: c.listingId,
@@ -438,6 +451,8 @@ router.get('/chats/my', authenticate, async (req, res) => {
           mine: last.senderId === me,
         } : null,
         updatedAt: c.updatedAt,
+        blockedByMe,
+        canMessage,
       };
     });
 
@@ -620,6 +635,37 @@ router.get('/my', authenticate, async (req, res) => {
   }
 });
 
+// Users I have blocked, newest first — the "Blocked users" screen, where each
+// row has an Unblock button. Declared before '/:id', which would otherwise
+// capture 'blocks' (and 400 it as a non-UUID). Name and avatar only: blocking
+// someone must not be a way to obtain their phone number.
+//
+// Keyset paged on (UserBlock.createdAt DESC, UserBlock.id DESC): `cursor` is the
+// opaque meta.nextCursor of the previous page, and a cursor that does not decode
+// is a 400 rather than a silent restart at page 1 (which would loop the app).
+router.get('/blocks', authenticate, async (req, res) => {
+  try {
+    const limit = parsePageSize(req.query.limit, 50, 100);
+    const rawCursor = req.query.cursor;
+    if (rawCursor !== undefined && rawCursor !== '') {
+      const c = decodeCursor(rawCursor);
+      if (!c || !BLOCK_CURSOR_ID.test(c.id)) return sendError(res, 'Invalid cursor', 400);
+    }
+    const { items, hasMore, nextCursor } = await keysetList(prisma.userBlock, {
+      where: { blockerId: req.user.id },
+      cursor: rawCursor || undefined,
+      limit,
+      select: { id: true, createdAt: true, blocked: { select: { id: true, name: true, avatar: true } } },
+    });
+    const data = items.map((r) => ({
+      id: r.blocked.id, name: r.blocked.name ?? null, avatar: r.blocked.avatar ?? null, blockedAt: r.createdAt,
+    }));
+    return sendSuccess(res, data, 200, { limit, hasMore, nextCursor });
+  } catch (err) {
+    return sendServerError(res, err, 'Failed to load blocked users');
+  }
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
     const listing = await prisma.animalListing.findUnique({
@@ -637,7 +683,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
       return sendNotFound(res, 'Animal listing');
     }
     if (!isOwner && await isBlockedBetween(req.user?.id, listing.sellerId)) {
-      return sendNotFound(res, 'Animal listing');
+      return sendError(res, 'Animal listing not found', 404, undefined, { code: USER_BLOCKED });
     }
 
     const [sellerListingCount] = await Promise.all([
@@ -727,7 +773,7 @@ router.get('/:id/contact', authenticate, contactLimit, async (req, res) => {
     });
     if (!listing || listing.status === 'INACTIVE') return sendNotFound(res, 'Animal listing');
     if (await isBlockedBetween(req.user.id, listing.sellerId)) {
-      return sendForbidden(res, 'This seller is not available.');
+      return sendError(res, 'This seller is not available.', 403, undefined, { code: USER_BLOCKED });
     }
 
     // Audit trail: who asked for whose number, when. The number itself is never
@@ -1143,7 +1189,7 @@ router.post(
     try {
       const listing = await prisma.animalListing.findUnique({
         where: { id: req.params.id },
-        select: { id: true, sellerId: true },
+        select: { id: true, sellerId: true, animal: true, breed: true, description: true },
       });
       if (!listing) return sendNotFound(res, 'Animal listing');
       if (listing.sellerId === req.user.id) return sendError(res, 'You cannot report your own listing.', 400);
@@ -1158,6 +1204,17 @@ router.post(
         },
         update: { reason: req.body.reason, details: stripHtml(req.body.details || '') || null },
       });
+
+      // Mirror into the admin moderation queue, which is where moderators look.
+      // Best-effort: the ListingReport row above is this listing's record, and a
+      // queue hiccup must not turn a filed report into an error for the farmer.
+      await recordUserReport({
+        entityType: ANIMAL_LISTING_ENTITY, entityId: listing.id, authorId: listing.sellerId,
+        reporterId: req.user.id, reason: req.body.reason.toLowerCase(),
+        details: stripHtml(req.body.details || '') || null,
+        snapshot: [`${listing.animal} ${listing.breed}`.trim(), listing.description].filter(Boolean).join('\n'),
+        snapshotSource: 'server',
+      }).catch((err) => logger.warn('[Animals] moderation mirror failed for %s: %s', listing.id, err.message));
 
       auditLog({
         userId: req.user.id, action: 'ANIMAL_LISTING_REPORT', entity: 'AnimalListing',
@@ -1190,8 +1247,11 @@ router.post('/sellers/:sellerId/block', authenticate, writeLimit, async (req, re
   }
 });
 
+// Idempotent, and deliberately no "does this user exist" lookup: unblocking
+// someone whose account has since gone must still succeed.
 router.delete('/sellers/:sellerId/block', authenticate, writeLimit, async (req, res) => {
   try {
+    if (req.params.sellerId === req.user.id) return sendError(res, 'You cannot unblock yourself.', 400);
     await prisma.userBlock.deleteMany({ where: { blockerId: req.user.id, blockedId: req.params.sellerId } });
     return sendSuccess(res, { blocked: false });
   } catch (err) {
@@ -1207,7 +1267,7 @@ router.post('/:id/chat', authenticate, async (req, res) => {
     if (!listing || listing.status === 'INACTIVE') return sendNotFound(res, 'Animal listing');
     if (listing.sellerId === req.user.id) return sendError(res, 'Cannot chat with yourself', 400);
     if (await isBlockedBetween(req.user.id, listing.sellerId)) {
-      return sendForbidden(res, 'This seller is not available.');
+      return sendError(res, 'This seller is not available.', 403, undefined, { code: USER_BLOCKED });
     }
 
     const chat = await prisma.chat.upsert({
@@ -1217,7 +1277,8 @@ router.post('/:id/chat', authenticate, async (req, res) => {
       select: { id: true, listingId: true, sellerId: true, buyerId: true, createdAt: true, updatedAt: true },
     });
 
-    return sendSuccess(res, chat);
+    // Reaching here means no block either way (checked above).
+    return sendSuccess(res, { ...chat, blockedByMe: false, canMessage: true });
   } catch (err) {
     return sendServerError(res, err, 'Could not open the chat');
   }
@@ -1322,17 +1383,26 @@ router.get('/chats/:chatId/messages', authenticate, async (req, res) => {
     }
 
     // Mark counterpart's messages as read, then broadcast on the socket bus
-    // so they can flip their ✓✓ instantly without polling.
-    const toMark = await prisma.chatMessage.updateMany({
-      where: { chatId: chat.id, senderId: { not: me }, readAt: null },
-      data:  { readAt: new Date() },
-    });
-    if (toMark.count > 0) {
+    // so they can flip their ✓✓ instantly without polling. The block state
+    // rides alongside so the screen can swap its composer for a notice; the
+    // history itself stays readable after a block.
+    const other = me === chat.buyerId ? chat.sellerId : chat.buyerId;
+    const [toMark, blockStates] = await Promise.all([
+      prisma.chatMessage.updateMany({
+        where: { chatId: chat.id, senderId: { not: me }, readAt: null },
+        data:  { readAt: new Date() },
+      }),
+      blockStatesWith(me, [other]),
+    ]);
+    const { blockedByMe, canMessage } = blockStateFrom(blockStates, other);
+    // No read receipt reaches a blocked counterpart (canMessage is false
+    // exactly when a block exists either way).
+    if (toMark.count > 0 && canMessage) {
       const io = req.app.get('io');
       io?.to(chat.id).emit('messages_read', { chatId: chat.id, userId: me });
     }
 
-    return sendSuccess(res, messages, 200, { hasMore, nextCursor, limit });
+    return sendSuccess(res, messages, 200, { hasMore, nextCursor, limit, blockedByMe, canMessage });
   } catch (err) {
     return sendServerError(res, err, 'Failed to load messages');
   }
@@ -1356,9 +1426,11 @@ router.post('/chats/:chatId/messages', authenticate, messageLimit, [
     if (error === 'notfound')  return sendNotFound(res, 'Chat');
     if (error === 'forbidden') return sendForbidden(res);
 
+    // Before the idempotent-replay lookup and the insert: a refused send stores
+    // nothing, broadcasts nothing and pushes nothing.
     const other = me === chat.buyerId ? chat.sellerId : chat.buyerId;
     if (await isBlockedBetween(me, other)) {
-      return sendForbidden(res, 'You can no longer message this user.');
+      return sendError(res, BLOCKED_SEND_MESSAGE, 403, undefined, { code: USER_BLOCKED });
     }
 
     const text = stripHtml(req.body.text);

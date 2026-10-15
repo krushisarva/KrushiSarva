@@ -46,7 +46,7 @@ describe('legal pages — outside production', () => {
   });
 
   test('every registered document and the index render', async () => {
-    for (const path of ['/legal', '/legal/terms', '/legal/refunds', '/legal/cookies']) {
+    for (const path of ['/legal', '/legal/terms', '/legal/refunds', '/legal/cookies', '/legal/delete-account']) {
       const res = await request(app).get(path);
       expect(res.status).toBe(200);
     }
@@ -110,6 +110,67 @@ describe('legal pages — production publishing gate', () => {
   });
 });
 
+// Google Play requires a public "delete your account" URL that works before
+// the policies are signed off. That page alone skips LEGAL_DOCS_APPROVED; the
+// rest of the gate — and the gate on every other document — must not move.
+describe('legal pages — the delete-account page', () => {
+  test('is published in production without approval, while the policies stay held back', async () => {
+    asProduction({ ...FACTS, docsApproved: false });
+
+    const del = await request(app).get('/legal/delete-account');
+    expect(del.status).toBe(200);
+    expect(del.headers['cache-control']).toBe('public, max-age=300');
+    expect(del.text).not.toContain('Draft — not yet approved');
+    expect(del.text).not.toContain('class="owner-todo"');
+    expect(del.text).toContain('Delete your KrushiSarva account');
+    expect(del.text).toContain('KrushiSarva Seller');
+    // A configured support address wins over the page's fallback.
+    expect(del.text).toContain('href="mailto:care@example.test"');
+    expect(del.text).not.toContain('krushisarva@gmail.com');
+
+    for (const slug of ['privacy', 'terms', 'refunds', 'cookies']) {
+      const res = await request(app).get(`/legal/${slug}`);
+      expect(res.status).toBe(503);
+    }
+    expect((await request(app).get('/legal')).status).toBe(503);
+  });
+
+  test('is live in production with no LEGAL_* fact set, showing the fallback email', async () => {
+    const unset = Object.fromEntries(Object.keys(ENV.LEGAL).map((k) => [k, '']));
+    asProduction({ ...unset, docsApproved: false });
+    const res = await request(app).get('/legal/delete-account');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Option 2');
+    expect(res.text).toContain('href="mailto:krushisarva@gmail.com"');
+    expect(res.text).not.toContain('class="owner-todo"');
+    expect((await request(app).get('/legal/privacy')).status).toBe(503);
+  });
+
+  test('its fallback email is not lent to any other document', async () => {
+    asProduction({ ...FACTS, supportEmail: '', docsApproved: true });
+    const res = await request(app).get('/legal/cookies');
+
+    expect(res.status).toBe(503);
+    expect(res.text).not.toContain('krushisarva@gmail.com');
+  });
+
+  test('the privacy policy links to it', async () => {
+    const res = await request(app).get('/legal/privacy');
+    expect(res.text).toContain('href="/legal/delete-account"');
+  });
+
+  test('the JSON lists it as published without approval', async () => {
+    Object.assign(ENV.LEGAL, { ...FACTS, docsApproved: false });
+    const res = await request(app).get('/api/v1/legal');
+
+    const { documents } = res.body.data;
+    expect(documents.find((d) => d.slug === 'delete-account'))
+      .toMatchObject({ path: '/legal/delete-account', published: true });
+    expect(documents.find((d) => d.slug === 'privacy').published).toBe(false);
+  });
+});
+
 describe('GET /api/v1/legal', () => {
   test('lists the documents, the policy version and only the facts that are set', async () => {
     Object.assign(ENV.LEGAL, { ...FACTS, gstin: '', docsApproved: true });
@@ -118,7 +179,7 @@ describe('GET /api/v1/legal', () => {
     expect(res.status).toBe(200);
     const { version, documents, entity } = res.body.data;
     expect(version).toBe(CONSENT_POLICY_VERSION);
-    expect(documents.map((d) => d.slug)).toEqual(['privacy', 'terms', 'refunds', 'cookies']);
+    expect(documents.map((d) => d.slug)).toEqual(['privacy', 'terms', 'refunds', 'cookies', 'delete-account']);
     expect(documents.find((d) => d.slug === 'cookies')).toMatchObject({ path: '/legal/cookies', published: true });
     expect(documents.find((d) => d.slug === 'refunds').published).toBe(false);
     expect(entity.entityName).toBe('Example Agri Private Limited');

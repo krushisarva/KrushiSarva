@@ -180,7 +180,7 @@ function showPermissionAlert({ title, message, onOpenSettings }) {
 // can actually act on. We never put HTTP status codes or stack snippets in the
 // title/message that the user sees — those go to the console for debugging.
 // Returns:
-//   kind: 'network' | 'auth' | 'busy' | 'warmup' | 'timeout' | 'image' | 'server' | 'unknown'
+//   kind: 'network' | 'auth' | 'limit' | 'busy' | 'warmup' | 'timeout' | 'image' | 'server' | 'unknown'
 function classifyScanError(err, t = (k, def) => def) {
   const status   = err?.response?.status ?? err?.status;
   const rawMsg   = err?.response?.data?.error?.message || err?.message || '';
@@ -195,14 +195,13 @@ function classifyScanError(err, t = (k, def) => def) {
       message: t('cropScan.err.authMsg', 'Please log out and log back in to continue.'),
     };
   }
-  if (status === 402 || status === 403) {
-    // Out of AI credits (or daily limit). Show the server's specific message when
-    // present; otherwise a clear, non-retryable explanation. Retrying just re-fails.
+  if (status === 402) {
+    // This month's free AI limit is used up. Non-retryable (retrying just
+    // re-fails) and there is nothing to buy: it resets on the 1st.
     return {
-      kind: 'credits',
-      title: t('cropScan.err.creditsTitle', 'Your AI credit limit is exhausted'),
-      message: rawMsg
-        || t('cropScan.err.creditsMsg', "You've used all your AI credits for this month. They refill on the 1st. Check your balance on the AI home screen."),
+      kind: 'limit',
+      title: t('ai.limitReached', 'Limit Reached'),
+      message: t('aiLimit.reached', "You've reached this month's free AI limit. It resets on the 1st of next month."),
     };
   }
   if (status === 429) {
@@ -273,7 +272,7 @@ function nonResultModal(kind, t = (k, def) => def) {
     return {
       kind: 'rescan',
       title: t('cropScan.err.rescanTitle', 'We need a clearer photo'),
-      message: t('cropScan.err.rescanMsg', 'The photo was too blurry, dark or far away to read. Take another one in daylight, close to the affected leaf. You were not charged for this.'),
+      message: t('cropScan.err.rescanMsg', 'The photo was too blurry, dark or far away to read. Take another one in daylight, close to the affected leaf.'),
     };
   }
   return {
@@ -1526,7 +1525,7 @@ export default function CropScanScreen({ navigation }) {
         <View style={SC.errModalBackdrop}>
           <View style={SC.errModalCard}>
             <View style={[SC.errModalIcon, {
-              backgroundColor: (analysisError?.kind === 'auth' || analysisError?.kind === 'credits')
+              backgroundColor: (analysisError?.kind === 'auth' || analysisError?.kind === 'limit')
                 ? withAlpha(COLORS.amberDark, '20')
                 : analysisError?.kind === 'network'
                   ? withAlpha(COLORS.blue, '20')
@@ -1536,7 +1535,7 @@ export default function CropScanScreen({ navigation }) {
                 name={
                   analysisError?.kind === 'network' ? 'cloud-offline-outline'
                   : analysisError?.kind === 'auth' ? 'lock-closed-outline'
-                  : analysisError?.kind === 'credits' ? 'wallet-outline'
+                  : analysisError?.kind === 'limit' ? 'calendar-outline'
                   : analysisError?.kind === 'busy' ? 'time-outline'
                   : analysisError?.kind === 'rescan' ? 'camera-outline'
                   : analysisError?.kind === 'warmup' ? 'flash-outline'
@@ -1546,7 +1545,7 @@ export default function CropScanScreen({ navigation }) {
                 }
                 size={30}
                 color={
-                  (analysisError?.kind === 'auth' || analysisError?.kind === 'credits') ? COLORS.amberDark
+                  (analysisError?.kind === 'auth' || analysisError?.kind === 'limit') ? COLORS.amberDark
                   : analysisError?.kind === 'network' ? COLORS.blue
                   : COLORS.red
                 }
@@ -1568,18 +1567,8 @@ export default function CropScanScreen({ navigation }) {
                   {t('common.cancel', 'Cancel')}
                 </Text>
               </TouchableOpacity>
-              {analysisError?.kind === 'credits' ? (
-                <TouchableOpacity
-                  style={SC.errModalBtnPrimary}
-                  onPress={() => { setAnalysisError(null); navigation.navigate('AICredits'); }}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="wallet-outline" size={KICON.base} color={COLORS.white} />
-                  <Text style={SC.errModalBtnPrimaryTxt}>
-                    {t('cropScan.viewCredits', 'View credits')}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
+              {/* Monthly limit: nothing to retry or buy, so Cancel is the only action. */}
+              {analysisError?.kind === 'limit' ? null : (
                 <TouchableOpacity
                   style={SC.errModalBtnPrimary}
                   onPress={() => { setAnalysisError(null); goToStep(3); }}

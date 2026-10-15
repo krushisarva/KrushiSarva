@@ -60,7 +60,22 @@ def test_load_prompt_single_version(_install_v2_prompts):
     assert p.name == "diagnose"
     assert p.version == "v1"
     assert isinstance(p.hash, str) and len(p.hash) == 12
-    assert "Dr. KrishiGuard" in p.text
+    assert "Krushi Intelligence" in p.text
+
+
+# Play Store misrepresentation rule: every persona-setting prompt must name the
+# app's own assistant and must not claim a foreign brand, a human expert's
+# years of experience, or ICAR equivalence.
+@pytest.mark.parametrize("name,version", [
+    ("chat_writer", "v1"), ("chat_vision", "v1"), ("chat_enhancer", "v1"),
+    ("diagnose", "v1"), ("diagnose", "v2"),
+])
+def test_persona_prompts_are_honest(_install_v2_prompts, name, version):
+    text = _install_v2_prompts.load_prompt(name, version=version).text
+    assert "Krushi Intelligence" in text and "KrushiSarva" in text
+    assert "not a government" in text
+    for banned in ("FarmMind", "FarmEasy", "KrishiGuard", "ICAR scientist", "25+ years"):
+        assert banned not in text, f"{name}.{version} still says {banned!r}"
 
 
 def test_load_prompt_explicit_version(_install_v2_prompts):

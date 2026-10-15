@@ -174,7 +174,7 @@ export default function DeleteAccountModal({ visible, onClose }) {
                   <Text style={S.listHead}>{t('deleteAccount.keptHead', 'Kept, but no longer linked to you')}</Text>
                   {[
                     t('deleteAccount.keptOrders',   'Past orders and bookings (required for tax and the other party)'),
-                    t('deleteAccount.keptListings', 'Community posts and listings, shown as “Deleted User”'),
+                    t('deleteAccount.keptListings', 'Community posts and reviews, shown as “Deleted User”. Your listings are taken off the app.'),
                   ].map((line) => (
                     <View key={line} style={S.listRow}>
                       <Ionicons name="information-circle" size={15} color={KHET.mutedForeground} />

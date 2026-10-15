@@ -115,7 +115,7 @@ router.post('/predict', authenticate, async (req, res) => {
   // not the price.
   const hold = await reserveCredits(req.user.id, 'ai_predict');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   // proxyPost writes the response itself and never throws, so the outcome has to

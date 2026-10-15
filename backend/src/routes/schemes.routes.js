@@ -162,7 +162,8 @@ router.post('/ask', authenticate, requireFeature('ai_schemes'), async (req, res)
     `[${s.schemeCode}] ${s.schemeName}\n  Benefit: ${s.benefitsSummary}\n  Amount: ${s.benefitAmount ? `₹${s.benefitAmount}` : 'Varies'} (${s.benefitType})\n  Eligibility: ${JSON.stringify(s.eligibility)}\n  Documents: ${s.documentsReq.join(', ')}\n  Apply: ${s.applicationUrl || 'Local office'}\n  Helpline: ${s.helpline || 'N/A'}`
   ).join('\n\n');
 
-  const systemPrompt = `You are a government scheme advisor for Indian farmers.
+  const systemPrompt = `You are Krushi Intelligence, the AI farming assistant in the KrushiSarva app, explaining government schemes to Indian farmers.
+You are an AI assistant, not a government body or official scheme service. Remind farmers to confirm details and apply on the official scheme portal or at their local agriculture office.
 Answer ONLY questions about agricultural government schemes (PM-KISAN, PMFBY, KCC, PKVY, etc.)
 Keep responses concise and practical. Always mention: eligibility, benefit amount, how to apply, documents needed.
 
@@ -183,7 +184,7 @@ If the question is not about government schemes or farming, say you can only hel
   // in the admin Usage & Cost roll-up either.
   const hold = await reserveCredits(req.user.id, 'ai_schemes');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
   // releaseCredits is not idempotent, so the catch must skip a finalised hold.
   let holdFinalised = false;

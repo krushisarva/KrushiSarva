@@ -39,6 +39,10 @@
  *     `load()` that overwrote them.
  *   - `shareId` is validated; arriving with no params used to fire
  *     `GET .../inbox/undefined`.
+ *   - The farmer's photos and note are someone else's content, so the seller
+ *     can report them (Google Play's user-content rule): "Report this crop
+ *     report" under the farmer card opens the shared report sheet. Hidden on
+ *     a report the seller shared themselves; the server refuses that anyway.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -46,6 +50,7 @@ import {
   ScrollView, StyleSheet, Switch, Text, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 
@@ -64,6 +69,7 @@ import {
   LoadingState, ErrorState, EmptyState, ListFooter,
   useToast,
 } from '../components/ui';
+import ReportSheet from '../components/ReportSheet';
 
 const MAX_RECOMMENDED = 10;
 const MIN_REPLY = 4;
@@ -214,6 +220,7 @@ function EvidenceStrip({ urls, t, onOpen }) {
 export default function ReceivedReportDetailScreen({ route, navigation }) {
   const shareId = route.params?.shareId;
   const { t } = useLanguage();
+  const { user } = useAuth();
   const toast = useToast();
   const { isOffline } = useNetwork();
   const { gutter, isExpanded, contentMaxWidth } = useResponsive();
@@ -331,6 +338,14 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
     openLink(url, t('common.linkFailed', 'Could not open the link on this device.'))
   ), [openLink, t]);
 
+  // The shared report being reported (ReportSheet target), or null. Keyed on
+  // the share: the server reads the photos and note from it, not from us.
+  const [reportTarget, setReportTarget] = useState(null);
+  const reportId = share.data?.id ?? shareId;
+  const openReport = useCallback(() => {
+    if (reportId) setReportTarget({ targetType: 'CROP_REPORT_SHARE', targetId: String(reportId) });
+  }, [reportId]);
+
   const handleSend = useCallback(async () => {
     if (trimmedReply.length < MIN_REPLY) {
       setReplyTouched(true);
@@ -436,6 +451,9 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
   const farmerLocation = [farmer.village, farmer.taluka, farmer.district].filter(Boolean).join(', ')
     || (farmer.phone ? `+91 ${farmer.phone}` : '—');
 
+  // Not on a report the seller shared themselves (the server refuses it too).
+  const canReport = !!user?.id && !!reportId && farmer.id !== user.id;
+
   // 'unknown' / '000000' are the scan routes' placeholders for "the farmer never
   // gave us this" — the row is dropped rather than shown as a fact.
   const pincode = reportValue(report.pincode);
@@ -515,6 +533,18 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
               />
             ) : null}
           </Card>
+
+          {/* The photos and note are the farmer's own content: reportable. */}
+          {canReport ? (
+            <PressableRow
+              onPress={openReport}
+              accessibilityLabel={t('report.titleCropReport', 'Report this crop report')}
+              style={rd.reportLink}
+            >
+              <Ionicons name="flag-outline" size={15} color={C.textMuted} />
+              <Text style={rd.reportLinkTxt}>{t('report.titleCropReport', 'Report this crop report')}</Text>
+            </PressableRow>
+          ) : null}
 
           {riskIsHigh ? (
             <InlineNotice variant="error" style={{ marginBottom: SP.lg }}>
@@ -781,6 +811,8 @@ export default function ReceivedReportDetailScreen({ route, navigation }) {
             />
           </FormSection>
       </KeyboardAwareScroll>
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </Screen>
   );
 }
@@ -822,6 +854,14 @@ const rd = StyleSheet.create({
   },
   farmerName: { ...T.bodyBold, color: C.text },
   farmerMeta: { ...T.caption, color: C.textMuted, marginTop: 2 },
+  // Quiet, tucked under the farmer card: there when needed, not competing
+  // with the reply the screen is for.
+  reportLink: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: SP.xs,
+    minHeight: HIT.minCompact, paddingHorizontal: SP.md, borderRadius: R.pill,
+    marginTop: -SP.sm, marginBottom: SP.sm,
+  },
+  reportLinkTxt: { ...T.captionBold, color: C.textMuted },
   callBtn: {
     width: HIT.minCompact,
     height: HIT.minCompact,

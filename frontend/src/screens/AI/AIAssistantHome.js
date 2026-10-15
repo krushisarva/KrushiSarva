@@ -22,7 +22,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { fetchWeatherForCurrentLocation } from '../../services/weatherApi';
-import { getAICredits } from '../../services/aiApi';
 import FarmProfileBanner from '../../components/FarmProfileBanner';
 import { COLORS, TYPE, RADIUS, SHADOWS } from '@krushisarva/shared/constants/colors';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
@@ -209,8 +208,6 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
 
   // ── Live weather state ────────────────────────────────────────────────────
   const [wxData, setWxData] = useState(null);
-  // ── AI Credit state ───────────────────────────────────────────────────────
-  const [creditInfo, setCreditInfo] = useState(null);
 
   useEffect(() => {
     Animated.timing(headerAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
@@ -222,9 +219,6 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
     }).then(result => {
       if (result?.data?.current) setWxData(result.data);
     }).catch(() => {});
-
-    // Load AI credits
-    getAICredits().then(setCreditInfo).catch(() => {});
   }, []);
 
   const handleService = (item) => {
@@ -321,42 +315,6 @@ export default function AIAssistantHome({ navigation, embeddedInHub }) {
             <Text style={S.historyChipTxt}>{t('aiHome.history.scan', 'Scan history')}</Text>
           </TouchableOpacity>
         </View>
-
-        {/* ── AI Credits card ─────────────────────────────────────────────── */}
-        {creditInfo && (
-          <TouchableOpacity
-            style={S.creditCard}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('AICredits')}
-            accessibilityRole="button"
-          >
-            <View style={S.creditCardLeft}>
-              <View style={S.creditIconWrap}>
-                <Ionicons name="flash" size={18} color={COLORS.amber} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={S.creditCardTitle}>
-                  {t('aiHome.aiCreditsTitle')}
-                </Text>
-                {/* Balance only — no plan/tier exposed on the home card */}
-                <Text style={S.creditCardSub}>
-                  {`${creditInfo.balance} ${t('aiCredits.balanceLeft', 'Balance left')}`}
-                </Text>
-              </View>
-            </View>
-            <View style={S.creditCardRight}>
-              <Text style={[
-                S.creditBalance,
-                creditInfo.balance <= 10 && { color: '#DC2626' },
-              ]}>
-                {creditInfo.balance}
-              </Text>
-              <Text style={S.creditBalanceLabel}>
-                {t('aiHome.remaining')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
 
         {/* ── Quick Weather card ─────────────────────────────────────────── */}
         <TouchableOpacity style={S.weatherCard} activeOpacity={0.88} onPress={() => navigation.navigate('Weather')} accessibilityRole="button">
@@ -556,24 +514,6 @@ const S = StyleSheet.create({
   historyChipTxt: {
     fontSize: 11, fontWeight: '700', color: COLORS.textDark,
   },
-
-  // AI Credits card
-  creditCard: {
-    marginHorizontal: 20, marginTop: 20,
-    backgroundColor: COLORS.surface, borderRadius: 18, padding: 16,
-    borderWidth: 1, borderColor: '#FFE082',
-    ...SHADOWS.small,
-  },
-  creditCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
-  creditIconWrap: {
-    width: 40, height: 40, borderRadius: 13,
-    backgroundColor: '#FFF8E1', justifyContent: 'center', alignItems: 'center',
-  },
-  creditCardTitle: { fontSize: 14, fontWeight: TYPE.weight.black, color: COLORS.textDark },
-  creditCardSub: { fontSize: 11, color: COLORS.textMedium, marginTop: 2 },
-  creditCardRight: { position: 'absolute', top: 16, right: 16, alignItems: 'flex-end' },
-  creditBalance: { fontSize: 26, fontWeight: '900', color: COLORS.amber, lineHeight: 28 },
-  creditBalanceLabel: { fontSize: 9, color: COLORS.textLight, fontWeight: '600', marginTop: 1 },
 
   // Weather card — sky gradient light theme
   weatherCard: {

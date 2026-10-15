@@ -55,11 +55,15 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import {
+  ActivityIndicator,
+  Animated,
+  Easing,
   Linking,
   ScrollView,
   StyleSheet,
@@ -91,6 +95,7 @@ import {
   useResponsive,
 } from "../theme";
 import { useNetwork } from "../hooks/useNetwork";
+import { useReducedMotion } from "../hooks/useMotion";
 import useProfileSync, { noteProfileWrite } from "../hooks/useProfileSync";
 import {
   NAME_MAX,
@@ -206,67 +211,240 @@ function SwitchRow({ icon, label, value, checked, onChange, disabled, last }) {
   );
 }
 
+/** Icon and ink of the one-line status under the version, per hook status. */
+const UPDATE_NOTE_LOOK = {
+  upToDate: { icon: "checkmark-circle", color: C.success },
+  available: { icon: "sparkles", color: C.brandInk },
+  ready: { icon: "sparkles", color: C.brandInk },
+  error: { icon: "alert-circle", color: C.danger },
+};
+
+/**
+ * The solid pill shown once an update is on offer. It springs in when it
+ * mounts (a fade alone under Reduce Motion), on the native driver.
+ */
+function UpdatePill({ label, icon, busy }) {
+  const reduced = useReducedMotion();
+  const show = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.spring(show, {
+      toValue: 1,
+      tension: 140,
+      friction: 10,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [show]);
+  const scale = show.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        r.verPill,
+        !busy && E.brand,
+        { opacity: show, transform: reduced ? [] : [{ scale }] },
+      ]}
+    >
+      {/* Fixed box, so the pill keeps its width when the spinner swaps in. */}
+      <View style={r.verPillIcon}>
+        {busy ? (
+          <ActivityIndicator
+            size="small"
+            color={C.onBrand}
+            style={r.verPillSpinner}
+          />
+        ) : (
+          <Ionicons name={icon} size={16} color={C.onBrand} />
+        )}
+      </View>
+      <Text style={r.verPillText} numberOfLines={1}>
+        {label}
+      </Text>
+    </Animated.View>
+  );
+}
+
 /**
  * App version and the manual update check. Updates no longer apply by
  * themselves on the next launch; this row and the shared banner are how a
  * seller gets one. Status comes from the shared store, so a check the banner
  * already ran shows here too.
+ *
+ * The whole row is the control. On the right: a round refresh button that
+ * spins while a check runs, or a compact pill once an update is offered. The
+ * pill carries a one-word label (`short`), so it stays one line in every
+ * language; the full action is in the row's accessibility label. The status
+ * line wraps rather than cutting off, since the error line carries the advice.
  */
 function VersionRow({ last }) {
   const { t } = useLanguage();
   const appUpdate = useAppUpdate();
-  const { info, checkNow, updateNow } = appUpdate;
-  // Note, button and action per state (shared with the farmer row).
+  const { info, status, checkNow, updateNow } = appUpdate;
+  // Note, action and busy flag per state (shared with the farmer row).
   const model = describeUpdateRow(appUpdate);
   const label = t("appUpdate.versionLabel", "App version");
   const version = `${info?.version ?? ""} · ${
     info?.updateId || t("appUpdate.builtIn", "built-in")
   }`;
   const note = model.note ? t(...model.note) : null;
+  const look = UPDATE_NOTE_LOOK[status];
+  const offersUpdate = model.runs === "update";
+  const reduced = useReducedMotion();
+
+  // The refresh icon spins while a check runs (not under Reduce Motion: the
+  // "Checking…" line says the same), then finishes its turn instead of
+  // snapping back to 0°. Each new status line fades in. Both run on the native
+  // driver, so they stay smooth on low-end phones.
+  const spin = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  const spinning = status === "checking" && !reduced;
+  useEffect(() => {
+    if (!spinning) {
+      // The update pill replaced the button, or Reduce Motion is on: no turn
+      // left to show.
+      if (offersUpdate || reduced) {
+        spin.stopAnimation();
+        spin.setValue(0);
+        return undefined;
+      }
+      let gone = false;
+      spin.stopAnimation((v) => {
+        if (gone) return;
+        if (!(v > 0 && v < 1)) {
+          spin.setValue(0);
+          return;
+        }
+        // Starts at the loop's speed and eases to a stop.
+        Animated.timing(spin, {
+          toValue: 1,
+          duration: Math.min(1200, Math.max(150, (1 - v) * 1800)),
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) spin.setValue(0);
+        });
+      });
+      return () => {
+        gone = true;
+      };
+    }
+    spin.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spinning, offersUpdate, reduced, spin]);
+  // Layout effect: the new line is hidden before it paints, so it never
+  // flashes at full opacity ahead of its fade.
+  useLayoutEffect(() => {
+    fade.setValue(0);
+    if (!note) return undefined;
+    const anim = Animated.timing(fade, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [note, fade]);
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  // Dev builds and builds without expo-updates have nothing to check.
+  if (!model.showButton) {
+    return (
+      <Row
+        icon="phone-portrait-outline"
+        label={label}
+        value={version}
+        last={last}
+      />
+    );
+  }
+
+  const onAction = () => {
+    if (model.busy) return;
+    // The hook reports failures through `status`; this only keeps a stray
+    // rejection quiet.
+    Promise.resolve()
+      .then(offersUpdate ? updateNow : checkNow)
+      .catch(() => {});
+  };
+  const actionLabel = t(...model.action);
 
   return (
-    <View style={[r.row, !last && r.rowRuled]}>
+    <PressableRow
+      onPress={onAction}
+      // No buzz for a tap the row is going to ignore.
+      haptic={model.busy ? false : "light"}
+      accessibilityState={{ busy: model.busy }}
+      accessibilityLabel={[label, version, note, actionLabel]
+        .filter(Boolean)
+        .join(", ")}
+      style={[r.row, !last && r.rowRuled]}
+    >
       <View style={r.rowIcon}>
         <Ionicons name="phone-portrait-outline" size={18} color={C.brandInk} />
       </View>
       <View style={{ flex: 1 }}>
-        <View accessible accessibilityLabel={`${label}: ${version}`}>
-          <Text style={r.rowLabel} numberOfLines={1}>
-            {label}
-          </Text>
-          <Text style={r.rowValue} numberOfLines={1}>
-            {version}
-          </Text>
-        </View>
+        <Text style={r.rowLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={r.rowValue} numberOfLines={1}>
+          {version}
+        </Text>
         {note ? (
-          <Text
-            style={[r.rowValue, model.noteIsError && r.rowNoteError]}
+          <Animated.View
+            style={[r.verNote, { opacity: fade }]}
             accessibilityLiveRegion="polite"
           >
-            {note}
-          </Text>
-        ) : null}
-        {/* Dev builds and builds without expo-updates have nothing to check.
-            Under the text, not beside it: the Button is one line, and the
-            long ta/te/ml labels need the column's full width. */}
-        {model.showButton ? (
-          <Button
-            size="sm"
-            variant={model.runs === "update" ? "primary" : "secondary"}
-            label={t(...model.action)}
-            loading={model.busy}
-            onPress={() =>
-              // The hook reports failures through `status`; this only keeps
-              // a stray rejection quiet.
-              Promise.resolve()
-                .then(model.runs === "update" ? updateNow : checkNow)
-                .catch(() => {})
-            }
-            style={r.rowAction}
-          />
+            {look ? (
+              <Ionicons
+                name={look.icon}
+                size={13}
+                color={look.color}
+                style={r.verNoteIcon}
+              />
+            ) : null}
+            <Text style={[r.verNoteText, look && { color: look.color }]}>
+              {note}
+            </Text>
+          </Animated.View>
         ) : null}
       </View>
-    </View>
+      {offersUpdate ? (
+        <UpdatePill
+          label={model.short ? t(...model.short) : actionLabel}
+          icon={
+            status === "ready"
+              ? "reload"
+              : model.noteIsError
+                ? "refresh"
+                : "arrow-up-circle"
+          }
+          busy={model.busy}
+        />
+      ) : (
+        <View style={r.verCheck}>
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <Ionicons name="refresh" size={19} color={C.brandInk} />
+          </Animated.View>
+        </View>
+      )}
+    </PressableRow>
   );
 }
 
@@ -973,6 +1151,45 @@ const r = StyleSheet.create({
     borderColor: alpha(C.danger, 0.3),
   },
   rowLabelDanger: { color: C.danger },
-  rowNoteError: { color: C.danger },
-  rowAction: { alignSelf: "flex-start", maxWidth: "100%", marginTop: SP.sm },
+
+  // App version row. The round check button wears the rowIcon tint; the pill
+  // is the primary Button's fill. Both keep a 44dp touch height.
+  verNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SP.xs,
+    marginTop: SP.xs,
+  },
+  // Centres the 13dp icon on the first 17dp line of a status that wraps.
+  verNoteIcon: { marginTop: 2 },
+  verNoteText: { ...T.captionBold, color: C.textMuted, flexShrink: 1 },
+  verCheck: {
+    width: HIT.minCompact,
+    height: HIT.minCompact,
+    borderRadius: R.pill,
+    backgroundColor: C.brandPale,
+    borderWidth: 1,
+    borderColor: alpha(C.brand, 0.28),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP.xs,
+    height: HIT.minCompact,
+    paddingHorizontal: SP.lg,
+    borderRadius: R.pill,
+    backgroundColor: C.brand,
+    maxWidth: "48%",
+  },
+  verPillIcon: {
+    width: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // The small spinner is ~20dp; scaled to the 16dp icon's size.
+  verPillSpinner: { transform: [{ scale: 0.8 }] },
+  verPillText: { ...T.buttonSm, color: C.onBrand, flexShrink: 1 },
 });
