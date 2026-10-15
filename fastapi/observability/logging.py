@@ -4,7 +4,7 @@ Structured Logging — CropGuard
 Two output modes, selected by LOG_FORMAT env var:
   • LOG_FORMAT=text  (default in dev): the existing pipe-separated lines
   • LOG_FORMAT=json  (recommended in prod): one JSON object per line so
-    Railway / CloudWatch / Loki can index by request_id, user_id, stage,
+    CloudWatch / Loki can index by request_id, user_id, stage,
     latency_ms, cost_usd, model, etc. without grep gymnastics.
 
 Per-request context (request_id, user_id, tier) is carried via

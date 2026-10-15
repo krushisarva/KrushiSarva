@@ -4,7 +4,7 @@ PII Redaction — CropGuard
 Installs a logging.Filter that scrubs known-PII fragments from BOTH the
 free-text `msg` and any structured `extra` fields before the record
 reaches the formatter. The goal is to make logs safe to ship to an
-external aggregator (Loki/Datadog/Railway) without leaking:
+external aggregator (Loki/Datadog) without leaking:
 
   • GPS coordinates (lat, lon)
   • Long farmer descriptions (symptom_description, names)

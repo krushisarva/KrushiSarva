@@ -289,7 +289,8 @@ cd backend && npx prisma validate
    refund.failed, order.paid
 2. Copy the webhook secret into RAZORPAY_WEBHOOK_SECRET
    (it is NOT the API secret — they are different values)
-3. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in Railway — test keys first
+3. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in the server's backend env
+   (/opt/krushisarva/env/backend.env) — test keys first
 4. Complete Razorpay KYC before switching to live keys
 5. Test with Razorpay test cards and the UPI test flow before going live
 ```

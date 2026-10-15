@@ -37,10 +37,9 @@ npm install
 npm run dev                # http://localhost:5180/admin/  (served under /admin)
 ```
 
-> The app is served under **`/admin`** (Vite `base` + router `basename`) so the
-> backend can host the production build same-origin. See
-> [`docs/ADMIN_DEPLOY_RAILWAY.md`](../docs/ADMIN_DEPLOY_RAILWAY.md) for the Railway
-> deploy (the backend serves `admin/dist` at `/admin` — no separate service).
+> The app is served under **`/admin`** (Vite `base` + router `basename`). In
+> production it is hosted on Vercel, which proxies `/api/*` to the backend — see
+> **Hosting on Vercel** in section 4 below.
 
 ### Environment variables (`admin/.env`)
 
@@ -164,7 +163,7 @@ Firebase is on, the login screen never calls `/auth/send-otp`.
      response keeps the normal CSP. Without the flag the browser blocks the
      reCAPTCHA script.
    - On the VPS, `ALLOWED_ORIGINS` must include `https://srv2061596.hstgr.cloud`.
-     The backend only treats Railway domains as its own origin, and it refuses
+     The backend has no built-in list of its own origins, and it refuses
      a browser POST whose `Origin` it does not know. This applies to the dev OTP
      flow too.
 7. **Limit SMS abuse.** Firebase sends the SMS straight from the browser, so

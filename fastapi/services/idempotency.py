@@ -52,8 +52,8 @@ _redis_next_probe = 0.0
 
 try:
     import redis as _redis_lib
-    # Use the same Redis the rest of the service uses (on Railway that's
-    # redis.railway.internal, not localhost). Hardcoding localhost made ping() always
+    # Use the same Redis the rest of the service uses (on the server that's the
+    # compose service `redis`, not localhost). Hardcoding localhost made ping() always
     # fail in prod, so the cache silently degraded to a per-process in-memory LRU —
     # i.e. NOT shared across the uvicorn workers. Read the env URL like jobs/queue.py.
     _redis_url = (

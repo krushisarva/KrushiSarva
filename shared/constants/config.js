@@ -30,7 +30,7 @@ const DEV_HOST =
   METRO_HOST || (Platform.OS === 'android' ? '10.0.2.2' : 'localhost');
 
 // Prod URL can be overridden per-build via EAS env (EXPO_PUBLIC_API_BASE_URL in eas.json).
-// Default falls back to the production Railway deployment.
+// Default falls back to the production VPS (Hostinger, see docs/deploy/VPS_DEPLOY_PLAN.md).
 const PROD_API = process.env.EXPO_PUBLIC_API_BASE_URL
   || 'https://srv2061596.hstgr.cloud/api/v1';
 const PROD_SOCKET = process.env.EXPO_PUBLIC_SOCKET_URL
@@ -39,11 +39,11 @@ const PROD_SOCKET = process.env.EXPO_PUBLIC_SOCKET_URL
 // Resolution order:
 //   1. EXPO_PUBLIC_API_BASE_URL — set in frontend/.env or eas.json. Wins
 //      everywhere (dev, Expo Go, native build, web). Leave it EMPTY for local
-//      dev; use it to point at a tunnel or the Railway prod URL.
+//      dev; use it to point at a tunnel or the production URL.
 //   2. __DEV__ default — `http://<DEV_HOST>:3001` on the dev machine.
 //      Note: DEV_HOST=10.0.2.2 only works in the Android *emulator*. On a
 //      physical device or in Expo Go, set EXPO_PUBLIC_API_BASE_URL instead.
-//   3. PROD default — the Railway production URL hardcoded in PROD_API.
+//   3. PROD default — the production VPS URL hardcoded in PROD_API.
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL
   || (__DEV__ ? `http://${DEV_HOST}:3001/api/v1` : PROD_API);
 export const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL

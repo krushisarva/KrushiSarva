@@ -5,7 +5,7 @@
  * against any environment, including production.
  *
  * Usage:
- *   ADMIN_BASE_URL=https://your-app.up.railway.app \
+ *   ADMIN_BASE_URL=http://localhost:3000 \
  *   ADMIN_PHONE=9876543210 \
  *   [ADMIN_OTP=000000] \
  *   node scripts/admin-smoke.mjs

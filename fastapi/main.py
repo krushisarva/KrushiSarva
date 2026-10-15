@@ -104,8 +104,9 @@ async def lifespan(app: FastAPI):
                 f"[Config] FATAL: missing required production config: {', '.join(missing)}"
             )
 
-    # Request signing is the only thing between the public URL and the LLM
-    # budget. AI_AUTH_REQUIRED=false is a local-development switch; refuse to
+    # Request signing is the only thing between the network and the LLM
+    # budget (FastAPI has no public URL, but the network is never trusted).
+    # AI_AUTH_REQUIRED=false is a local-development switch; refuse to
     # start with it in production rather than serve every /ai/* route unsigned.
     if IS_PROD and os.getenv("AI_AUTH_REQUIRED", "true").strip().lower() == "false":
         raise RuntimeError("[Config] FATAL: AI_AUTH_REQUIRED=false is not allowed in production")
@@ -290,8 +291,9 @@ async def health():
     # A backed-up queue with no worker consuming it makes this service useless
     # for scans even though the process is perfectly healthy, so it belongs in
     # the status. It does NOT belong in a liveness verdict — restarting the web
-    # role cannot conjure a worker, and fastapi/railway.json declares no
-    # healthcheckPath, so this is read by operators rather than by a supervisor.
+    # role cannot conjure a worker. deploy/docker-compose.yml's healthcheck does
+    # read this body, but Docker only marks the container unhealthy and restarts
+    # nothing on that, so this is read by operators rather than by a supervisor.
     worker = await run_in_threadpool(worker_health)
     return {
         "status":  "ok" if (db_ok and not crit and not worker.get("stuck")) else "degraded",

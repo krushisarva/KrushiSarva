@@ -5,8 +5,8 @@ and the **ADMIN-gated, audited Express API** under
 [`backend/src/routes/admin/`](../backend/src/routes/admin/). It is reference
 documentation for anyone operating, extending, or auditing the admin surface.
 
-> Companion docs: [`ADMIN_DEPLOY_RAILWAY.md`](./ADMIN_DEPLOY_RAILWAY.md) (same-origin
-> Railway deploy) and [`admin/README.md`](../admin/README.md) (quick start).
+> Companion doc: [`admin/README.md`](../admin/README.md) (quick start and
+> production hosting on Vercel).
 
 ---
 
@@ -378,8 +378,8 @@ npm run dev            # http://localhost:5180/admin/  (proxies /api → backend
 Dev tip: with `OTP_DEV_BYPASS_ENABLED=true` (non-production, no live SMS key) the OTP
 `000000` is accepted. The `000000` bypass is hard-refused under `NODE_ENV=production`.
 
-Production deploy (same-origin on Railway) is covered in
-[`ADMIN_DEPLOY_RAILWAY.md`](./ADMIN_DEPLOY_RAILWAY.md).
+Production hosting (Vercel, which proxies `/api/*` to the backend) is covered in
+[`admin/README.md`](../admin/README.md) under **Hosting on Vercel**.
 
 ---
 

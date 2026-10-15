@@ -5,12 +5,17 @@
 --
 -- APPLY THIS FILE WITH psql, AS A SINGLE STATEMENT:
 --   psql "$DATABASE_URL" -f backend/prisma/manual/mandi_prices_dedup_2_index.sql
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/mandi_prices_dedup_2_index.sql
+--   (The VPS database already has this index, applied on 2026-10-14.)
 --
--- NOT with `prisma db execute`, and NOT by pasting into Railway's Data/Query
--- tab. Both send a file as ONE multi-statement query string, which Postgres runs
--- inside an implicit transaction — and CREATE INDEX CONCURRENTLY cannot run in a
--- transaction block ("CREATE INDEX CONCURRENTLY cannot run inside a transaction
--- block", 25001). That is why this is its own file with nothing else in it.
+-- NOT with `prisma db execute`, nor with any tool that sends the file as ONE
+-- multi-statement query string: Postgres runs that inside an implicit
+-- transaction — and CREATE INDEX CONCURRENTLY cannot run in a transaction block
+-- ("CREATE INDEX CONCURRENTLY cannot run inside a transaction block", 25001).
+-- That is why this is its own file with nothing else in it.
 --
 -- CONCURRENTLY is worth the extra step here: mandi ingest is REQUEST-driven, not
 -- cron-driven — any farmer opening the market screen writes to this table — so a

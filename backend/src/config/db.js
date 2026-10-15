@@ -12,7 +12,7 @@ import { attachAuthCacheInvalidation } from '../services/authCache.js';
 //
 // PINNED, not derived (DB-01). The old default was max(os.cpus().length*2+1, 20),
 // and Node's os.cpus() reports the HOST's core count, not the container's cgroup
-// CPU quota — so one replica on a shared 32-core Railway host silently claimed 65
+// CPU quota — so one replica on a shared 32-core cloud host silently claimed 65
 // connections against a default max_connections of 100. The pool size has to be a
 // number we CHOSE, because every other tier's headroom is computed against it.
 //

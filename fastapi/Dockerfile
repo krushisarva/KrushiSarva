@@ -1,8 +1,8 @@
 # KrushiSarva AI service: one image for both the FastAPI web process and the
 # Celery worker. The worker overrides CMD in deploy/docker-compose.yml.
 #
-# Railway built this folder with Nixpacks (fastapi/railway.json); this file is
-# for the single-VPS deploy (docs/deploy/VPS_DEPLOY_PLAN.md §5.3). No ML
+# This Dockerfile builds the image that the fastapi and celery services in
+# deploy/docker-compose.yml both run (docs/deploy/VPS_DEPLOY_PLAN.md §5.3). No ML
 # runtimes: every pinned dependency in requirements.txt ships a wheel.
 FROM python:3.12-slim
 

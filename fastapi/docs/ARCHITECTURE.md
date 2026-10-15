@@ -156,7 +156,7 @@ mobile app ── GET /ai/scan/{job_id} (poll) ───────────
 
 ### 1. Auth — signed requests (`security/auth.py`)
 
-On Railway the FastAPI service has a public URL, so without a shared secret anyone could hit `/ai/scan` directly and burn LLM spend (`security/auth.py:1-14`). Express signs every proxied request; `verify_signed_request` is attached as a `Depends(...)` on **both** `/ai/scan` and `/ai/scan/{job_id}` (`routes/scan.py:88, 190`).
+On the VPS (Docker Compose) the FastAPI service has no public URL — Caddy forwards only to Express — but the network is never trusted: without a shared secret, anything that reached it could hit `/ai/scan` directly and burn LLM spend (`security/auth.py:1-14`). Express signs every proxied request; `verify_signed_request` is attached as a `Depends(...)` on **both** `/ai/scan` and `/ai/scan/{job_id}` (`routes/scan.py:88, 190`).
 
 - Header contract (`security/auth.py:21-23`): `X-Sig-Timestamp: <unix epoch>` and `X-Sig-Signature: hex(HMAC-SHA256(secret, f"{ts}.{METHOD}.{path}.{sha256(body)}"))`.
 - Checks, in order (`verify_signed_request`, lines 50-91): missing headers → 401 `missing_signature`; non-integer ts → 401 `bad_timestamp`; `abs(now - ts) > _SKEW` → 401 `stale_signature` (replay window default 60s via `AI_AUTH_SKEW_SEC`); signature mismatch via `hmac.compare_digest` → 401 `bad_signature`.
@@ -1139,7 +1139,7 @@ Where they're set (confirmed in code):
 - **`jobs/tasks.py:129-133`** re-establishes `request_id`/`user_id` inside background job workers (which don't go through the HTTP middleware).
 - `RequestContext` (`observability/logging.py:38-63`) is a context-manager so scripts/jobs can stamp logs manually.
 
-Output format is chosen by **`LOG_FORMAT`** (`setup_logging`, `observability/logging.py:140-157`): `text` (default, pipe-separated, appends `[rid=...]`) or `json` (one JSON object per line — recommended in prod for Railway/CloudWatch/Loki). `JsonFormatter` (`observability/logging.py:68-119`) always emits `ts, level, logger, msg`, conditionally adds `request_id/user_id/tier/stage` (only when set, to keep logs slim), and merges any `extra={...}` fields the caller passed (serialisability-checked, falling back to `repr`). `LOG_LEVEL` (default `INFO`) sets the root level; `httpx`, `httpcore`, `watchfiles`, and `uvicorn.access` are pinned to `WARNING`. `setup_logging()` is idempotent (clears existing handlers so the chosen format wins on `--reload`) and is called from the lifespan. `logging_config.py` is just a backward-compat shim re-exporting `setup_logging` for root-level/test imports.
+Output format is chosen by **`LOG_FORMAT`** (`setup_logging`, `observability/logging.py:140-157`): `text` (default, pipe-separated, appends `[rid=...]`) or `json` (one JSON object per line — recommended in prod for CloudWatch/Loki). `JsonFormatter` (`observability/logging.py:68-119`) always emits `ts, level, logger, msg`, conditionally adds `request_id/user_id/tier/stage` (only when set, to keep logs slim), and merges any `extra={...}` fields the caller passed (serialisability-checked, falling back to `repr`). `LOG_LEVEL` (default `INFO`) sets the root level; `httpx`, `httpcore`, `watchfiles`, and `uvicorn.access` are pinned to `WARNING`. `setup_logging()` is idempotent (clears existing handlers so the chosen format wins on `--reload`) and is called from the lifespan. `logging_config.py` is just a backward-compat shim re-exporting `setup_logging` for root-level/test imports.
 
 ---
 

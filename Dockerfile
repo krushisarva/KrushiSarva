@@ -27,9 +27,8 @@ ENV NODE_ENV=production
 # node. Disable it so the CLI exits cleanly.
 ENV CHECKPOINT_DISABLE=1
 ENV PRISMA_HIDE_UPDATE_MESSAGE=1
-# No EXPOSE: Railway detects an EXPOSEd port as the healthcheck/proxy target,
-# which would mismatch the $PORT the app actually listens on. With none, Railway
-# routes to the PORT env var it injects (which the server binds to).
+# No EXPOSE: deploy/docker-compose.yml decides which port is published, and the
+# server binds to $PORT.
 
 # Start only. Schema changes are applied deliberately, never on container boot.
 #

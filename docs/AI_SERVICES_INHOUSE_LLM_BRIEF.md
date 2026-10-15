@@ -35,7 +35,7 @@ The brief is deliberately exhaustive about: the request flows, every external mo
 
 ### 2.1 What KrushiSarva is
 
-A React Native (Expo) mobile app for Indian farmers, backed by an Express (Node) API and a dedicated FastAPI (Python) AI microservice. Persistence is PostgreSQL (via Prisma on the Express side, asyncpg on the FastAPI side) plus Redis. The platform is deployed on Railway (project "secure-essence", ~5 services, Postgres not Mongo).
+A React Native (Expo) mobile app for Indian farmers, backed by an Express (Node) API and a dedicated FastAPI (Python) AI microservice. Persistence is PostgreSQL (via Prisma on the Express side, asyncpg on the FastAPI side) plus Redis. The platform is deployed on one Hostinger VPS (virtual private server) with Docker Compose (6 containers: Caddy, backend, fastapi, celery, Postgres, Redis; Postgres not Mongo).
 
 ### 2.2 Three-tier topology
 
@@ -81,7 +81,7 @@ A React Native (Expo) mobile app for Indian farmers, backed by an Express (Node)
 
 ### 2.3 Why HMAC signing matters
 
-FastAPI is deployed at a **public Railway URL**. Every Express→FastAPI request is HMAC-SHA256 signed (shared secret `AI_SHARED_SECRET`) with a 30s skew window and a single-use Redis replay nonce (`fastapi/security/auth.py:96-151`). This prevents anyone from hitting the public FastAPI URL directly to burn LLM spend. **An in-house inference service must sit behind this same signed envelope (or replace the seam wholesale).**
+FastAPI was deployed at a **public URL** on the previous host; on the VPS it is no longer public (only the backend reaches it, inside Docker). Every Express→FastAPI request is still HMAC-SHA256 signed (shared secret `AI_SHARED_SECRET`) with a 30s skew window and a single-use Redis replay nonce (`fastapi/security/auth.py:96-151`). This prevents anyone who reaches the FastAPI URL directly from burning LLM spend. **An in-house inference service must sit behind this same signed envelope (or replace the seam wholesale).**
 
 ---
 

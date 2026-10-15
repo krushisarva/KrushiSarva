@@ -195,7 +195,7 @@ export const SETTINGS_MANIFEST = [
   // Routes every crop scan through either the FastAPI agentic pipeline (safety-
   // validated treatment, RAG-grounded) or the deprecated in-process Express
   // scanner. Promoted out of env-only so rolling back a bad AI deploy is a click
-  // instead of a Railway edit + full redeploy. envKey keeps existing deploys on
+  // instead of a server env edit + full redeploy. envKey keeps existing deploys on
   // whatever USE_FASTAPI_FOR_SCAN already says until an admin overrides it.
   { key: 'ai.useFastapiForScan', type: 'BOOL', category: 'AI Models', label: 'Use FastAPI scan pipeline', description: 'ON routes crop scans through the FastAPI agentic pipeline (5-agent, RAG-grounded, safety-validated treatment). OFF falls back to the deprecated in-process Express scanner, which has no treatment validation — use only as an emergency rollback.', envKey: 'USE_FASTAPI_FOR_SCAN', default: false },
   { key: 'app.maintenanceMessage', type: 'STRING', category: 'General', label: 'Maintenance message', description: 'Message shown to users while maintenance mode is on.', default: '' },

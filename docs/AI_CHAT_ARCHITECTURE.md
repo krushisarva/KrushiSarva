@@ -415,7 +415,7 @@ FastAPI retries only transient `429/5xx` + timeouts (exp backoff, no fallback). 
 
 | Var | Resolution |
 |---|---|
-| `EXPO_PUBLIC_API_BASE_URL` | wins if set; else dev `http://<DEV_HOST>:3001/api/v1`, else prod Railway URL |
+| `EXPO_PUBLIC_API_BASE_URL` | wins if set; else dev `http://<DEV_HOST>:3001/api/v1`, else the prod VPS URL (`https://srv2061596.hstgr.cloud/api/v1`) |
 
 ---
 

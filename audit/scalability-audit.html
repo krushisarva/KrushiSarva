@@ -271,7 +271,7 @@ footer{margin-top:82px;padding-top:26px;border-top:1px solid var(--rule);color:v
   <ol class="plan">
     <li>
       <h4>Pin <code>DB_CONNECTION_LIMIT</code> to an explicit number</h4>
-      <p><code>connection_limit</code> derives from <code>os.cpus().length * 2 + 1</code>, and Node's <code>os.cpus()</code> reads the host's CPU count, not the container's cgroup quota. On a shared 32-core Railway host a single replica claims 65 connections against an assumed <code>max_connections</code> of 100.</p>
+      <p><code>connection_limit</code> derives from <code>os.cpus().length * 2 + 1</code>, and Node's <code>os.cpus()</code> reads the host's CPU count, not the container's cgroup quota. On the previous host's shared 32-core machine a single replica claims 65 connections against an assumed <code>max_connections</code> of 100.</p>
       <span class="why">Not the biggest problem — the reason it is first is that every other tier's arithmetic is computed against this denominator, and the denominator is currently unknown. <span class="mono">DB-01, DB-09</span></span>
     </li>
     <li>
@@ -601,7 +601,7 @@ footer{margin-top:82px;padding-top:26px;border-top:1px solid var(--rule);color:v
     </div></div>
     <div class="f"><div class="f-id">GROW-02</div><div>
       <p class="f-t">The <code>db push</code> outage scenario does not apply</p>
-      <p class="f-b">Production does not run <code>npm run start:prod</code>. <code>railway.json</code> declares a Dockerfile build with no start command, and the image CMD uses <code>timeout 60 … ;</code> — a semicolon, so a failed push does not stop the server. The push-on-boot problem is real (DB-06); this consequence of it is not.</p>
+      <p class="f-b">Production does not run <code>npm run start:prod</code>. The old hosting's deploy config declared a Dockerfile build with no start command, and the image CMD uses <code>timeout 60 … ;</code> — a semicolon, so a failed push does not stop the server. The push-on-boot problem is real (DB-06); this consequence of it is not.</p>
       <div class="chips"><span class="chip c-ok">Refuted &middot; high</span></div>
     </div></div>
     <div class="f"><div class="f-id">GROW-06</div><div>
