@@ -18,7 +18,7 @@ KrushiSarva is a mobile-first agriculture platform for Indian farmers. Three of 
 
 All three currently depend on **third-party hosted models**:
 
-- **Google Gemini** (`gemini-2.5-flash` default, `gemini-2.5-pro` for escalation) — the sole production LLM for vision diagnosis, treatment text, chat, alerts, soil-card OCR.
+- **Google Gemini** (`gemini-3.6-flash` default, `gemini-3.5-flash-lite` as the Best-tier / capacity-fallback partner; a free-tier key since 2026-10-15, when Gemini 2.5 closed to new API keys and Pro turned out to have no free-tier quota) — the sole production LLM for vision diagnosis, treatment text, chat, alerts, soil-card OCR.
 - **Sarvam AI** — Indic speech-to-text (STT), text-to-speech (TTS), and translation.
 - **Groq** (`openai/gpt-oss-120b`) — optional last-resort *text-chat* fallback.
 - **OpenAI** (`gpt-4o`) — optional single ensemble vision voter, off by default.
@@ -27,7 +27,7 @@ All three currently depend on **third-party hosted models**:
 
 The brief is deliberately exhaustive about: the request flows, every external model call site, the abstraction seams where a new model plugs in, the proprietary domain data that already exists (and could train/ground an in-house model), and the hard constraints (multilingual, vision, structured JSON, Indian agro-chemical compliance).
 
-**Honesty note:** The codebase has substantial stale documentation. Docstrings and one architecture doc reference Anthropic/Claude and "Pro" models that are **not** on the live path. The live, env-resolved truth is **Gemini-only** (`gemini-2.5-flash`) for both vision and text by default. This document states the *live* behavior and flags doc/code contradictions explicitly.
+**Honesty note:** The codebase has substantial stale documentation. Docstrings and one architecture doc reference Anthropic/Claude and "Pro" models that are **not** on the live path. The live, env-resolved truth is **Gemini-only** (`gemini-3.6-flash`) for both vision and text by default. This document states the *live* behavior and flags doc/code contradictions explicitly.
 
 ---
 
@@ -137,7 +137,7 @@ orchestrator.py  run_diagnosis(params, images)   [240s asyncio.wait_for cap]
   │                 marginal (0.4–0.6) → penalised downstream
   │
   ├─ STAGE 3  ►► LLM VISION ◄◄  run_disease_diagnosis_agent
-  │     • single Gemini 2.5 Flash vision call (call_llm_vision)
+  │     • single Gemini 3.6 Flash vision call (call_llm_vision)
   │     • prompt = diagnose.v2.md system + per-crop candidate ballot + weather/context
   │       (+ optional local ONNX classifier prior)
   │     • temp 0.0; ONE same-model retry on JSON-parse failure; NO cross-model fallback
@@ -147,7 +147,7 @@ orchestrator.py  run_diagnosis(params, images)   [240s asyncio.wait_for cap]
   │
   ├─ STAGE 3.25  CASCADE GATE (only if ENABLE_ENSEMBLE=true; OFF by default)
   │     if confidence < 0.80 OR ambiguous, and budget OK:
-  │       ensemble_agent.run_parallel → Gemini Pro + Gemini Flash (+ GPT-4o if key set
+  │       ensemble_agent.run_parallel → Gemini Flash + Flash-Lite (+ GPT-4o if key set
   │       + crop specialist if registered), concurrent asyncio.gather, 90s/member
   │     reconciler.fuse(): canonicalise names → confidence-aware vote → accuracy-weighted
   │       fusion + agreement bonus → safety-biased flag merge
@@ -161,7 +161,7 @@ orchestrator.py  run_diagnosis(params, images)   [240s asyncio.wait_for cap]
   ├─ STAGE 4  ►► LLM TEXT ◄◄  run_treatment_agent
   │     • HARD GATE: confidence<0.5 / OOD / crop-mismatch / viral / abiotic → cultural-only
   │     • RAG grounding: rag/knowledge_base.retrieve(disease, crop, zone) → registered actives
-  │     • single Gemini 2.5 Flash text call (call_llm_text); NO fallback for treatment
+  │     • single Gemini 3.6 Flash text call (call_llm_text); NO fallback for treatment
   │     • safety/validator: strip banned/off-label/bee-toxic actives, clamp PHI/REI
   │     • ETL monitor-gate; Redis-cache 7 days
   │
@@ -177,15 +177,15 @@ Express polls until status=done → flattenFastAPIDiagnosis() → mobile flat sh
 
 | Where | Provider | Model (live default) | Purpose |
 |---|---|---|---|
-| `agents/disease_diagnosis_agent.py:run_disease_diagnosis_agent` → `agents/llm_dispatch.py:call_llm_vision` → `agents/llm_utils.py:call_gemini_vision` | Gemini | `gemini-2.5-flash` (`AI_CROP_DIAGNOSE_MODEL`) | Primary vision diagnosis → structured JSON (primary_diagnosis, differentials, pathogen_type, confidence, severity, weather_correlation) |
-| `agents/ensemble_agent.py:run_parallel` → `agents/router.py:dispatch_one_vision` → `_call_one_vision` | Gemini (+OpenAI optional) | `gemini-2.5-pro`, `gemini-2.5-flash`, `gpt-4o` (only if `OPENAI_API_KEY` set) | Parallel multi-model re-diagnosis when first pass is low-confidence/ambiguous. **OFF by default** (`ENABLE_ENSEMBLE='false'`) |
-| `agents/treatment_agent.py:run_treatment_agent` → `call_llm_text` → `call_gemini_text` | Gemini | `gemini-2.5-flash` (`AI_CROP_TREATMENT_MODEL`) | RAG-grounded IPM treatment plan (FRAC/IRAC, biological/cultural, rotation, Indian brand names) |
+| `agents/disease_diagnosis_agent.py:run_disease_diagnosis_agent` → `agents/llm_dispatch.py:call_llm_vision` → `agents/llm_utils.py:call_gemini_vision` | Gemini | `gemini-3.6-flash` (`AI_CROP_DIAGNOSE_MODEL`) | Primary vision diagnosis → structured JSON (primary_diagnosis, differentials, pathogen_type, confidence, severity, weather_correlation) |
+| `agents/ensemble_agent.py:run_parallel` → `agents/router.py:dispatch_one_vision` → `_call_one_vision` | Gemini (+OpenAI optional) | `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gpt-4o` (only if `OPENAI_API_KEY` set) | Parallel multi-model re-diagnosis when first pass is low-confidence/ambiguous. **OFF by default** (`ENABLE_ENSEMBLE='false'`) |
+| `agents/treatment_agent.py:run_treatment_agent` → `call_llm_text` → `call_gemini_text` | Gemini | `gemini-3.6-flash` (`AI_CROP_TREATMENT_MODEL`) | RAG-grounded IPM treatment plan (FRAC/IRAC, biological/cultural, rotation, Indian brand names) |
 | `agents/report_generator_agent.py:_attach_local_blocks` → `services/sarvam_translator.py:translate_blocks` | Sarvam | Sarvam Translate (`mode=formal`) **[exact model id UNKNOWN]** | Translate 5 short English report blocks into farmer's Indic language; disease/chemical/brand names token-protected from MT |
 | `models/local_classifier.py:classify` | In-house ONNX | MobileNetV2 / PlantVillage (38 labels) | **Optional** local soft prior (disabled unless `LOCAL_CLASSIFIER_MODEL_PATH` set) |
 
 **Critical reality check (confirmed against source):**
 - The "multi-agent" richness in *normal production* is mostly the **rule-based, $0** stages (image quality, weather, cross_verify, visual_verify, validator, template report). With the ensemble OFF by default, diagnosis is effectively **a single Gemini vision call → reconciler bypassed → single-result branch**.
-- The diagnose path **deliberately has NO model fallback**. This is a load-bearing design constraint: *fail loud, don't silently degrade* (the doc notes Pro was ~67% top-1 vs Flash ~30% on a textbook set, so a silent weaker guess is a real harm). **An in-house substitute should preserve this contract.**
+- The diagnose path **deliberately has NO model fallback**. This is a load-bearing design constraint: *fail loud, don't silently degrade* (the doc notes Gemini 2.5 Pro was ~67% top-1 vs 2.5 Flash ~30% on a textbook set at the time, so a silent weaker guess is a real harm). **An in-house substitute should preserve this contract.**
 
 ### 3.5 The local classifier (existing in-house vision seam)
 
@@ -270,13 +270,13 @@ Express settles credits with actual token_info → persist user+assistant AIMess
 
 | Where | Provider | Model (live default) | Purpose |
 |---|---|---|---|
-| `chat_service.py:_agentic_text_reply` (Writer, line 408) | Gemini | `gemini-2.5-flash` (`AI_CHAT_WRITER_MODEL`) | Draft the answer; folds in follow-up chips when no Enhancer runs |
-| `chat_service.py:_agentic_text_reply` (Enhancer, line 429) | Gemini | `gemini-2.5-flash` (`AI_CHAT_ENHANCER_MODEL`) | Fact-check + rewrite — **only** for `long`/`extra_long` |
-| `chat_service.py:_voice_reply` (line 450) | Gemini | `gemini-2.5-flash` (CHAT_WRITER, voice mode) | Single concise spoken-style reply (<90 words, no markdown) |
-| `chat_service.py:_vision_reply` (line 472) | Gemini | `gemini-2.5-flash` (`AI_CHAT_VISION_MODEL`) | General image understanding (NOT crop-disease — that's `/ai/scan`). NO fallback |
-| `llm_dispatch.py:call_llm_text` capacity fallback (line 273) | Gemini | `gemini-2.5-pro` (Flash↔Pro swap) | Capacity fallback for chat features (separate quota) |
+| `chat_service.py:_agentic_text_reply` (Writer, line 408) | Gemini | `gemini-3.6-flash` (`AI_CHAT_WRITER_MODEL`) | Draft the answer; folds in follow-up chips when no Enhancer runs |
+| `chat_service.py:_agentic_text_reply` (Enhancer, line 429) | Gemini | `gemini-3.6-flash` (`AI_CHAT_ENHANCER_MODEL`) | Fact-check + rewrite — **only** for `long`/`extra_long` |
+| `chat_service.py:_voice_reply` (line 450) | Gemini | `gemini-3.6-flash` (CHAT_WRITER, voice mode) | Single concise spoken-style reply (<90 words, no markdown) |
+| `chat_service.py:_vision_reply` (line 472) | Gemini | `gemini-3.6-flash` (`AI_CHAT_VISION_MODEL`) | General image understanding (NOT crop-disease — that's `/ai/scan`). NO fallback |
+| `llm_dispatch.py:call_llm_text` capacity fallback | Gemini | `gemini-3.5-flash-lite` (Flash↔Flash-Lite swap) | Capacity fallback for chat features (separate quota) |
 | `llm_dispatch.py:call_llm_text` Groq fallback (line 289) | Groq | `openai/gpt-oss-120b` | **Last-resort** cross-provider text-chat fallback (only if `GROQ_API_KEY` set) |
-| `ai.chat.service.js:chatWithFarmMind` (line 529) — **LEGACY, unused for inference** | Gemini | `gemini-2.5-flash` (ENV.GEMINI_MODEL) | Legacy single-call chat; superseded |
+| `ai.chat.service.js:chatWithFarmMind` — **LEGACY, unused for inference** | Gemini | `gemini-3.6-flash` (ENV.GEMINI_MODEL) | Legacy single-call chat; superseded |
 
 ### 4.5 Context / "RAG"
 
@@ -285,7 +285,7 @@ Chat does **no vector or KB retrieval**. Its only grounding is the **structured 
 ### 4.6 Follow-ups, fallback, safety/PII
 
 - **Follow-ups:** produced in the same LLM call as the answer (no extra call), split on `###FOLLOWUPS###`, always stripped from the visible reply (leak-proof, `chat_service.py:330-365`).
-- **Fallback (chat only):** Gemini primary → Gemini Flash↔Pro capacity → Groq Llama (gated on `GROQ_API_KEY`). **The memory note "chat has no model fallback" is stale** — chat *does* have two fallback layers. Vision and all non-chat features genuinely have NO fallback.
+- **Fallback (chat only):** Gemini primary → Gemini Flash↔Flash-Lite capacity → Groq `openai/gpt-oss-120b` (gated on `GROQ_API_KEY`). **The memory note "chat has no model fallback" is stale** — chat *does* have two fallback layers. Vision and all non-chat features genuinely have NO fallback.
 - **Safety:** HMAC signing; `clean_user_text` strips control/zero-width/bidi and caps lengths; Writer system prompt SECURITY clause treats the farmer message as data (no role change, no system-prompt reveal, farming-only); 100s pipeline budget; PII redaction in logs (`security/pii.py` masks GPS/phones/emails/Aadhaar/PAN/GST/IFSC). **Chat has no diagnosis-confidence or label-claim gating** — that guards `/ai/scan` only.
 
 ---
@@ -344,7 +344,7 @@ VoiceChatScreen.playBase64Audio() → expo-av Audio.Sound (and types reply on-sc
 | `backend/src/services/sarvam.service.js:sarvamSTT` (line 82) | Sarvam | `saaras:v3` | Speech-to-text (Indic/English audio → text). 15s timeout, `sarvamBreaker` |
 | `backend/src/services/sarvam.service.js:sarvamTTS` (line 128) | Sarvam | `bulbul:v3`, speaker `priya` | Text-to-speech → base64 WAV |
 | `backend/src/services/sarvam.service.js:sarvamTranslate` (line 174) | Sarvam | `mayura:v1` | Translate between Indian languages (via `/ai/translate`; **NOT** on live voice round-trip) |
-| `fastapi/services/chat_service.py:_voice_reply` (via `call_llm_text`) | Gemini | `gemini-2.5-flash` (CHAT_WRITER) | Spoken-style reply in farmer's language |
+| `fastapi/services/chat_service.py:_voice_reply` (via `call_llm_text`) | Gemini | `gemini-3.6-flash` (CHAT_WRITER) | Spoken-style reply in farmer's language |
 | `fastapi/services/sarvam_translator.py:_translate_one` | Sarvam | translate (`mode=formal`) **[model id UNKNOWN]** | **Report enrichment only** — not voice |
 
 > **Model-id inconsistencies to verify:** code sends STT `saaras:v3` but a docstring says `saarika:v2` and env default is `sarvam:saarika`; TTS body says `bulbul:v3` but a comment says `bulbul:v1`. The over-the-wire values are **v3 for both**.
@@ -363,26 +363,26 @@ VoiceChatScreen.playBase64Audio() → expo-av Audio.Sound (and types reply on-sc
 
 | # | Service | Call site (file) | Provider | Exact model | Endpoint / how called |
 |---|---|---|---|---|---|
-| 1 | Diagnosis | `fastapi/agents/llm_utils.py:call_gemini_vision` (via `disease_diagnosis_agent`) | Gemini | `gemini-2.5-flash` | raw httpx POST `…/v1beta/models/{model}:generateContent`, `x-goog-api-key`, inline_data image, max_tokens 8192, temp 0, thinkingBudget=0 (Flash) |
-| 2 | Diagnosis (ensemble, OFF) | `call_gemini_vision` via `ensemble_agent`/`router` | Gemini | `gemini-2.5-pro`, `gemini-2.5-flash` | same Gemini REST; concurrent gather, 90s/member |
+| 1 | Diagnosis | `fastapi/agents/llm_utils.py:call_gemini_vision` (via `disease_diagnosis_agent`) | Gemini | `gemini-3.6-flash` | raw httpx POST `…/v1beta/models/{model}:generateContent`, `x-goog-api-key`, inline_data image, max_tokens 8192, temp 0, thinkingBudget=0 (Flash) |
+| 2 | Diagnosis (ensemble, OFF) | `call_gemini_vision` via `ensemble_agent`/`router` | Gemini | `gemini-3.6-flash`, `gemini-3.5-flash-lite` | same Gemini REST; concurrent gather, 90s/member |
 | 3 | Diagnosis (ensemble, OFF) | `fastapi/agents/llm_utils.py:call_openai_vision` | OpenAI | `gpt-4o` (`OPENAI_DIAGNOSE_MODEL`) | raw httpx POST `https://api.openai.com/v1/chat/completions`, Bearer, data-URI image. Only if `OPENAI_API_KEY` + `ENABLE_ENSEMBLE` |
-| 4 | Treatment | `fastapi/agents/llm_utils.py:call_gemini_text` (via `treatment_agent`) | Gemini | `gemini-2.5-flash` | raw httpx POST Gemini generateContent, max_tokens 8192 |
-| 5 | Chat (Writer) | `call_gemini_text` (via `chat_service._agentic_text_reply`) | Gemini | `gemini-2.5-flash` | Gemini REST |
-| 6 | Chat (Enhancer) | `call_gemini_text` | Gemini | `gemini-2.5-flash` | Gemini REST (only long/extra_long) |
-| 7 | Chat (vision) | `call_gemini_vision` (via `_vision_reply`) | Gemini | `gemini-2.5-flash` | Gemini REST, inline_data |
-| 8 | Chat (voice mode) | `call_gemini_text` (via `_voice_reply`) | Gemini | `gemini-2.5-flash` | Gemini REST |
-| 9 | Chat (capacity fallback) | `llm_dispatch.py:call_llm_text` line 273 | Gemini | `gemini-2.5-pro` | Gemini REST (Flash↔Pro swap) |
+| 4 | Treatment | `fastapi/agents/llm_utils.py:call_gemini_text` (via `treatment_agent`) | Gemini | `gemini-3.6-flash` | raw httpx POST Gemini generateContent, max_tokens 8192 |
+| 5 | Chat (Writer) | `call_gemini_text` (via `chat_service._agentic_text_reply`) | Gemini | `gemini-3.6-flash` | Gemini REST |
+| 6 | Chat (Enhancer) | `call_gemini_text` | Gemini | `gemini-3.6-flash` | Gemini REST (only long/extra_long) |
+| 7 | Chat (vision) | `call_gemini_vision` (via `_vision_reply`) | Gemini | `gemini-3.6-flash` | Gemini REST, inline_data |
+| 8 | Chat (voice mode) | `call_gemini_text` (via `_voice_reply`) | Gemini | `gemini-3.6-flash` | Gemini REST |
+| 9 | Chat (capacity fallback) | `llm_dispatch.py:call_llm_text` | Gemini | `gemini-3.5-flash-lite` | Gemini REST (Flash↔Flash-Lite swap) |
 | 10 | Chat (cross-provider fallback) | `fastapi/agents/llm_utils.py:call_groq_text` | Groq | `openai/gpt-oss-120b` | raw httpx POST `https://api.groq.com/openai/v1/chat/completions`, Bearer. Only if `GROQ_API_KEY` |
-| 11 | Soil OCR | `fastapi/services/soil_ocr_service.py:extract_soil_card` → `call_llm_vision` | Gemini | `gemini-2.5-flash` (`AI_SOIL_OCR_MODEL`) | Gemini REST, inline_data |
-| 12 | Smart Alerts | `call_gemini_text` (via `alert_service.py`) | Gemini | `gemini-2.5-flash` (`AI_ALERT_MODEL`) | Gemini REST |
-| 13 | Pest enhancement | `call_gemini_text` (PEST feature) | Gemini | `gemini-2.5-flash` (`AI_PEST_MODEL`) | Gemini REST |
+| 11 | Soil OCR | `fastapi/services/soil_ocr_service.py:extract_soil_card` → `call_llm_vision` | Gemini | `gemini-3.6-flash` (`AI_SOIL_OCR_MODEL`) | Gemini REST, inline_data |
+| 12 | Smart Alerts | `call_gemini_text` (via `alert_service.py`) | Gemini | `gemini-3.6-flash` (`AI_ALERT_MODEL`) | Gemini REST |
+| 13 | Pest enhancement | `call_gemini_text` (PEST feature) | Gemini | `gemini-3.6-flash` (`AI_PEST_MODEL`) | Gemini REST |
 | 14 | Voice STT | `backend/src/services/sarvam.service.js:sarvamSTT` | Sarvam | `saaras:v3` | Node fetch multipart → `api.sarvam.ai/speech-to-text` |
 | 15 | Voice TTS | `sarvam.service.js:sarvamTTS` | Sarvam | `bulbul:v3` (speaker `priya`) | Node fetch JSON → `api.sarvam.ai/text-to-speech` |
 | 16 | Translation (standalone) | `sarvam.service.js:sarvamTranslate` | Sarvam | `mayura:v1` | Node fetch JSON → `api.sarvam.ai/translate` |
 | 17 | Report translation | `fastapi/services/sarvam_translator.py:_translate_one` | Sarvam | translate `mode=formal` **[id UNKNOWN]** | httpx POST `api.sarvam.ai/translate` |
-| 18 | Schemes Q&A | `backend/src/services/claude.service.js:callClaude` | **Gemini** (despite name) | `gemini-2.5-flash` (ENV.GEMINI_MODEL) | OpenAI SDK pointed at Gemini OpenAI-compat base |
-| 19 | Legacy in-Express scan | `backend/src/services/ai.predict.service.js:callGemini` | Gemini (or GPT-4o if only OpenAI key) | `gemini-2.5-flash` (ENV.GEMINI_MODEL) | OpenAI SDK, Gemini OpenAI-compat base, `USE_FASTAPI_FOR_SCAN=false` only |
-| 20 | Legacy Express chat | `backend/src/services/ai.chat.service.js:chatWithFarmMind` | Gemini | `gemini-2.5-flash` | OpenAI SDK, Gemini OpenAI-compat base. **Not used for inference** |
+| 18 | Schemes Q&A | `backend/src/services/claude.service.js:callClaude` | **Gemini** (despite name) | `gemini-3.6-flash` (ENV.GEMINI_MODEL) | OpenAI SDK pointed at Gemini OpenAI-compat base |
+| 19 | Legacy in-Express scan | `backend/src/services/ai.predict.service.js:callGemini` | Gemini (or GPT-4o if only OpenAI key) | `gemini-3.6-flash` (ENV.GEMINI_MODEL) | OpenAI SDK, Gemini OpenAI-compat base, `USE_FASTAPI_FOR_SCAN=false` only |
+| 20 | Legacy Express chat | `backend/src/services/ai.chat.service.js:chatWithFarmMind` | Gemini | `gemini-3.6-flash` | OpenAI SDK, Gemini OpenAI-compat base. **Not used for inference** |
 
 **Distinct external LLM/AI call sites documented: 20** (16 distinct + 4 legacy/standalone variants; the *production-live* LLM surface is Gemini for everything in 1–13, 18, 19 and Sarvam for 14–17).
 
@@ -396,7 +396,7 @@ Feature handlers (chat_service, disease_diagnosis_agent, treatment_agent, soil_o
         ├──────────────► agents/llm_dispatch.py   (FLAT per-feature dispatcher)
         │                  get_feature_config(feature) → FeatureConfig{feature,model,api_key,base_url}
         │                  _detect_provider(model)  ◄── HARD-REJECTS any non-'gemini-' id (ConfigError)
-        │                  call_llm_text(): Gemini → Flash↔Pro → Groq (chat only)
+        │                  call_llm_text(): Gemini → Flash↔Flash-Lite → Groq (chat only)
         │                  call_llm_vision(): NO fallback
         │
         └──────────────► agents/router.py  (CHAIN/registry dispatcher; vision diagnose + ensemble only)
@@ -420,7 +420,7 @@ Supporting:
 1. **NO vendor SDK is used anywhere.** Every provider (Gemini, Groq, OpenAI) is hand-rolled httpx returning a uniform `(raw_text, token_info)` tuple. The installed `anthropic==0.94.0` and `groq==1.1.2` packages are **dead weight** (anthropic never imported; groq called via raw HTTP).
 2. **Prompts are fully provider-agnostic** (plain `.md` / inline strings; system+user concatenated). An in-house model receives identical prompts with no caller changes.
 3. **THE hard blocker:** `agents/llm_dispatch.py:_detect_provider` (lines 107-116) **raises `ConfigError` on any non-`gemini-` model id** (verified in source). `FeatureConfig.base_url` exists (line 94) but is **vestigial / unused**. To admit an in-house model you must relax `_detect_provider` and honor `base_url`.
-4. **Three Gemini-isms baked into `llm_utils.py`:** `thinkingConfig.thinkingBudget=0` (Flash-only), the `candidates[0].content.parts[0].text` response shape, and `usageMetadata` token field names. An in-house endpoint must either mimic Gemini's `generateContent` response shape or get its own parser helper.
+4. **Three Gemini-isms baked into `llm_utils.py`:** `thinkingConfig.thinkingBudget=0` (Flash only; Flash-Lite gets no `thinkingConfig` because it rejects 0 with HTTP 400, Pro gets a small explicit budget), the `candidates[0].content.parts[0].text` response shape, and `usageMetadata` token field names. An in-house endpoint must either mimic Gemini's `generateContent` response shape or get its own parser helper.
 5. **Two dispatchers** must both be updated: the flat `llm_dispatch` (chat/soil/treatment/diagnose-single) **and** the chain `router`+`registry` (vision-chain/ensemble).
 6. **Pricing coupling:** `llm_utils._PRICING` must get a row for any new model id or `_calc_cost` silently uses the Flash fallback price (won't bill $0, but the estimate is wrong, and the daily spend cap is mis-fed).
 7. **No schema validation on LLM output:** structured output relies on `utils/json_extractor.extract_json` + ad-hoc `_normalise`/critical-field dict checks. An in-house model must produce **reliable JSON**.
@@ -663,9 +663,9 @@ These are the concrete questions to put to Claude Chat when designing the in-hou
 
 ### 12.4 Honesty ledger — known unknowns & stale docs
 
-- **Stale Anthropic/Claude references:** `fastapi/docs/ARCHITECTURE.md` describes a Gemini+Claude stack and an ensemble with `claude-sonnet-4-6`; `claude.service.js` and ledger keys say "claude"; `@anthropic-ai/sdk` and `anthropic` package are installed. **None are on the live path.** Anthropic was fully removed; live config is Gemini-only. The two architecture docs **contradict each other** (ARCHITECTURE.md = Gemini+Claude; Diagnosis.md = Gemini-only); trust `get_feature_config`, not the prose.
-- **Doc says "Pro", config says "Flash":** diagnose/treatment docstrings reference `gemini-2.5-pro`, but the live `_DEFAULTS` is `gemini-2.5-flash` for both.
-- **Stale memory note:** "chat has no model fallback" is wrong — chat has Flash↔Pro + Groq fallback layers.
+- **Stale Anthropic/Claude references:** `fastapi/docs/ARCHITECTURE.md` describes a Gemini+Claude stack (its ensemble lines named `claude-sonnet-4-6` until 2026-10-15); `claude.service.js` and ledger keys say "claude"; `@anthropic-ai/sdk` and `anthropic` package are installed. **None are on the live path.** Anthropic was fully removed; live config is Gemini-only. The two architecture docs **contradict each other** (ARCHITECTURE.md = Gemini+Claude; Diagnosis.md = Gemini-only); trust `get_feature_config`, not the prose.
+- **Docstrings lag the config:** diagnose/treatment docstrings have named other models over time (`gemini-2.5-pro`, Gemini 2.5 Flash, Groq Llama), but the live `_DEFAULTS` is `gemini-3.6-flash` for both.
+- **Stale memory note:** "chat has no model fallback" is wrong — chat has Flash↔Flash-Lite + Groq fallback layers.
 - **Sarvam model-id mismatches** (STT `saaras:v3` vs docstring `saarika:v2`; TTS `bulbul:v3` vs comment `bulbul:v1`).
 - **Exact runtime model ids for FastAPI-brokered calls** are whatever FastAPI returns in `token_info.model` / `meta.model_diagnose`; not pinned in the repo subset read. The Sarvam translate model id and exact runtime `AI_*_MODEL` env values were **not read from `.env`**.
 - **Empty golden set;** single small realized benchmark; `disease_lexicon.py` only 8 diseases / 2 languages.

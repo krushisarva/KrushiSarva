@@ -163,10 +163,10 @@ There is **no clustering** in either service. Production is **one** Hostinger VP
 |---|---|---|---|
 | **PostgreSQL** | Express (Prisma), FastAPI (asyncpg) | `DATABASE_URL` | Express `/readyz` 503s; FastAPI `/health` reports `degraded` |
 | **Redis** | Express (cache, rate limits, idempotency, leader lock, BullMQ, Socket.IO adapter, voice cancel, scan holds); FastAPI (6 independent clients) | `REDIS_URL` and friends | mostly fail-open per-instance; AI cost limiters fail **closed** in prod |
-| **Google Gemini** | FastAPI (all 9 features default to `gemini-2.5-flash` in `agents/llm_dispatch.py:89` — but the treatment stage is **always overridden to `gemini-2.5-pro`** in practice: Express resolves the `ai.model.treatment` App Setting, whose manifest default is `gemini-2.5-pro` (`settings.service.js:87`), and forwards it as `params.model_treatment` on every scan, and `model_override` outranks the FastAPI default. Pro is ~4× Flash's output-token price, making this the largest per-scan cost lever); Express directly for planner, scheme Q&A, legacy scan | `GEMINI_API_KEY` (prod-fatal if missing) | 503/504 to the farmer, credit hold released |
+| **Google Gemini** | FastAPI (all 9 features default to `gemini-3.6-flash` in `agents/llm_dispatch.py` `_DEFAULTS`; Express resolves the `ai.model.treatment` App Setting, whose manifest default is also `gemini-3.6-flash` (`settings.service.js`), and forwards it as `params.model_treatment` on every scan, where `model_override` outranks the FastAPI default. Since 2026-10-15 the key is a **free-tier** Google AI Studio key: Gemini 2.5 is closed to new keys and Pro models have no free-tier quota, so the second model everywhere is `gemini-3.5-flash-lite`); Express directly for planner, scheme Q&A, legacy scan | `GEMINI_API_KEY` (prod-fatal if missing) | 503/504 to the farmer, credit hold released |
 | **Sarvam AI** | Express only — STT `saaras:v3`, TTS `bulbul:v3`, translate `mayura:v1` | `SARVAM_API_KEY` (prod-fatal) | voice 503, credit refunded |
 | **Groq** | FastAPI text-chat last-resort fallback | `GROQ_API_KEY` | chat fails hard on a full Gemini outage |
-| **OpenAI** | FastAPI ensemble vision voter only (`gpt-4o`) | `OPENAI_API_KEY` | ensemble degrades to Gemini Pro + Flash |
+| **OpenAI** | FastAPI ensemble vision voter only (`gpt-4o`) | `OPENAI_API_KEY` | ensemble degrades to Gemini Flash + Flash-Lite |
 | **Anthropic** | adapters wired, **no `claude-*` id in any default or chain** | `ANTHROPIC_API_KEY` | unreachable in practice |
 | **Razorpay** | Express checkout + webhook | `RAZORPAY_KEY_ID/_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | no keys ⇒ COD-only; no webhook secret ⇒ every webhook rejected 400 |
 | **Cloudinary** | product/listing/avatar images, private KYC docs, scan photos, voice audio | `CLOUDINARY_*` | public uploads no-op to a placeholder URL; **KYC uploads throw** |
@@ -537,7 +537,7 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `OTP_FAIL_WINDOW_SECONDS` | `900` | failure counter TTL |
 | `OTP_LOCK_CYCLE_WINDOW_SECONDS` | `86400` | lock-cycle window driving exponential escalation |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | `''` | public uploads silently no-op (`uploadFiles` returns `[]`); **KYC uploads throw** rather than degrade |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | `''` / `gemini-2.5-flash` | all LLM features. Prod-fatal if empty |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | `''` / `gemini-3.6-flash` | all LLM features. Prod-fatal if empty |
 | `OPENAI_API_KEY`, `OPENWEATHER_API_KEY` | `''` | legacy/optional |
 | `AI_VOICE_STT_MODEL`, `AI_VOICE_STT_API_KEY`, `VOICE_STT_MODEL` | `sarvam:saarika`, falls back to `SARVAM_API_KEY`, `sarvam:saarika` | retained for backwards-compat; comment states the voice route no longer uses them |
 | `AI_BACKEND_URL` | `http://localhost:8001` | FastAPI base for signed calls + the AgriPredict cron triggers |
@@ -5377,7 +5377,7 @@ the credit hold to a background pipeline.
 
 | Service | Used for | Where | Auth | Timeout | Cache TTL | Failure fallback |
 |---|---|---|---|---|---|---|
-| **Google Gemini** (OpenAI-compatible endpoint `generativelanguage.googleapis.com/v1beta/openai/`) | All LLM inference. Mostly indirect via FastAPI; **direct** in `ai.chat.service.js` (planner), `schemeGemini.service.js` (scheme Q&A) and the deprecated `ai.predict.service.js` (legacy scan) | `GEMINI_API_KEY`, model `ENV.GEMINI_MODEL \|\| 'gemini-2.5-flash'` | API key | 120 s in `ai.predict.service`; SDK default elsewhere | none | Planner: 500 + refund. Schemes: 503 + refund. Legacy scan: `buildRescanFallback()` after 3 retries |
+| **Google Gemini** (OpenAI-compatible endpoint `generativelanguage.googleapis.com/v1beta/openai/`) | All LLM inference. Mostly indirect via FastAPI; **direct** in `ai.chat.service.js` (planner), `schemeGemini.service.js` (scheme Q&A) and the deprecated `ai.predict.service.js` (legacy scan) | `GEMINI_API_KEY`, model `ENV.GEMINI_MODEL \|\| 'gemini-3.6-flash'` | API key | 120 s in `ai.predict.service`; SDK default elsewhere | none | Planner: 500 + refund. Schemes: 503 + refund. Legacy scan: `buildRescanFallback()` after 3 retries |
 | **FastAPI AI service** | chat, chat stream, scan, soil-card OCR, alerts, agripredict | `AI_BACKEND_URL`, HMAC | `AI_SHARED_SECRET` | see §3.3.4 (this sub-part's *Crop disease scan* section), **not** the top-level §3.4 Admin API | FastAPI-side idempotency cache (`done` for ~24 h) | breaker + per-route farmer copy; §3.3.7 |
 | **Sarvam AI** (`api.sarvam.ai`) | STT `saaras:v3` (`/speech-to-text`), TTS `bulbul:v3` (`/text-to-speech`), translate `mayura:v1` (`/translate`) | `SARVAM_API_KEY` header `api-subscription-key` | key | 15 s `AbortSignal.timeout` + `sarvamBreaker` 20 s | none | STT fail → 503 + refund; TTS fail in stream → warn, sentence silently skipped; TTS fail one-shot → reply returned without audio |
 | **Open-Meteo** (`api.open-meteo.com/v1/forecast`) | The main weather product: current, 24 h hourly, 7-day daily, soil temp/moisture, ET₀ | none (free, keyless) | — | 10 s per attempt, **1 retry** after 1.5 s | 1 h L1+L2, 30 min SWR | Serve an expired L2 row with `meta.stale: true`; only then 503 |
@@ -6873,9 +6873,9 @@ ENSEMBLE_AMBIGUOUS_DELTA (0.10)` **and** `top_differential_prob > 0.25`.
 Members: `ensemble_agent.select(crop)` (`agents/ensemble_agent.py:51-75`) =
 `resolve_chain("ensemble","best")` (tier ignored) + any crop specialist from `agents/specialists/`
 (the registry is **empty** today — `agents/specialists/__init__.py:22-24`). Configured chain is
-`["gemini-2.5-pro", "gemini-2.5-flash", OPENAI_DIAGNOSE_MODEL]` (`agents/registry.py:102-105`);
+`["gemini-3.6-flash", "gemini-3.5-flash-lite", OPENAI_DIAGNOSE_MODEL]` (`agents/registry.py`);
 `resolve_chain` drops any entry with no API key, so **without `OPENAI_API_KEY` the ensemble is
-Pro + Flash**.
+Flash + Flash-Lite**. (It was Gemini 2.5 Pro + Flash until 2026-10-15; Pro has no free-tier quota.)
 
 Each member runs concurrently through `router.dispatch_one_vision` with a 90 s per-member
 `asyncio.wait_for` (`ensemble_agent.py:48,88-97`), `temperature=0.3`, `max_tokens=8192`
@@ -6884,8 +6884,9 @@ no vote; `token_info` is summed across **all** members (including failures that 
 tokens).
 
 `reconciler.fuse([primary, *ensemble_results], crop, accuracy_weights=_MODEL_ACCURACY_WEIGHTS)`
-(`orchestrator.py:375-377`). Weights are static: `gemini-2.5-pro: 1.25`, `gemini-2.5-flash: 0.90`,
-everything else 1.0 (`orchestrator.py:74-78`). `orchestrator.py:369` stamps `diagnosis["_model"]`
+(`orchestrator.py:375-377`). Weights are static (`_MODEL_ACCURACY_WEIGHTS`, `orchestrator.py`):
+`gemini-3.6-flash: 1.00`, `gemini-3.5-flash-lite: 0.85`, plus the legacy `gemini-2.5-pro: 1.25` /
+`gemini-2.5-flash: 0.90` rows kept for paid projects that still have 2.5; everything else 1.0. `orchestrator.py:369` stamps `diagnosis["_model"]`
 from `tok_diagnosis["model"]` first, otherwise the primary would silently default to weight 1.0.
 
 **Voting rule** (`agents/reconciler.py:169-378`):
@@ -6974,7 +6975,7 @@ Two model-selection systems coexist; only one is live for the primary path.
 1. `model_override` (admin App Setting forwarded per request as `body.model` /
    `params.model_diagnose` / `params.model_treatment`) — silently ignored if its prefix is unknown.
 2. `AI_<FEATURE>_MODEL` env var.
-3. `_DEFAULTS[feature]` — **`gemini-2.5-flash` for all nine features** (`llm_dispatch.py:81-92`).
+3. `_DEFAULTS[feature]` — **`gemini-3.6-flash` for all nine features** (`llm_dispatch.py`).
 
 Provider comes from the model-id prefix (`_detect_provider`, `:115-131`): `gemini-*` → gemini,
 `gpt-*` → openai, `claude-*` → anthropic, `llama-*`/`mixtral-*` → groq; anything else raises
@@ -6989,31 +6990,33 @@ at the **most expensive** known rate (`llm_utils.py:98-113`) so the cap can only
 
 | Feature | Default model | Fallbacks | Used by |
 |---|---|---|---|
-| `TEXT_CHAT` | gemini-2.5-flash | Flash↔Pro capacity, then Groq | legacy single-pass chat |
-| `CHAT_WRITER` | gemini-2.5-flash | Flash↔Pro, then Groq | `_agentic_text_reply`, `_voice_reply`, `stream_voice_reply` |
-| `CHAT_ENHANCER` | gemini-2.5-flash | Flash↔Pro, then Groq | only for `response_length ∈ {long, extra_long}` |
-| `CHAT_VISION` | gemini-2.5-flash | **none** | image-in-chat (not disease scan) |
-| `SOIL_OCR` | gemini-2.5-flash | none | `/ai/soil-card-ocr` |
-| `CROP_DIAGNOSE` | gemini-2.5-flash | **none by design** | Stage 3 |
-| `CROP_TREATMENT` | gemini-2.5-flash (FastAPI `_DEFAULTS`) — **in production always overridden to `gemini-2.5-pro`** | none | Stage 4 |
-| `ALERT` | gemini-2.5-flash | Flash↔Pro | `/ai/alerts` |
-| `PEST` | gemini-2.5-flash | Flash↔Pro | *no caller in the tree* |
+| `TEXT_CHAT` | gemini-3.6-flash | Flash↔Flash-Lite capacity, then Groq | legacy single-pass chat |
+| `CHAT_WRITER` | gemini-3.6-flash | Flash↔Flash-Lite, then Groq | `_agentic_text_reply`, `_voice_reply`, `stream_voice_reply` |
+| `CHAT_ENHANCER` | gemini-3.6-flash | Flash↔Flash-Lite, then Groq | only for `response_length ∈ {long, extra_long}` |
+| `CHAT_VISION` | gemini-3.6-flash | **none** | image-in-chat (not disease scan) |
+| `SOIL_OCR` | gemini-3.6-flash | none | `/ai/soil-card-ocr` |
+| `CROP_DIAGNOSE` | gemini-3.6-flash | **none by design** | Stage 3 |
+| `CROP_TREATMENT` | gemini-3.6-flash (FastAPI `_DEFAULTS`; in production the `ai.model.treatment` App Setting decides, default also `gemini-3.6-flash`) | none | Stage 4 |
+| `ALERT` | gemini-3.6-flash | Flash↔Flash-Lite | `/ai/alerts` |
+| `PEST` | gemini-3.6-flash | Flash↔Flash-Lite | *no caller in the tree* |
 
-> **`CROP_TREATMENT` never actually runs on Flash.** Express resolves the `ai.model.treatment`
+> **`CROP_TREATMENT` runs whatever the admin setting says.** Express resolves the `ai.model.treatment`
 > App Setting on *every* scan and forwards it as `params.model_treatment`
 > (`backend/src/routes/ai.routes.js:1722` on the submit path and `:2160` on the legacy path — both
-> unconditional when the setting resolves). That setting's manifest default is `gemini-2.5-pro`
-> (`backend/src/services/settings.service.js:87`), and `getSetting` returns the manifest default when no
+> unconditional when the setting resolves). That setting's manifest default is `gemini-3.6-flash`
+> (`backend/src/services/settings.service.js`), and `getSetting` returns the manifest default when no
 > `AppSetting` row exists (`settings.service.js:304-319`), so the value is present even on a virgin
 > database. `get_feature_config` gives `model_override` the **highest** precedence
-> (`fastapi/agents/llm_dispatch.py:81-92`), so the `_DEFAULTS` entry above is dead in production.
-> Pro is roughly **4× Flash's output-token price**, which makes the treatment stage the single largest
-> per-scan cost lever on the platform — see *Spend Control* below, which does not otherwise mention it.
-> An operator who wants to cut scan cost changes `ai.model.treatment` in the admin settings page, not
-> anything in `fastapi/`.
+> (`fastapi/agents/llm_dispatch.py`), so the `_DEFAULTS` entry above is never what decides in production.
+> Until 2026-10-15 the manifest default was `gemini-2.5-pro`, roughly **4× Flash's output-token price**
+> at the time, which made treatment the single largest per-scan cost lever; it moved to Flash because
+> Gemini 2.5 closed to new API keys and Pro models have no free-tier quota. An operator who wants a
+> different treatment model changes `ai.model.treatment` in the admin settings page, not anything in
+> `fastapi/`.
 
-Fallback chain for `call_llm_text` with a **Gemini** primary (`llm_dispatch.py:394-432`):
-`Gemini primary → Gemini Flash↔Pro capacity swap (only for _AUTO_FALLBACK_FEATURES) → Groq
+Fallback chain for `call_llm_text` with a **Gemini** primary (`llm_dispatch.py`):
+`Gemini primary → Gemini Flash↔Flash-Lite capacity swap (gemini-3.6-flash ↔ gemini-3.5-flash-lite,
+only for _AUTO_FALLBACK_FEATURES) → Groq
 (only for TEXT_CHAT/CHAT_WRITER/CHAT_ENHANCER and only if GROQ_API_KEY set) → re-raise the original
 Gemini error`. A non-Gemini primary is called **direct with no fallback**.
 `call_llm_vision` has **no fallback for any provider**, and rejects Groq outright (`:515-519`).
@@ -7047,8 +7050,9 @@ shutdown.
 
 #### Gemini-specific behaviours worth knowing
 
-- **Thinking budget** (`llm_utils.py:140-166`): Flash gets `thinkingBudget: 0`; Pro gets
-  `max(128, min(512, max_tokens//4))` because Pro 400s on a budget of 0. Unbudgeted thinking used to
+- **Thinking budget** (`llm_utils.py`): Flash gets `thinkingBudget: 0`; Flash-Lite gets **no**
+  `thinkingConfig` at all (it rejects a budget of 0 with HTTP 400 and does not think by default); Pro
+  gets `max(128, min(512, max_tokens//4))` because Pro 400s on a budget of 0. Unbudgeted thinking used to
   eat `maxOutputTokens` and truncate JSON mid-response.
 - **Billing:** `_gemini_output_tokens` (`:128-138`) sums `candidatesTokenCount + thoughtsTokenCount`
   — thinking tokens bill at the output rate and were previously recorded as $0.
@@ -7062,12 +7066,17 @@ shutdown.
   real role-tagged turns and drop leading non-user turns (the scan follow-up conversation is seeded
   with a lone assistant message).
 
-#### Pricing table (`agents/llm_utils.py:47-63`, USD per 1K tokens)
+#### Pricing table (`agents/llm_utils.py`, USD per 1K tokens)
+
+Paid-tier rates, used only for the spend-cap estimates — the live key is free tier, so Gemini calls
+are actually free of charge.
 
 | Model | in | out |
 |---|---|---|
-| gemini-2.5-flash | 0.00030 | 0.00250 |
-| gemini-2.5-pro | 0.00125 | 0.01000 |
+| gemini-3.6-flash | 0.00075 | 0.00375 (through 2026-12-31; then 0.0015 / 0.0075) |
+| gemini-3.5-flash-lite | 0.00030 | 0.00250 |
+| gemini-2.5-flash (legacy, closed to new keys) | 0.00030 | 0.00250 |
+| gemini-2.5-pro (legacy, closed to new keys) | 0.00125 | 0.01000 |
 | openai/gpt-oss-120b | 0.00015 | 0.00060 |
 | llama-3.3-70b-versatile | 0.00059 | 0.00079 |
 | gpt-4o | 0.0025 | 0.01 |
@@ -7666,7 +7675,7 @@ It needs `DATABASE_URL` (queries `ai_scan_diagnoses` through `db_pool.get_shared
 
 **`run_book_dataset`** scores multi-truth labels (`"A | B"` alternates, `"Scab/Verucosis"` slashes)
 and writes the full AI response per image to `eval/reports/book_dataset/responses/<id>.json` plus a
-per-batch markdown table. The committed `scorecard.json` (2026-06-05, gemini-2.5-pro + v2 prompt +
+per-batch markdown table. The committed `scorecard.json` (2026-06-05, gemini-2.5-pro at the time + v2 prompt +
 whitelist) records **top-1 31.7% and top-3 48.8% over 82 images**, with 8 excluded as
 `service_unavailable` and 36 flagged `likely_not_crop_photo` (textbook plates, not field photos).
 Read those numbers as a dataset-quality signal as much as a model one.
@@ -7693,17 +7702,17 @@ Minor drift only:
 | "~90 centrally banned actives" (§9.4) | `BANNED_ACTIVES` has **52** entries; `REGISTERED_ACTIVES` has 31 |
 | quality gate "score < 0.4 → short-circuit" (§4) | only exactly true under `STRICT_IMAGE_GATE`; the shipped default also requires `not usable` **and** empty `enhancement_notes` (`orchestrator.py:236-241`) |
 | treatment cache keyed on "disease + crop + severity + tier + registry_version" (§9.3) | key also includes soil, irrigation, growth stage, **state**, bucketed acreage, **model id**, state-bans version and the grounding signature (`treatment_agent.py:161-207`) |
-| ensemble = "Gemini Pro + Flash" (§7) | plus `gpt-4o` when `OPENAI_API_KEY` is set |
+| ensemble = "Gemini 3.6 Flash + 3.5 Flash-Lite" (§7) | plus `gpt-4o` when `OPENAI_API_KEY` is set |
 
 `docs/ARCHITECTURE.md` (1282 lines) describes an **earlier, Anthropic-first architecture** and is
 wrong in ways that would mislead a change. Do not trust it without re-reading the code:
 
 | ARCHITECTURE.md | Reality |
 |---|---|
-| `:44,72,92,614,689,1252` ensemble = "Gemini Pro + **Claude Sonnet**"; external deps include "Anthropic APIs" | `STAGE_TIER_CHAINS["ensemble"]` = `gemini-2.5-pro, gemini-2.5-flash, gpt-4o`; no `claude-*` id appears in any chain or default |
+| `:44` external deps include "Claude Sonnet/Haiku" and "Anthropic APIs" (the ensemble lines `:72,92,614,689,1252` used to say "Gemini Pro + **Claude Sonnet**"; corrected 2026-10-15) | `STAGE_TIER_CHAINS["ensemble"]` = `gemini-3.6-flash, gemini-3.5-flash-lite, gpt-4o`; no `claude-*` id appears in any chain or default |
 | `:618` "GPT-4o is a documented TODO — needs an OpenAI provider wired into llm_utils/router" | `call_openai_vision` exists (`llm_utils.py:797`) and `router._call_one_vision` dispatches it (`router.py:143-150`) |
 | `:641` "Anthropic models get max_tokens=8192 … while Gemini uses 4096" | `_VISION_MAX_TOKENS = 8192` for **every** ensemble voter (`router.py:115`); the 4096 divergence was the bug that silently truncated voters |
-| `:1057` "text features default to `llama-3.3-70b-versatile` (Groq)" | every one of the nine features defaults to `gemini-2.5-flash` (`llm_dispatch.py:81-92`) |
+| `:1057` "text features default to `llama-3.3-70b-versatile` (Groq)" | every one of the nine features defaults to `gemini-3.6-flash` (`llm_dispatch.py` `_DEFAULTS`) |
 | `:1077-1092` provider selection via `base_url` escape hatch + `_PREFIX_TO_BASE_URL` (deepseek/grok/o1/o3) | `_detect_provider` accepts **only** `gemini-*`/`gpt-*`/`claude-*`/`llama-*`/`mixtral-*` and raises `ConfigError` otherwise; `base_url` is vestigial and always `None` |
 | `:1099` "any model missing from `_PRICING` silently costs $0.00" | inverted: selection now **raises** (`is_priced` guard) and `_calc_cost` bills at the most expensive known rate |
 | `:1102,1117` `get_anthropic()` singleton whose baked-in key ignores `AI_<F>_API_KEY` | no such singleton; `call_anthropic_*` construct `AsyncAnthropic(api_key=…)` per call from the resolved feature key |
@@ -11093,7 +11102,7 @@ was read in code, not inferred.
 | `PAYMENT_TAMPER_ALARM_ENABLED` | — | FRAUD-6 alarm on a blocked tamper | blocking is unaffected by this flag |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | SOFT | listing/product/animal photos | image upload disabled; startup warning |
 | `GEMINI_API_KEY` | PROD (HARD) | sole LLM provider for chat/planner/alerts/pest/scan | missing in production ⇒ `FATAL` throw (`env.js:511`) |
-| `GEMINI_MODEL` | — | default model id | default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | — | default model id | default `gemini-3.6-flash` |
 | `AI_TOKENS_PER_CREDIT`, `AI_FREE_MONTHLY_CREDITS`, `AI_MIN_CREDITS_PER_CALL` | — | credit pricing (no code change needed to reprice) | 1000 / 100 / 1 |
 | `OPENAI_API_KEY` | SOFT | optional | listed as optional in the template |
 | `OPENWEATHER_API_KEY` | SOFT | weather advisories | weather features degrade |
@@ -12084,7 +12093,7 @@ bug and this appendix is the fix list.
 | 8 | Part 1 lists the AI feature-flag set as "AI_FEATURE_FLAGS" without a count; Part 3.3 lists 7 AI kill switches. | **17 flags total**: 10 product + 7 AI (`ai_chat, ai_scan, ai_voice, ai_soil_ocr, ai_alerts, ai_planner, ai_schemes`). | **Body is correct as written** (At-a-glance says 17 = 10 + 7). | `backend/src/services/featureFlag.service.js:25-33` |
 | 9 | Express's default port is described as 3001 in the runbook and 3000 in the env table. | **`ENV.PORT` defaults to 3000**; `backend/.env.example` sets 3001 and the admin Vite proxy assumes 3001. Running without `PORT` set breaks the admin dev proxy. | **Body is correct as written.** Recorded because **the repo itself disagrees with itself** — `.env.example` and the Vite proxy both assume 3001 while the code defaults to 3000. | `backend/src/config/env.js:193` |
 | 10 | The `SETTINGS_MANIFEST` size was given as "76 keys across 13 categories". | **53 keys across 7 categories.** The 76/13 figure was a silent sum of `SETTINGS_MANIFEST` (53 keys, 7 categories — writable `AppSetting` rows) and `ENV_MANIFEST` (23 keys, 6 categories — read-only env-presence indicators that `setSetting` never accepts). They are different things and must not be added. | **Corrected in the body** — At-a-glance now carries two separate rows, and §3.4's writable-keys rule says 53. | `settings.service.js:62-193` (53 `key:` entries) and `:194-218` (23) |
-| 11 | The `CROP_TREATMENT` model was presented as `gemini-2.5-flash`. | **`gemini-2.5-pro` in production.** Flash is only the FastAPI `_DEFAULTS` value; Express forwards the `ai.model.treatment` App Setting (manifest default `gemini-2.5-pro`) as `params.model_treatment` on every scan, and `model_override` outranks the default. | **Corrected in the body** — the §4 model-routing row and the At-a-glance Gemini row both carry the override, with the ~4× cost consequence. | `settings.service.js:87`, `:304-319`; `ai.routes.js:1722`, `:2160`; `llm_dispatch.py:81-92`, `:89` |
+| 11 | The `CROP_TREATMENT` model was presented as `gemini-2.5-flash`. | **`gemini-2.5-pro` in production at the time.** Flash was only the FastAPI `_DEFAULTS` value; Express forwards the `ai.model.treatment` App Setting (manifest default then `gemini-2.5-pro`) as `params.model_treatment` on every scan, and `model_override` outranks the default. **Superseded 2026-10-15:** the manifest default and `_DEFAULTS` are both `gemini-3.6-flash` now (Gemini 2.5 closed to new API keys; Pro has no free-tier quota), so the ~4× treatment cost lever is gone. | **Corrected in the body** — the §4 model-routing row and the At-a-glance Gemini row both describe the override and the 2026-10-15 move to Flash. | `settings.service.js` (`ai.model.treatment`), `:304-319`; `ai.routes.js:1722`, `:2160`; `llm_dispatch.py` `_DEFAULTS` |
 
 ### A.2 Inconsistencies that live in the codebase
 
