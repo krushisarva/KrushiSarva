@@ -20,15 +20,17 @@ GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 
 # ── Groq (cross-provider chat fallback — optional) ────────────────────────────
 # KrushiSarva is Gemini-first, but the text-chat features fall back to Groq's free
-# Llama tier when the Gemini path (primary + Flash↔Pro capacity fallback) is
-# fully down — so the farmer still gets a reply instead of "Chat unavailable".
+# plan when the Gemini path (primary + Flash↔Pro capacity fallback) is fully
+# down — so the farmer still gets a reply instead of "Chat unavailable".
 # Groq has capacity separate from Google, so it survives a Gemini-side outage or
 # quota exhaustion. Leave GROQ_API_KEY blank to disable the fallback entirely
 # (chat then fails hard on a Gemini outage, as the Gemini-only design intended).
-# Wiring lives in agents/llm_dispatch.call_llm_text; text-only (Groq Llama can't
-# do vision, so the vision/diagnose paths never reach it).
+# Wiring lives in agents/llm_dispatch.call_llm_text; text-only (gpt-oss can't do
+# vision, so the vision/diagnose paths never reach it).
+# Default model: openai/gpt-oss-120b. Groq retired llama-3.3-70b-versatile for
+# free/developer plans on 2026-08-16 (console.groq.com/docs/deprecations).
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
-GROQ_FALLBACK_MODEL: str = os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL: str = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 
 # ── OpenAI (crop-diagnosis ensemble voter — optional) ─────────────────────────
 # OpenAI is NOT a primary provider. It joins the crop-disease diagnosis ENSEMBLE

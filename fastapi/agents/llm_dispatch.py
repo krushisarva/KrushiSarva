@@ -7,7 +7,8 @@ MULTI-PROVIDER: the model id's prefix selects the provider —
     gemini-*            → Google Gemini
     gpt-*               → OpenAI
     claude-*            → Anthropic
-    llama-* / mixtral-* → Groq
+    openai/gpt-oss-*    → Groq (open-weight models Groq hosts; NOT OpenAI's API)
+    llama-* / mixtral-* → Groq (retired for free/developer plans 2026-08-16)
 (see _detect_provider). The provider's own API key is resolved automatically
 (GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GROQ_API_KEY); when that
 key is unset, get_feature_config raises a clear ConfigError rather than calling
@@ -114,8 +115,11 @@ class ConfigError(RuntimeError):
 
 def _detect_provider(model: str, base_url: Optional[str] = None) -> str:
     """Route by model-id prefix (WI-11): gemini-* / gpt-* / claude-* /
-    llama-*|mixtral-*. An unknown prefix is a configuration error we surface
-    immediately rather than at call time."""
+    openai/gpt-oss-* | llama-* | mixtral-*. An unknown prefix is a configuration
+    error we surface immediately rather than at call time.
+
+    `openai/gpt-oss-*` is checked by its full prefix: those are open-weight models
+    served by Groq, while a bare `gpt-*` id is OpenAI's own API."""
     m = (model or "").lower().strip()
     if m.startswith("gemini-"):
         return "gemini"
@@ -123,11 +127,11 @@ def _detect_provider(model: str, base_url: Optional[str] = None) -> str:
         return "openai"
     if m.startswith("claude-"):
         return "anthropic"
-    if m.startswith("llama-") or m.startswith("mixtral-"):
+    if m.startswith("openai/gpt-oss-") or m.startswith("llama-") or m.startswith("mixtral-"):
         return "groq"
     raise ConfigError(
         f"Unsupported model {model!r}. Supported prefixes: "
-        f"gemini-* / gpt-* / claude-* / llama-* (or mixtral-*)."
+        f"gemini-* / gpt-* / claude-* / openai/gpt-oss-* / llama-* (or mixtral-*)."
     )
 
 
@@ -260,7 +264,8 @@ def _fallback_model(feature: str, primary: str) -> Optional[str]:
 # leaves the Gemini-only path — Groq has capacity separate from Google, so it
 # survives a Gemini-side outage / quota exhaustion that retrying Gemini cannot.
 # Off unless GROQ_API_KEY is set (no key → Gemini-only behaviour, unchanged).
-# Text-only — Groq Llama can't do vision, so call_llm_vision never uses it.
+# Text-only — the default Groq model (openai/gpt-oss-120b) can't do vision, so
+# call_llm_vision never uses it.
 # Override per feature: AI_<FEATURE>_GROQ_FALLBACK=false to disable, or
 # AI_<FEATURE>_GROQ_MODEL=<groq-model> to pick a different Groq model.
 _GROQ_FALLBACK_FEATURES = {"TEXT_CHAT", "CHAT_WRITER", "CHAT_ENHANCER"}
