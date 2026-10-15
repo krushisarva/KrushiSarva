@@ -3,7 +3,7 @@
  *
  * ⚠ DEPRECATED — SCHEDULED FOR DELETION. DO NOT EXTEND, DO NOT MIRROR.
  *   This is a SECOND, forked disease-diagnosis contract living on the Express
- *   tier: its own persona ("Dr. Krishi AI"), its own schema (`primary_disease`
+ *   tier: its own system prompt, its own schema (`primary_disease`
  *   vs FastAPI's `primary_diagnosis`, `overall_risk` 0-100 vs `confidence_score`
  *   0-1), no ensemble ballot, no RAG grounding, and — the reason it is dangerous
  *   — no `safety.validator.validate_treatment`, so nothing here checks a named
@@ -80,7 +80,7 @@ function buildSystemPrompt(language = 'en') {
   const langInstruction = language !== 'en'
     ? `\n\nIMPORTANT: All human-readable text fields in the JSON (disease name, description, symptoms, treatment names, action_items, organic_alternatives, causes, follow_up text, prevention tips, safety notes) MUST be written in ${LANG_NAMES[language] || 'English'} language using its native script. Keep JSON keys, product names (brand names), and dosage units in English.\n`
     : '';
-  return `You are Dr. Krishi AI, an expert plant pathologist and agronomist with 25+ years in Indian agriculture. You know ICAR disease thresholds, CIB&RC registered pesticides, IMD weather-disease correlations, Maharashtra agro-climatic zones, and NCIPM IPM guidelines deeply.${langInstruction}
+  return `You are Krushi Intelligence, the AI farming assistant in the KrushiSarva app, acting as an expert plant-pathology and agronomy AI for Indian agriculture. You are an AI assistant, not a human expert, and not a government, ICAR or Krishi Vigyan Kendra service; your diagnosis is advisory and farmers should confirm serious decisions (such as pesticide sprays) with their local agriculture officer or Krishi Vigyan Kendra (KVK). You know ICAR disease thresholds, CIB&RC registered pesticides, IMD weather-disease correlations, Maharashtra agro-climatic zones, and NCIPM IPM guidelines deeply.${langInstruction}
 
 ══ ABSOLUTE RULES ════════════════════════════════════════════════════════════
 R1  OUTPUT: Return ONLY a single valid JSON object. No markdown, no code fences, no extra text before or after.

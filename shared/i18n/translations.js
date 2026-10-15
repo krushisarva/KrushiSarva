@@ -331,7 +331,7 @@ export const translations = {
       erasedSeller:  'Saved addresses, cart, and seller bank/KYC details',
       keptHead:      'Kept, but no longer linked to you',
       keptOrders:    'Past orders and bookings (required for tax and the other party)',
-      keptListings:  'Community posts and listings, shown as “Deleted User”',
+      keptListings:  'Community posts and reviews, shown as “Deleted User”. Your listings are taken off the app.',
       reuseNote:     'Your phone number is freed, so you can sign up again later as a new account.',
       continue:      'Continue',
       verifyTitle:   'Confirm it’s you',
@@ -361,6 +361,10 @@ export const translations = {
       restartToUpdate: 'Restart to update',
       failed:          "Couldn't update. Check your internet.",
       retry:           'Try again',
+      // One-word labels for the small update pill on Profile.
+      updateShort:     'Update',
+      restartShort:    'Restart',
+      retryShort:      'Retry',
       versionLabel:    'App version',
       builtIn:         'built-in',
       check:           'Check for updates',
@@ -447,10 +451,10 @@ export const translations = {
     },
 
     // ── Payments — every purpose, not just the shop ────────────────────────
-    // Read by components/payments/usePaymentFlow.js, which drives shop orders,
-    // rent bookings and AI credit packs through one gateway. `checkout.*` below
-    // keeps the SHOP's own wording — it names the cart, My Orders and Cash on
-    // Delivery, none of which exist on a rent or credits screen.
+    // Read by components/payments/usePaymentFlow.js, which drives shop orders
+    // and rent bookings through one gateway (AI credit packs are no longer
+    // sold). `checkout.*` below keeps the SHOP's own wording — it names the
+    // cart, My Orders and Cash on Delivery, none of which exist on a rent screen.
     //
     // The rule every sentence here encodes: never tell a farmer "no money was
     // taken" unless the SERVER said so. An unconfirmed payment gets
@@ -481,9 +485,6 @@ export const translations = {
       refundInitiatedAmountMsg: '{{amount}} is being refunded — it reaches the account you paid from in 5–7 working days.',
       slotTaken: 'Those dates were just booked',
       slotTakenMsg: 'Someone booked this while you were paying. Your payment is being refunded — please pick another date.',
-      packGone: 'That pack is no longer available',
-      creditsAdded: 'Credits added',
-      creditsAddedMsg: '{{credits}} credits have been added. Your balance is now {{balance}}.',
       bookingConfirmed: 'Payment received',
       bookingConfirmedMsg: 'Your payment is received and your request has been sent to the owner. The booking is confirmed once the owner accepts. You can see it under My Bookings.',
       // Paid, but the thing being bought could not be completed AND no refund
@@ -495,10 +496,6 @@ export const translations = {
       expiredMsg: 'No money was taken. Please try again.',
       cancelled: 'Payment cancelled',
       cancelledMsg: 'No money was taken. You can try again whenever you are ready.',
-      // The webhook beat the confirm call to it. This is a SUCCESS — show the
-      // balance, not an apology.
-      alreadyCredited: 'Already added',
-      alreadyCreditedMsg: 'These credits are already on your balance. You have not been charged twice.',
       checkStatus: 'Check status',
       payAmount: 'Pay {{amount}}',
       retry: 'Try again',
@@ -1297,7 +1294,7 @@ export const translations = {
       termsLabel: 'Terms, Policies and Licenses',
       browseFAQs: 'Browse FAQs',
       faqsSub: 'Find answers to common questions',
-      versionText: 'KrushiSarva v1.0.0 · Made with love for Indian Farmers',
+      versionText: 'KrushiSarva v{{version}} · Made with love for Indian Farmers',
       animals: 'Animals',
       orders: 'Orders',
       rentals: 'Rentals',
@@ -1487,9 +1484,6 @@ export const translations = {
         advisory: 'Advisory',
         schemes:  'Schemes',
       },
-      aiCreditsTitle: 'AI Credits',
-      aiCreditsSub: '{{tier}} plan · {{spent}} used today',
-      remaining: 'remaining',
       storm: 'Storm',
       rain: 'Rain',
     },
@@ -1521,7 +1515,7 @@ export const translations = {
       buyProducts: 'Buy Recommended Products',
       pricesToday: '{{crop}} Prices Today',
       farmMind: 'Krushi Intelligence', talkToFarmMind: 'Talk to Krushi Intelligence',
-      textMode: 'Text', credits: 'credits',
+      textMode: 'Text',
       voiceAssistant: 'Voice Assistant', tapToRetry: 'Tap to retry',
       voiceTag: 'voice', recentHistory: 'Recent History',
       noConversations: 'No conversations yet',
@@ -1536,7 +1530,6 @@ export const translations = {
       // read as the assistant speaking. Mirrors cropScan.err.* in shape.
       err: {
         busy: 'Too many requests — please wait 30 seconds and try again.',
-        credits: 'You’ve used all your AI credits for this month. They refill on the 1st — check your balance in the AI home screen.',
         serviceDown: 'The AI service is temporarily down. Please try again in a moment.',
         tooLarge: 'That was too large. Please try a shorter message or smaller photo.',
         auth: 'Session expired. Please log in again.',
@@ -1559,7 +1552,6 @@ export const translations = {
       micStartFailed: 'Could not start microphone.',
       err: {
         busy: 'Too many requests — please wait 30 seconds and try again.',
-        credits: 'You’ve used all your AI credits for this month. They refill on the 1st.',
         serviceDown: 'The voice service is temporarily down. Please try again in a moment.',
         tooLong: 'That recording was too long. Please keep it shorter.',
         auth: 'Session expired. Please log in again.',
@@ -1748,16 +1740,13 @@ export const translations = {
       area_2550: '25–50%',  area_2550_desc: 'Half crop',
       area_over50: '>50%',  area_over50_desc: 'Most crop',
       retakePhoto: 'Retake photo',
-      viewCredits: 'View credits',
       // NON-RESULT envelopes. FastAPI can return "your photos were unusable" or
       // "the vision provider was down" instead of a diagnosis; neither is
       // charged. The rest of cropScan.err.* lives in lang/_backfill.js as flat
       // dotted keys — these are nested, which t() resolves identically.
       err: {
-        creditsTitle: 'Your AI credit limit is exhausted',
-        creditsMsg: "You've used all your AI credits for this month. They refill on the 1st. Check your balance on the AI home screen.",
         rescanTitle: 'We need a clearer photo',
-        rescanMsg: 'The photo was too blurry, dark or far away to read. Take another one in daylight, close to the affected leaf. You were not charged for this.',
+        rescanMsg: 'The photo was too blurry, dark or far away to read. Take another one in daylight, close to the affected leaf.',
         unavailableTitle: 'Diagnosis service is busy',
         unavailableMsg: 'Your photo was not analysed, so nothing was charged. Please try the scan again in a few minutes.',
       },
@@ -1838,7 +1827,6 @@ export const translations = {
       aiAgent: 'AI Agent',
       aiEnhanced: 'AI Enhanced',
       rulebased: 'Rule-based',
-      credits: 'credits',
       pestRisks: 'Pest Risks',
       detected: 'detected',
       yourFieldIsSafe: 'Your Field is Safe!',
@@ -1966,7 +1954,6 @@ export const translations = {
       },
       err: {
         rate: 'Too many requests — please wait a moment and try again.',
-        credits: 'You have used all your AI credits this month. They refill on the 1st.',
         large: 'That photo was too large. Please try a smaller or clearer photo.',
         timeout: 'Reading the card took too long. Please try again or enter values manually.',
         down: 'The service is busy right now. Please try again in a moment.',
@@ -2050,18 +2037,9 @@ export const translations = {
       districtOptional: 'District (optional)',
     },
 
-    // ── AI Credits Screen ─────────────────────────────────────────────────────
-    aiCredits: {
-      title: 'AI Credits', plan: 'plan', availableCredits: 'Available Credits',
-      used: 'used', total: 'total', today: 'Today', monthly: 'Monthly', lifetime: 'Lifetime',
-      creditCosts: 'Credit Costs', free: 'FREE', buyCredits: 'Buy Credits',
-      credits: 'credits', recentActivity: 'Recent Activity', noActivity: 'No activity yet',
-      loadError: "Couldn't load your latest balance. Pull down to refresh.",
-      balanceLeft: 'Balance left',
-      usedThisMonth: 'Used this month',
-      monthlyBudget: 'Monthly budget',
-      pickPack: 'Choose a pack. Credits never expire.',
-      buySoon: 'Purchasing will be available soon.',
+    // ── AI fair-use limit (monthly, hidden; credits are no longer shown) ──────
+    aiLimit: {
+      reached: "You've reached this month's free AI limit. It resets on the 1st of next month.",
     },
 
     // ── Past Report Screen (Krushi Kendra share block) ────────────────────────
@@ -2335,6 +2313,85 @@ export const translations = {
       loadFailed: 'Could not load your reviews.',
       emptyTitle: 'No ratings yet',
       emptyBody: 'A buyer can rate you once you mark their order delivered. Their ratings will appear here.',
+    },
+
+    // Report / Block — components/ReportSheet.js and the chat safety menu
+    // (AI answers and results, reviews, rent listings, chat users). Not the
+    // soil report under soilHub.report.
+    report: {
+      action: 'Report',
+      block: 'Block',
+      blockConfirmBody: 'You will not be able to message each other, and you will not see their animal listings.',
+      blockConfirmTitle: 'Block this user?',
+      blockFailed: 'Could not block this user',
+      blockUser: 'Block user',
+      blockedBody: 'You can no longer message each other, and you will not see their animal listings.',
+      blockedTitle: 'User blocked',
+      close: 'Close',
+      detailsLabel: 'More details (optional)',
+      detailsPlaceholder: 'What happened?',
+      failed: 'Could not send your report. Check your connection and try again.',
+      moreOptions: 'More options',
+      moreOptionsHint: 'Report or block this user',
+      notAllowed: 'This cannot be reported.',
+      notFound: 'This is no longer available, so it cannot be reported.',
+      reasonHarassment: 'Harassment or bullying',
+      reasonHarmful: 'Harmful or dangerous',
+      reasonOffensive: 'Offensive or hateful',
+      reasonOther: 'Something else',
+      reasonSpam: 'Spam or fraud',
+      reasonWrong: 'Wrong or misleading information',
+      reportUser: 'Report user',
+      send: 'Send report',
+      subtitle: 'Tell us what is wrong. Our team reviews every report.',
+      subtitleAi: 'This was written by AI and can be wrong. Tell us what is wrong so our team can check it.',
+      thanksBody: 'Your report has been sent. Our team will review it.',
+      thanksTitle: 'Thank you',
+      title: 'Report',
+      titleAnswer: 'Report this answer',
+      titleListing: 'Report listing',
+      titleMessage: 'Report message',
+      titleResult: 'Report this result',
+      titleReview: 'Report review',
+      titleCropReport: 'Report this crop report',
+      titleUser: 'Report user',
+      tooMany: 'You have sent many reports in a short time. Please try again later.',
+      tryAgain: 'Please try again.',
+    },
+
+    // Blocked users — the blocked list (BlockedUsersScreen), the blocked-chat
+    // banner and unsent messages in ChatScreen, and the chat list labels.
+    block: {
+      blockedLabel: 'Blocked',
+      blockedOn: 'Blocked on {{date}}',
+      blockedUsers: 'Blocked users',
+      manageSub: 'See and unblock people you blocked',
+      loadMoreFailed: 'Could not load more. Tap to retry.',
+      cannotReply: "You can't reply to this conversation.",
+      emptyTitle: "You haven't blocked anyone.",
+      listHint: "Blocked people can't message you, and you won't see their animal listings.",
+      loadFailed: 'Could not load blocked users.',
+      moreOptionsHintBlocked: 'Report or unblock this user',
+      notSent: 'Not sent',
+      notSentA11y: 'Not sent.',
+      unblock: 'Unblock',
+      unblockConfirmTitle: 'Unblock this user?',
+      unblockConfirmTitleName: 'Unblock {{name}}?',
+      unblockConfirmBody: 'They will be able to message you again, and you will see their animal listings.',
+      unblockFailed: 'Could not unblock this user',
+      unblockName: 'Unblock {{name}}',
+      unblockUser: 'Unblock user',
+      unknownUser: 'KrushiSarva user',
+      youBlocked: 'You blocked this user.',
+    },
+
+    // Not-a-government notices — SchemeScreen (notice + official-portal
+    // button) and MarketScreen (mandi price source). Play requires them.
+    govNotice: {
+      schemes: 'KrushiSarva is not affiliated with any government body. Scheme details here are short summaries and may be out of date; always confirm on the official government portal before applying.',
+      mandiSource: 'Prices from data.gov.in (Agmarknet). KrushiSarva is not a government app and is not affiliated with any government body.',
+      officialWebsite: 'Official website',
+      openFailed: 'Open {{url}} in your phone browser.',
     },
 
     products: {
@@ -2966,7 +3023,7 @@ export const translations = {
 
     // Navigation
     nav: {
-      farm: 'खेत', editFarm: 'खेत स���पादित करें', addFarm: 'खेत जोड़ें',
+      farm: 'खेत', editFarm: 'खेत संपादित करें', addFarm: 'खेत जोड़ें',
       newCropCycle: 'नया फसल चक्र', cropCycle: 'फसल चक्र',
       cropDetails: 'फसल विवरण', chat: 'चैट', listProduct: 'उत्पाद लिस्ट करें',
     },
@@ -2998,7 +3055,7 @@ export const translations = {
       setActive: 'AI के लिए सक्रिय खेत बनाएं', aiInsights: 'AI विश्लेषण',
       activeCrops: 'सक्रिय फसलें', startCropCycle: 'फसल चक्र शुरू करें',
       soilHealth: 'मिट्टी का स्वास्थ्य', noSoilReport: 'अभी कोई मिट्टी रिपोर्ट नहीं',
-      aiPredictions: 'AI भविष्यवाणी', askFarmMind: 'Krushi Intelligence से पूछें', chatAboutFarm: 'इस खेत के बारे में चैट कर���ं',
+      aiPredictions: 'AI भविष्यवाणी', askFarmMind: 'Krushi Intelligence से पूछें', chatAboutFarm: 'इस खेत के बारे में चैट करें',
       bestCrop: 'सर्वश्रेष्ठ फसल', top5Soil: 'आपकी मिट्टी के लिए शीर्ष 5',
       seedQty: 'बीज मात्रा', exactKg: 'सटीक किलो',
       income: 'आय', forecastRevenue: 'अनुमानित आय',
@@ -3153,7 +3210,7 @@ export const translations = {
       erasedSeller:  'सहेजे गए पते, कार्ट, और विक्रेता बैंक/KYC विवरण',
       keptHead:      'रखा जाएगा, पर आपसे नहीं जुड़ा रहेगा',
       keptOrders:    'पुराने ऑर्डर और बुकिंग (कर और दूसरे पक्ष के लिए ज़रूरी)',
-      keptListings:  'समुदाय पोस्ट और लिस्टिंग, “Deleted User” के रूप में दिखेंगी',
+      keptListings:  'समुदाय पोस्ट और समीक्षाएं, “Deleted User” के रूप में दिखेंगी। आपकी लिस्टिंग ऐप से हटा दी जाएंगी।',
       reuseNote:     'आपका फ़ोन नंबर मुक्त हो जाएगा, इसलिए आप बाद में नए खाते से फिर साइन अप कर सकते हैं।',
       continue:      'आगे बढ़ें',
       verifyTitle:   'पुष्टि करें कि यह आप हैं',
@@ -3183,6 +3240,9 @@ export const translations = {
       restartToUpdate: 'रीस्टार्ट करके अपडेट करें',
       failed:          'अपडेट नहीं हो सका। अपना इंटरनेट जांचें।',
       retry:           'फिर कोशिश करें',
+      updateShort:     'अपडेट',
+      restartShort:    'रीस्टार्ट',
+      retryShort:      'दोबारा',
       versionLabel:    'ऐप वर्ज़न',
       builtIn:         'मूल',
       check:           'अपडेट जांचें',
@@ -3260,7 +3320,7 @@ export const translations = {
       itemCountPlural: '{{count}} आइटम',
     },
 
-    // Payments — every purpose (shop, rent, AI credits). See the `en` block.
+    // Payments — every purpose (shop, rent). See the `en` block.
     payments: {
       opening: 'सुरक्षित भुगतान खोला जा रहा है…',
       verifying: 'आपके भुगतान की पुष्टि हो रही है',
@@ -3282,9 +3342,6 @@ export const translations = {
       refundInitiatedAmountMsg: '{{amount}} वापस किया जा रहा है — जिस खाते से भुगतान किया था उसमें 5–7 कार्य दिवसों में पहुंच जाएगा।',
       slotTaken: 'ये तारीखें अभी बुक हो गईं',
       slotTakenMsg: 'आपके भुगतान के दौरान किसी और ने बुक कर लिया। आपका भुगतान वापस किया जा रहा है — कृपया दूसरी तारीख चुनें।',
-      packGone: 'यह पैक अब उपलब्ध नहीं है',
-      creditsAdded: 'क्रेडिट जुड़ गए',
-      creditsAddedMsg: '{{credits}} क्रेडिट जोड़ दिए गए हैं। आपका बैलेंस अब {{balance}} है।',
       bookingConfirmed: 'भुगतान मिल गया',
       bookingConfirmedMsg: 'आपका भुगतान मिल गया है और आपका अनुरोध मालिक को भेज दिया गया है। मालिक के स्वीकार करने पर ही बुकिंग पक्की होगी। आप इसे मेरी बुकिंग में देख सकते हैं।',
       takenTitle: 'भुगतान मिल गया',
@@ -3293,8 +3350,6 @@ export const translations = {
       expiredMsg: 'कोई पैसा नहीं कटा। कृपया दोबारा कोशिश करें।',
       cancelled: 'भुगतान रद्द',
       cancelledMsg: 'कोई पैसा नहीं कटा। आप जब चाहें दोबारा कोशिश कर सकते हैं।',
-      alreadyCredited: 'पहले ही जुड़ चुके हैं',
-      alreadyCreditedMsg: 'ये क्रेडिट आपके बैलेंस में पहले से जुड़े हैं। आपसे दो बार पैसे नहीं लिए गए।',
       checkStatus: 'स्थिति देखें',
       payAmount: '{{amount}} भुगतान करें',
       retry: 'दोबारा कोशिश करें',
@@ -4058,7 +4113,7 @@ export const translations = {
       termsLabel: 'नियम, नीतियां और लाइसेंस',
       browseFAQs: 'FAQs देखें',
       faqsSub: 'सामान्य प्रश्नों के उत्तर पाएं',
-      versionText: 'KrushiSarva v1.0.0 · भारतीय किसानों के लिए',
+      versionText: 'KrushiSarva v{{version}} · भारतीय किसानों के लिए',
       animals: 'पशु',
       orders: 'ऑर्डर',
       rentals: 'किराया',
@@ -4228,9 +4283,6 @@ export const translations = {
         farms:       { label: 'मेरे खेत', desc: 'खेत, फसल चक्र और AI भविष्यवाणी प्रबंधित करें' },
       },
       pills: { weather: 'मौसम', advisory: 'फसल सलाह', schemes: 'योजनाएं' },
-      aiCreditsTitle: 'AI क्रेडिट',
-      aiCreditsSub: '{{tier}} प्लान · आज {{spent}} उपयोग',
-      remaining: 'शेष',
       storm: 'तूफान',
       rain: 'बारिश',
     },
@@ -4259,10 +4311,10 @@ export const translations = {
       treatmentPlan: 'उपचार योजना', buyProducts: 'अनुशंसित उत्पाद खरीदें',
       pricesToday: '{{crop}} के आज के भाव',
       farmMind: 'Krushi Intelligence', talkToFarmMind: 'Krushi Intelligence से बात करें',
-      textMode: 'टेक्स्ट मोड', credits: 'क्रेडिट',
+      textMode: 'टेक्स्ट मोड',
       voiceAssistant: 'आवाज सहायक', tapToRetry: 'पुनः प्रयास के लिए टैप करें',
       voiceTag: 'आवाज', recentHistory: 'हाल का इतिहास',
-      noConversations: 'कोई बातचीत नहीं', addFarmHint: 'बेहतर सला�� के लिए अपना खेत जोड़ें',
+      noConversations: 'कोई बातचीत नहीं', addFarmHint: 'बेहतर सलाह के लिए अपना खेत जोड़ें',
     },
     market: {
       title: 'मंडी भाव', live: 'लाइव', fetchingPrices: 'लाइव भाव प्राप्त हो रहे हैं...',
@@ -4463,7 +4515,6 @@ export const translations = {
       aiAgent: 'AI एजेंट',
       aiEnhanced: 'AI संवर्धित',
       rulebased: 'नियम-आधारित',
-      credits: 'क्रेडिट',
       pestRisks: 'कीट जोखिम',
       detected: 'पाया गया',
       yourFieldIsSafe: 'आपका खेत सुरक्षित है!',
@@ -4588,7 +4639,6 @@ export const translations = {
       },
       err: {
         rate: 'बहुत अधिक अनुरोध — कृपया थोड़ी देर रुककर फिर कोशिश करें।',
-        credits: 'इस महीने के आपके सभी AI क्रेडिट खत्म हो गए। ये 1 तारीख को फिर भरते हैं।',
         large: 'वह फोटो बहुत बड़ी थी। कृपया छोटी या साफ़ फोटो आज़माएँ।',
         timeout: 'कार्ड पढ़ने में बहुत समय लगा। फिर कोशिश करें या मान खुद दर्ज करें।',
         down: 'सेवा अभी व्यस्त है। कृपया थोड़ी देर बाद कोशिश करें।',
@@ -4653,18 +4703,9 @@ export const translations = {
       districtOptional: 'जिला (वैकल्पिक)',
     },
 
-    // ── AI क्रेडिट स्क्रीन ──────────────────────────────────────────────────
-    aiCredits: {
-      title: 'AI क्रेडिट', plan: 'प्लान', availableCredits: 'उपलब्ध क्रेडिट',
-      used: 'उपयोग', total: 'कुल', today: 'आज', monthly: 'मासिक', lifetime: 'लाइफटाइम',
-      creditCosts: 'क्रेडिट लागत', free: 'मुफ़्त', buyCredits: 'क्रेडिट खरीदें',
-      credits: 'क्रेडिट', recentActivity: 'हाल की गतिविधि', noActivity: 'अभी कोई गतिविधि नहीं',
-      loadError: 'आपका ताज़ा बैलेंस लोड नहीं हो सका। रिफ्रेश करने के लिए नीचे खींचें।',
-      balanceLeft: 'शेष क्रेडिट',
-      usedThisMonth: 'इस महीने उपयोग',
-      monthlyBudget: 'मासिक बजट',
-      pickPack: 'एक पैक चुनें। क्रेडिट कभी समाप्त नहीं होते।',
-      buySoon: 'खरीदारी जल्द उपलब्ध होगी।',
+    // ── AI मासिक सीमा ───────────────────────────────────────────────────────
+    aiLimit: {
+      reached: 'आपकी इस महीने की मुफ़्त AI सीमा पूरी हो गई है। यह अगले महीने की 1 तारीख को फिर से शुरू होगी।',
     },
 
     planner: {
@@ -4892,6 +4933,81 @@ export const translations = {
       loadFailed: 'आपकी समीक्षाएं लोड नहीं हो सकीं।',
       emptyTitle: 'अभी कोई रेटिंग नहीं',
       emptyBody: 'जब आप ऑर्डर को डिलीवर हुआ दर्ज करते हैं, तब खरीदार आपको रेटिंग दे सकता है। उनकी रेटिंग यहां दिखेंगी।',
+    },
+
+    // Report / Block — see the English block for where these are used.
+    report: {
+      action: 'शिकायत करें',
+      block: 'ब्लॉक करें',
+      blockConfirmBody: 'आप एक-दूसरे को संदेश नहीं भेज सकेंगे, और आपको इनके जानवरों के विज्ञापन नहीं दिखेंगे।',
+      blockConfirmTitle: 'इस व्यक्ति को ब्लॉक करें?',
+      blockFailed: 'इस व्यक्ति को ब्लॉक नहीं किया जा सका',
+      blockUser: 'व्यक्ति को ब्लॉक करें',
+      blockedBody: 'अब आप एक-दूसरे को संदेश नहीं भेज सकते, और आपको इनके जानवरों के विज्ञापन नहीं दिखेंगे।',
+      blockedTitle: 'व्यक्ति को ब्लॉक कर दिया गया',
+      close: 'बंद करें',
+      detailsLabel: 'और जानकारी (वैकल्पिक)',
+      detailsPlaceholder: 'क्या हुआ?',
+      failed: 'आपकी शिकायत नहीं भेजी जा सकी। इंटरनेट जांचें और फिर कोशिश करें।',
+      moreOptions: 'और विकल्प',
+      moreOptionsHint: 'इस व्यक्ति की शिकायत करें या उसे ब्लॉक करें',
+      notAllowed: 'इसकी शिकायत नहीं की जा सकती।',
+      notFound: 'यह अब उपलब्ध नहीं है, इसलिए इसकी शिकायत नहीं की जा सकती।',
+      reasonHarassment: 'परेशान करना या धमकाना',
+      reasonHarmful: 'नुकसानदायक या खतरनाक',
+      reasonOffensive: 'अपमानजनक या नफ़रत भरा',
+      reasonOther: 'कुछ और',
+      reasonSpam: 'स्पैम या धोखाधड़ी',
+      reasonWrong: 'गलत या भ्रामक जानकारी',
+      reportUser: 'व्यक्ति की शिकायत करें',
+      send: 'शिकायत भेजें',
+      subtitle: 'बताएं कि क्या गलत है। हमारी टीम हर शिकायत की जांच करती है।',
+      subtitleAi: 'यह AI ने लिखा है और गलत हो सकता है। बताएं कि क्या गलत है, ताकि हमारी टीम इसकी जांच कर सके।',
+      thanksBody: 'आपकी शिकायत भेज दी गई है। हमारी टीम इसकी जांच करेगी।',
+      thanksTitle: 'धन्यवाद',
+      title: 'शिकायत करें',
+      titleAnswer: 'इस जवाब की शिकायत करें',
+      titleListing: 'लिस्टिंग की शिकायत करें',
+      titleMessage: 'संदेश की शिकायत करें',
+      titleResult: 'इस नतीजे की शिकायत करें',
+      titleReview: 'समीक्षा की शिकायत करें',
+      titleCropReport: 'इस फसल रिपोर्ट की शिकायत करें',
+      titleUser: 'व्यक्ति की शिकायत करें',
+      tooMany: 'आपने कम समय में बहुत सारी शिकायतें भेजी हैं। कृपया थोड़ी देर बाद फिर कोशिश करें।',
+      tryAgain: 'कृपया फिर कोशिश करें।',
+    },
+
+    // Blocked users — see the English block for where these are used.
+    block: {
+      blockedLabel: 'ब्लॉक किया गया',
+      blockedOn: '{{date}} को ब्लॉक किया',
+      blockedUsers: 'ब्लॉक किए गए लोग',
+      manageSub: 'जिन्हें आपने ब्लॉक किया है, उन्हें देखें और अनब्लॉक करें',
+      loadMoreFailed: 'और नहीं दिखा पाए। दोबारा कोशिश के लिए टैप करें।',
+      cannotReply: 'आप इस बातचीत में जवाब नहीं दे सकते।',
+      emptyTitle: 'आपने किसी को ब्लॉक नहीं किया है।',
+      listHint: 'ब्लॉक किए गए लोग आपको संदेश नहीं भेज सकते, और आपको उनके जानवरों के विज्ञापन नहीं दिखेंगे।',
+      loadFailed: 'ब्लॉक किए गए लोगों की सूची नहीं खुल सकी।',
+      moreOptionsHintBlocked: 'इस व्यक्ति की शिकायत करें या उसे अनब्लॉक करें',
+      notSent: 'नहीं भेजा गया',
+      notSentA11y: 'नहीं भेजा गया।',
+      unblock: 'अनब्लॉक करें',
+      unblockConfirmTitle: 'इस व्यक्ति को अनब्लॉक करें?',
+      unblockConfirmTitleName: '{{name}} को अनब्लॉक करें?',
+      unblockConfirmBody: 'वे आपको फिर से संदेश भेज सकेंगे, और आपको उनके जानवरों के विज्ञापन दिखेंगे।',
+      unblockFailed: 'इस व्यक्ति को अनब्लॉक नहीं किया जा सका',
+      unblockName: '{{name}} को अनब्लॉक करें',
+      unblockUser: 'व्यक्ति को अनब्लॉक करें',
+      unknownUser: 'KrushiSarva उपयोगकर्ता',
+      youBlocked: 'आपने इस व्यक्ति को ब्लॉक किया है।',
+    },
+
+    // Not-a-government notices — see the English block for where these are used.
+    govNotice: {
+      schemes: 'KrushiSarva किसी भी सरकारी संस्था से जुड़ा नहीं है। यहां योजनाओं की जानकारी संक्षेप में दी गई है और पुरानी हो सकती है। आवेदन करने से पहले हमेशा आधिकारिक सरकारी पोर्टल पर जानकारी पक्की कर लें।',
+      mandiSource: 'भाव data.gov.in (Agmarknet) से लिए गए हैं। KrushiSarva सरकारी ऐप नहीं है और किसी भी सरकारी संस्था से जुड़ा नहीं है।',
+      officialWebsite: 'आधिकारिक वेबसाइट',
+      openFailed: '{{url}} को अपने फ़ोन के ब्राउज़र में खोलें।',
     },
 
     products: {
@@ -5692,7 +5808,7 @@ export const translations = {
       erasedSeller:  'जतन केलेले पत्ते, कार्ट, आणि विक्रेता बँक/KYC तपशील',
       keptHead:      'ठेवले जाईल, पण तुमच्याशी जोडलेले राहणार नाही',
       keptOrders:    'जुने ऑर्डर आणि बुकिंग (कर व दुसऱ्या पक्षासाठी आवश्यक)',
-      keptListings:  'समुदाय पोस्ट आणि जाहिराती, “Deleted User” म्हणून दिसतील',
+      keptListings:  'समुदाय पोस्ट आणि अभिप्राय, “Deleted User” म्हणून दिसतील. तुमच्या जाहिराती ॲपवरून काढल्या जातील.',
       reuseNote:     'तुमचा फोन नंबर मोकळा होईल, त्यामुळे नंतर नवीन खाते म्हणून पुन्हा नोंदणी करू शकता.',
       continue:      'पुढे जा',
       verifyTitle:   'हे तुम्हीच आहात याची खात्री करा',
@@ -5722,6 +5838,9 @@ export const translations = {
       restartToUpdate: 'रीस्टार्ट करून अपडेट करा',
       failed:          'अपडेट झाले नाही. तुमचे इंटरनेट तपासा.',
       retry:           'पुन्हा प्रयत्न करा',
+      updateShort:     'अपडेट',
+      restartShort:    'रीस्टार्ट',
+      retryShort:      'पुन्हा',
       versionLabel:    'ॲप आवृत्ती',
       builtIn:         'मूळ',
       check:           'अपडेट तपासा',
@@ -5799,7 +5918,7 @@ export const translations = {
       itemCountPlural: '{{count}} आयटम',
     },
 
-    // Payments — every purpose (shop, rent, AI credits). See the `en` block.
+    // Payments — every purpose (shop, rent). See the `en` block.
     payments: {
       opening: 'सुरक्षित पेमेंट उघडत आहे…',
       verifying: 'तुमच्या पेमेंटची खात्री करत आहोत',
@@ -5821,9 +5940,6 @@ export const translations = {
       refundInitiatedAmountMsg: '{{amount}} परत केले जात आहेत — ज्या खात्यातून पेमेंट केले त्यात 5–7 कामाच्या दिवसांत पोहोचतील.',
       slotTaken: 'या तारखा आत्ताच बुक झाल्या',
       slotTakenMsg: 'तुम्ही पैसे भरत असताना दुसऱ्याने बुक केले. तुमचे पैसे परत केले जात आहेत — कृपया दुसरी तारीख निवडा.',
-      packGone: 'हे पॅक आता उपलब्ध नाही',
-      creditsAdded: 'क्रेडिट जोडले',
-      creditsAddedMsg: '{{credits}} क्रेडिट जोडले गेले आहेत. तुमचा बॅलन्स आता {{balance}} आहे.',
       bookingConfirmed: 'पेमेंट मिळाले',
       bookingConfirmedMsg: 'तुमचे पेमेंट मिळाले आहे आणि तुमची विनंती मालकाला पाठवली आहे. मालकाने स्वीकारल्यावरच बुकिंग निश्चित होईल. तुम्ही ती माझ्या बुकिंगमध्ये पाहू शकता.',
       takenTitle: 'पेमेंट मिळाले',
@@ -5832,8 +5948,6 @@ export const translations = {
       expiredMsg: 'कोणतेही पैसे कापले गेले नाहीत. कृपया पुन्हा प्रयत्न करा.',
       cancelled: 'पेमेंट रद्द',
       cancelledMsg: 'कोणतेही पैसे कापले गेले नाहीत. तुम्ही कधीही पुन्हा प्रयत्न करू शकता.',
-      alreadyCredited: 'आधीच जोडले आहेत',
-      alreadyCreditedMsg: 'हे क्रेडिट तुमच्या बॅलन्समध्ये आधीच जोडले आहेत. तुमच्याकडून दोनदा पैसे घेतले गेले नाहीत.',
       checkStatus: 'स्थिती पहा',
       payAmount: '{{amount}} भरा',
       retry: 'पुन्हा प्रयत्न करा',
@@ -6597,7 +6711,7 @@ export const translations = {
       termsLabel: 'अटी, धोरणे आणि परवाने',
       browseFAQs: 'FAQs पाहा',
       faqsSub: 'सामान्य प्रश्नांची उत्तरे शोधा',
-      versionText: 'KrushiSarva v1.0.0 · भारतीय शेतकऱ्यांसाठी प्रेमाने',
+      versionText: 'KrushiSarva v{{version}} · भारतीय शेतकऱ्यांसाठी प्रेमाने',
       animals: 'जनावरे',
       orders: 'ऑर्डर',
       rentals: 'भाडे',
@@ -6783,9 +6897,6 @@ export const translations = {
         advisory: 'पीक सल्ला',
         schemes:  'योजना',
       },
-      aiCreditsTitle: 'AI क्रेडिट',
-      aiCreditsSub: '{{tier}} प्लान · आज {{spent}} वापर',
-      remaining: 'शिल्लक',
       storm: 'वादळ',
       rain: 'पाऊस',
     },
@@ -6819,7 +6930,7 @@ export const translations = {
       buyProducts: 'शिफारस केलेली उत्पादने खरेदी करा',
       pricesToday: '{{crop}} चे आजचे भाव',
       farmMind: 'Krushi Intelligence', talkToFarmMind: 'Krushi Intelligence शी बोला',
-      textMode: 'मजकूर मोड', credits: 'क्रेडिट',
+      textMode: 'मजकूर मोड',
       voiceAssistant: 'आवाज सहाय्यक', tapToRetry: 'पुन्हा प्रयत्नासाठी टॅप करा',
       voiceTag: 'आवाज', recentHistory: 'अलीकडील इतिहास',
       noConversations: 'कोणतीही संभाषणे नाहीत', addFarmHint: 'चांगल्या सल्ल्यासाठी तुमचे शेत जोडा',
@@ -7053,7 +7164,6 @@ export const translations = {
       aiAgent: 'AI एजंट',
       aiEnhanced: 'AI संवर्धित',
       rulebased: 'नियम-आधारित',
-      credits: 'क्रेडिट',
       pestRisks: 'कीड जोखीम',
       detected: 'आढळले',
       yourFieldIsSafe: 'तुमचे शेत सुरक्षित आहे!',
@@ -7178,7 +7288,6 @@ export const translations = {
       },
       err: {
         rate: 'खूप विनंत्या — कृपया थोडा वेळ थांबून पुन्हा प्रयत्न करा.',
-        credits: 'या महिन्याचे तुमचे सर्व AI क्रेडिट संपले. ते 1 तारखेला पुन्हा भरतात.',
         large: 'तो फोटो खूप मोठा होता. कृपया लहान किंवा स्पष्ट फोटो वापरा.',
         timeout: 'कार्ड वाचण्यास खूप वेळ लागला. पुन्हा प्रयत्न करा किंवा मूल्ये स्वतः भरा.',
         down: 'सेवा सध्या व्यस्त आहे. कृपया थोड्या वेळाने प्रयत्न करा.',
@@ -7243,18 +7352,9 @@ export const translations = {
       districtOptional: 'जिल्हा (पर्यायी)',
     },
 
-    // ── AI क्रेडिट स्क्रीन ──────────────────────────────────────────────────
-    aiCredits: {
-      title: 'AI क्रेडिट', plan: 'प्लॅन', availableCredits: 'उपलब्ध क्रेडिट',
-      used: 'वापरलेले', total: 'एकूण', today: 'आज', monthly: 'मासिक', lifetime: 'लाइफटाइम',
-      creditCosts: 'क्रेडिट खर्च', free: 'मोफत', buyCredits: 'क्रेडिट खरेदी करा',
-      credits: 'क्रेडिट', recentActivity: 'अलीकडील गतिविधी', noActivity: 'अजून कोणतीही गतिविधी नाही',
-      loadError: 'तुमचा ताजा बॅलन्स लोड करता आला नाही. रिफ्रेश करण्यासाठी खाली ओढा.',
-      balanceLeft: 'शिल्लक क्रेडिट',
-      usedThisMonth: 'या महिन्यात वापरले',
-      monthlyBudget: 'मासिक बजेट',
-      pickPack: 'एक पॅक निवडा. क्रेडिट कधीही संपत नाहीत.',
-      buySoon: 'खरेदी लवकरच उपलब्ध होईल.',
+    // ── AI मासिक मर्यादा ─────────────────────────────────────────────────────
+    aiLimit: {
+      reached: 'तुमची या महिन्याची मोफत AI मर्यादा संपली आहे. ती पुढच्या महिन्याच्या 1 तारखेला पुन्हा सुरू होईल.',
     },
 
     // ── दैनिक नियोजक स्क्रीन ──────────────────────────────────────────────────
@@ -7483,6 +7583,81 @@ export const translations = {
       loadFailed: 'तुमचे अभिप्राय लोड झाले नाहीत.',
       emptyTitle: 'अजून रेटिंग नाही',
       emptyBody: 'तुम्ही ऑर्डर डिलिव्हर झाली अशी नोंद केल्यावर खरेदीदार तुम्हाला रेटिंग देऊ शकतो. त्यांची रेटिंग येथे दिसेल.',
+    },
+
+    // Report / Block — see the English block for where these are used.
+    report: {
+      action: 'तक्रार करा',
+      block: 'ब्लॉक करा',
+      blockConfirmBody: 'तुम्ही एकमेकांना संदेश पाठवू शकणार नाही, आणि तुम्हाला त्यांच्या जनावरांच्या जाहिराती दिसणार नाहीत.',
+      blockConfirmTitle: 'या व्यक्तीला ब्लॉक करायचे?',
+      blockFailed: 'या व्यक्तीला ब्लॉक करता आले नाही',
+      blockUser: 'व्यक्तीला ब्लॉक करा',
+      blockedBody: 'आता तुम्ही एकमेकांना संदेश पाठवू शकत नाही, आणि तुम्हाला त्यांच्या जनावरांच्या जाहिराती दिसणार नाहीत.',
+      blockedTitle: 'व्यक्तीला ब्लॉक केले',
+      close: 'बंद करा',
+      detailsLabel: 'अधिक माहिती (ऐच्छिक)',
+      detailsPlaceholder: 'काय झाले?',
+      failed: 'तुमची तक्रार पाठवता आली नाही. इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.',
+      moreOptions: 'आणखी पर्याय',
+      moreOptionsHint: 'या व्यक्तीची तक्रार करा किंवा त्यांना ब्लॉक करा',
+      notAllowed: 'याची तक्रार करता येत नाही.',
+      notFound: 'हे आता उपलब्ध नाही, त्यामुळे याची तक्रार करता येत नाही.',
+      reasonHarassment: 'त्रास देणे किंवा धमकावणे',
+      reasonHarmful: 'हानिकारक किंवा धोकादायक',
+      reasonOffensive: 'अपमानजनक किंवा द्वेष पसरवणारे',
+      reasonOther: 'दुसरे काहीतरी',
+      reasonSpam: 'स्पॅम किंवा फसवणूक',
+      reasonWrong: 'चुकीची किंवा दिशाभूल करणारी माहिती',
+      reportUser: 'व्यक्तीची तक्रार करा',
+      send: 'तक्रार पाठवा',
+      subtitle: 'काय चुकीचे आहे ते सांगा. आमची टीम प्रत्येक तक्रार तपासते.',
+      subtitleAi: 'हे AI ने लिहिले आहे आणि चुकीचे असू शकते. काय चुकीचे आहे ते सांगा, म्हणजे आमची टीम ते तपासू शकेल.',
+      thanksBody: 'तुमची तक्रार पाठवली आहे. आमची टीम ती तपासेल.',
+      thanksTitle: 'धन्यवाद',
+      title: 'तक्रार करा',
+      titleAnswer: 'या उत्तराची तक्रार करा',
+      titleListing: 'जाहिरातीची तक्रार करा',
+      titleMessage: 'संदेशाची तक्रार करा',
+      titleResult: 'या निकालाची तक्रार करा',
+      titleReview: 'अभिप्रायाची तक्रार करा',
+      titleCropReport: 'या पीक अहवालाची तक्रार करा',
+      titleUser: 'व्यक्तीची तक्रार करा',
+      tooMany: 'तुम्ही कमी वेळात खूप तक्रारी पाठवल्या आहेत. कृपया थोड्या वेळाने पुन्हा प्रयत्न करा.',
+      tryAgain: 'कृपया पुन्हा प्रयत्न करा.',
+    },
+
+    // Blocked users — see the English block for where these are used.
+    block: {
+      blockedLabel: 'ब्लॉक केले',
+      blockedOn: '{{date}} रोजी ब्लॉक केले',
+      blockedUsers: 'ब्लॉक केलेले लोक',
+      manageSub: 'तुम्ही ब्लॉक केलेले लोक पाहा आणि अनब्लॉक करा',
+      loadMoreFailed: 'आणखी दाखवता आले नाही. पुन्हा प्रयत्न करण्यासाठी टॅप करा.',
+      cannotReply: 'तुम्ही या संभाषणात उत्तर देऊ शकत नाही.',
+      emptyTitle: 'तुम्ही कोणालाही ब्लॉक केलेले नाही.',
+      listHint: 'ब्लॉक केलेले लोक तुम्हाला संदेश पाठवू शकत नाहीत, आणि तुम्हाला त्यांच्या जनावरांच्या जाहिराती दिसणार नाहीत.',
+      loadFailed: 'ब्लॉक केलेल्या लोकांची यादी उघडता आली नाही.',
+      moreOptionsHintBlocked: 'या व्यक्तीची तक्रार करा किंवा त्यांना अनब्लॉक करा',
+      notSent: 'पाठवला नाही',
+      notSentA11y: 'पाठवला नाही.',
+      unblock: 'अनब्लॉक करा',
+      unblockConfirmTitle: 'या व्यक्तीला अनब्लॉक करायचे?',
+      unblockConfirmTitleName: '{{name}} यांना अनब्लॉक करायचे?',
+      unblockConfirmBody: 'ते तुम्हाला पुन्हा संदेश पाठवू शकतील, आणि तुम्हाला त्यांच्या जनावरांच्या जाहिराती दिसतील.',
+      unblockFailed: 'या व्यक्तीला अनब्लॉक करता आले नाही',
+      unblockName: '{{name}} यांना अनब्लॉक करा',
+      unblockUser: 'व्यक्तीला अनब्लॉक करा',
+      unknownUser: 'KrushiSarva वापरकर्ता',
+      youBlocked: 'तुम्ही या व्यक्तीला ब्लॉक केले आहे.',
+    },
+
+    // Not-a-government notices — see the English block for where these are used.
+    govNotice: {
+      schemes: 'KrushiSarva कोणत्याही सरकारी संस्थेशी संबंधित नाही. येथे योजनांची माहिती थोडक्यात दिली आहे आणि ती जुनी असू शकते. अर्ज करण्यापूर्वी नेहमी अधिकृत सरकारी पोर्टलवर माहितीची खात्री करा.',
+      mandiSource: 'भाव data.gov.in (Agmarknet) वरून घेतले आहेत. KrushiSarva हे सरकारी ॲप नाही आणि कोणत्याही सरकारी संस्थेशी संबंधित नाही.',
+      officialWebsite: 'अधिकृत वेबसाइट',
+      openFailed: '{{url}} तुमच्या फोनच्या ब्राउझरमध्ये उघडा.',
     },
 
     products: {

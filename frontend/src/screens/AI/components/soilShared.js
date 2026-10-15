@@ -85,7 +85,7 @@ export function soilHumanError(err, t) {
   const status = err?.response?.status ?? err?.status;
   const serverMsg = err?.response?.data?.error?.message;
   if (status === 429) return t('soilHub.err.rate', 'Too many requests — please wait a moment and try again.');
-  if (status === 402) return t('soilHub.err.credits', 'You have used all your AI credits this month. They refill on the 1st.');
+  if (status === 402) return t('aiLimit.reached', "You've reached this month's free AI limit. It resets on the 1st of next month.");
   if (status === 413) return t('soilHub.err.large', 'That photo was too large. Please try a smaller or clearer photo.');
   if (status === 504) return t('soilHub.err.timeout', 'Reading the card took too long. Please try again or enter values manually.');
   if (status === 503 || status === 500 || status === 502)

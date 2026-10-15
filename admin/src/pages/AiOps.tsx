@@ -9,7 +9,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { Toolbar, FilterSelect } from '../components/filters';
 import { Modal } from '../components/Modal';
 import { useToast } from '../lib/toast';
-import { formatNumber, formatUsd, formatDateTime } from '../lib/format';
+import { formatNumber, formatUsd, formatDate, formatDateTime } from '../lib/format';
 
 // ── Usage ─────────────────────────────────────────────────────────────────────
 interface UsageRow { userId: string; name: string | null; phone: string | null; tokens: number; costUsd: number; scans: number; chats: number }
@@ -36,9 +36,13 @@ export function AiUsagePage() {
   );
 }
 
-// ── Credits ───────────────────────────────────────────────────────────────────
+// ── Credits (hidden monthly fair-use allowance) ───────────────────────────────
+// Farmers can no longer buy credits and the farmer app no longer shows them.
+// The ledger stays as a hidden monthly fair-use limit that refills on the 1st;
+// this page only views it and makes audited admin grants/deductions.
 interface CreditSummary {
   balance: number; tier: string; tierLabel: string; monthlyAllowance: number; lifetimeEarned: number; lifetimeSpent: number; todaySpent: number;
+  nextRefill?: string | null;
   recentTransactions: { id: string; amount: number; balanceAfter: number; type: string; description: string | null; date: string }[];
 }
 
@@ -54,7 +58,7 @@ export function AiCreditsPage() {
 
   return (
     <div>
-      <PageHeader title="AI credits" subtitle="Inspect a user's credit ledger and grant/deduct credits." />
+      <PageHeader title="AI allowance" subtitle="Farmers cannot buy credits. Inspect a user's hidden monthly fair-use allowance (refills on the 1st) and grant/deduct credits." />
       <Card className="mb-4 p-4">
         <div className="flex items-end gap-2">
           <div className="flex-1"><Field label="User ID"><Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="UUID of the user" /></Field></div>
@@ -68,7 +72,7 @@ export function AiCreditsPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Card className="p-4"><div className="text-xs text-slate-500">Balance</div><div className="text-2xl font-semibold">{formatNumber(s.balance)}</div></Card>
-            <Card className="p-4"><div className="text-xs text-slate-500">Tier</div><div className="text-2xl font-semibold">{s.tierLabel}</div></Card>
+            <Card className="p-4"><div className="text-xs text-slate-500">Monthly allowance</div><div className="text-2xl font-semibold">{formatNumber(s.monthlyAllowance)}</div><div className="mt-1 text-xs text-slate-500">{s.tierLabel} tier{s.nextRefill ? ` · refills ${formatDate(s.nextRefill)}` : ''}</div></Card>
             <Card className="p-4"><div className="text-xs text-slate-500">Lifetime spent</div><div className="text-2xl font-semibold">{formatNumber(s.lifetimeSpent)}</div></Card>
             <Card className="p-4"><div className="text-xs text-slate-500">Spent today</div><div className="text-2xl font-semibold">{formatNumber(s.todaySpent)}</div></Card>
           </div>

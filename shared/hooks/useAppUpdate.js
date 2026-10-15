@@ -121,6 +121,12 @@ function readInfo() {
   return info;
 }
 
+// The same `info` the hook returns, without subscribing: it is fixed for the
+// whole launch, so a screen that only shows the version need not re-render.
+export function getAppInfo() {
+  return readInfo();
+}
+
 function isForeground() {
   try {
     const s = AppState.currentState;
@@ -295,13 +301,24 @@ export function describeUpdateRow({ status, errorKind, restarting } = {}) {
       : ['appUpdate.checkFailed', "Couldn't check. Try again."],
   }[status] || null;
   let action = ['appUpdate.check', 'Check for updates'];
-  if (status === 'ready') action = ['appUpdate.restartToUpdate', 'Restart to update'];
-  else if (downloadFailed) action = ['appUpdate.retry', 'Try again'];
-  else if (offersUpdate) action = ['appUpdate.updateNow', 'Update now'];
+  // `short` is the one-word label of the compact update pill (null while there
+  // is nothing to update); `action` stays the label screen readers hear.
+  let short = null;
+  if (status === 'ready') {
+    action = ['appUpdate.restartToUpdate', 'Restart to update'];
+    short = ['appUpdate.restartShort', 'Restart'];
+  } else if (downloadFailed) {
+    action = ['appUpdate.retry', 'Try again'];
+    short = ['appUpdate.retryShort', 'Retry'];
+  } else if (offersUpdate) {
+    action = ['appUpdate.updateNow', 'Update now'];
+    short = ['appUpdate.updateShort', 'Update'];
+  }
   return {
     note,
     noteIsError: status === 'error',
     action,
+    short,
     runs: offersUpdate ? 'update' : 'check',
     busy: status === 'checking' || status === 'downloading' || !!restarting,
     showButton: status !== 'disabled',

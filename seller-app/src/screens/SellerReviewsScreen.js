@@ -20,6 +20,11 @@
  *
  * The buyer is a first name. The server sends nothing else on purpose — see
  * backend/src/services/sellerReviews.service.js.
+ *
+ * Every review has a "Report" link (Google Play's user-content rule) that opens
+ * the shared report sheet. A review here is always a BUYER's — the seller has
+ * no own content on this screen to hide it from — and the server refuses a
+ * report on one's own review anyway.
  */
 import React, { useCallback, useState } from 'react';
 import { Animated, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -29,15 +34,16 @@ import api from '@krushisarva/shared/services/api';
 import Stars from '@krushisarva/shared/components/Stars';
 import { ratingWord, reviewDay } from '@krushisarva/shared/utils/reviewDisplay';
 
-import { C, R, SP, T, useResponsive } from '../theme';
+import { C, HIT, R, SP, T, useResponsive } from '../theme';
 import usePagedList from '../hooks/usePagedList';
 import { useEntrance } from '../hooks/useMotion';
 import {
   reviewBuyerName, reviewProductName, summaryFromResponse, summaryView,
 } from '../utils/sellerReviews';
 import {
-  Screen, AppHeader, Card, ProgressBar, EmptyState, ErrorState, ListFooter, SkeletonList,
+  Screen, AppHeader, Card, PressableRow, ProgressBar, EmptyState, ErrorState, ListFooter, SkeletonList,
 } from '../components/ui';
+import ReportSheet from '../components/ReportSheet';
 
 const PAGE_SIZE = 20;
 
@@ -77,7 +83,7 @@ function SummaryCard({ view, t }) {
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 
-const ReviewRow = React.memo(function ReviewRow({ item, index, t, language }) {
+const ReviewRow = React.memo(function ReviewRow({ item, index, t, language, onReport }) {
   const entrance = useEntrance({ index, distance: 16 });
 
   const product = reviewProductName(item, language) || t('sellerReviews.productGone', 'A product you sold');
@@ -88,27 +94,42 @@ const ReviewRow = React.memo(function ReviewRow({ item, index, t, language }) {
 
   return (
     <Animated.View style={entrance}>
-      <Card
-        style={s.row}
-        accessible
-        // One sentence per review instead of six fragments.
-        accessibilityLabel={[product, stars, item.comment, who, day].filter(Boolean).join('. ')}
-      >
-        <Text style={s.product} numberOfLines={2}>{product}</Text>
+      <Card style={s.row}>
+        {/* The review reads as one item to a screen reader; Report sits
+            outside it so it stays its own button. */}
+        <View
+          style={s.rowBody}
+          accessible
+          // One sentence per review instead of six fragments.
+          accessibilityLabel={[product, stars, item.comment, who, day].filter(Boolean).join('. ')}
+        >
+          <Text style={s.product} numberOfLines={2}>{product}</Text>
 
-        <View style={s.starRow}>
-          <Stars value={item.rating} size={15} color={C.accent} />
-          {word ? <Text style={s.word}>{t(word.key, word.fallback)}</Text> : null}
+          <View style={s.starRow}>
+            <Stars value={item.rating} size={15} color={C.accent} />
+            {word ? <Text style={s.word}>{t(word.key, word.fallback)}</Text> : null}
+          </View>
+
+          {item.comment
+            ? <Text style={s.comment}>{item.comment}</Text>
+            : <Text style={s.noComment}>{t('sellerReviews.noComment', 'No comment written')}</Text>}
+
+          <View style={s.byRow}>
+            <Ionicons name="person-circle-outline" size={15} color={C.textFaint} />
+            <Text style={s.by} numberOfLines={1}>{[who, day].filter(Boolean).join(' · ')}</Text>
+          </View>
         </View>
 
-        {item.comment
-          ? <Text style={s.comment}>{item.comment}</Text>
-          : <Text style={s.noComment}>{t('sellerReviews.noComment', 'No comment written')}</Text>}
-
-        <View style={s.byRow}>
-          <Ionicons name="person-circle-outline" size={15} color={C.textFaint} />
-          <Text style={s.by} numberOfLines={1}>{[who, day].filter(Boolean).join(' · ')}</Text>
-        </View>
+        {item.id != null ? (
+          <PressableRow
+            onPress={() => onReport(item.id)}
+            accessibilityLabel={t('report.titleReview', 'Report review')}
+            style={s.reportBtn}
+          >
+            <Ionicons name="flag-outline" size={14} color={C.textMuted} />
+            <Text style={s.reportTxt}>{t('report.action', 'Report')}</Text>
+          </PressableRow>
+        ) : null}
       </Card>
     </Animated.View>
   );
@@ -143,9 +164,15 @@ export default function SellerReviewsScreen({ navigation }) {
   const items = list.items;
   const view = summaryView(summary);
 
+  // The review being reported (ReportSheet target), or null.
+  const [reportTarget, setReportTarget] = useState(null);
+  const openReport = useCallback((id) => {
+    setReportTarget({ targetType: 'PRODUCT_REVIEW', targetId: String(id) });
+  }, []);
+
   const renderItem = useCallback(({ item, index }) => (
-    <ReviewRow item={item} index={index} t={t} language={language} />
-  ), [t, language]);
+    <ReviewRow item={item} index={index} t={t} language={language} onReport={openReport} />
+  ), [t, language, openReport]);
 
   const keyExtractor = useCallback(
     (item, index) => (item?.id != null ? String(item.id) : `review-${index}`),
@@ -205,6 +232,8 @@ export default function SellerReviewsScreen({ navigation }) {
           windowSize={9}
         />
       )}
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </Screen>
   );
 }
@@ -229,4 +258,12 @@ const s = StyleSheet.create({
   noComment: { ...T.caption, color: C.textFaint, fontStyle: 'italic' },
   byRow: { flexDirection: 'row', alignItems: 'center', gap: SP.xs },
   by: { ...T.caption, flex: 1, color: C.textFaint },
+
+  rowBody: { gap: SP.sm },
+  // Quiet on purpose — it is there when needed, not competing with the review.
+  reportBtn: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: SP.xs,
+    minHeight: HIT.minCompact, paddingHorizontal: SP.md, borderRadius: R.pill,
+  },
+  reportTxt: { ...T.captionBold, color: C.textMuted },
 });

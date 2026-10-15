@@ -10,7 +10,7 @@ import {
   Leaf, ChevronDown, ChevronUp, ChevronRight, Check, X as CloseIcon,
   MessageSquare, ScanLine, History as HistoryIcon,
   ShieldCheck, ShoppingCart, Lightbulb, ToggleLeft, ToggleRight,
-  Volume2, Square as SquareIcon, Loader2, Trash2, Copy,
+  Volume2, Square as SquareIcon, Loader2, Trash2, Copy, Flag,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,6 +33,7 @@ import ResponseLengthSelector from './components/ResponseLengthSelector';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage } from '@krushisarva/shared/utils/mediaCompressor';
 import { detectLanguage } from '../../utils/languageDetect';
+import ReportSheet from '../../components/ReportSheet';
 
 const { width: W } = Dimensions.get('window');
 
@@ -67,14 +68,14 @@ const MIN_REC_MS = 500;
 //
 // It did NOT, despite the sentence above: every branch returned an English
 // literal and the result is injected as an AI-styled bubble, so a Marathi farmer
-// was told "You've used all your AI credits" in English by the assistant itself.
+// was told "You've used all your AI ..." in English by the assistant itself.
 // `t` is threaded in as a parameter because this is a module-level function with
 // no hook access — the same shape CropScanScreen's classifyScanError uses.
 function humanReadableError(err, t = (k, def) => def) {
   const status = err?.response?.status ?? err?.status;
   const serverMsg = err?.response?.data?.error?.message;
   if (status === 429) return t('aiChat.err.busy', 'Too many requests — please wait 30 seconds and try again.');
-  if (status === 402) return t('aiChat.err.credits', 'You’ve used all your AI credits for this month. They refill on the 1st — check your balance in the AI home screen.');
+  if (status === 402) return t('aiLimit.reached', "You've reached this month's free AI limit. It resets on the 1st of next month.");
   if (status === 503 || status === 500 || status === 502 || status === 504)
     return t('aiChat.err.serviceDown', 'The AI service is temporarily down. Please try again in a moment.');
   if (status === 413) return t('aiChat.err.tooLarge', 'That was too large. Please try a shorter message or smaller photo.');
@@ -259,7 +260,7 @@ function FormattedAIText({ text }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ── MessageBubble: user = gradient pill / AI = glass pill with Listen button
 // ─────────────────────────────────────────────────────────────────────────────
-function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
+function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp, onReport }) {
   const { t } = useLanguage();
   const isUser = msg.role === 'user';
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -452,6 +453,20 @@ function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
                   : <Copy size={15} color={MUTED} strokeWidth={2.4} />}
                 <Text style={[S.copyTxt, copied && { color: P_LIGHT }]}>{copied ? 'Copied' : 'Copy'}</Text>
               </TouchableOpacity>
+              {/* Report — on model replies only, not the welcome text or the
+                  app's own error bubbles. Google Play requires it for AI output. */}
+              {msg.generated && onReport ? (
+                <TouchableOpacity
+                  style={S.copyBtn}
+                  onPress={() => onReport(msg)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('report.titleAnswer', 'Report this answer')}
+                >
+                  <Flag size={14} color={MUTED} strokeWidth={2.4} />
+                  <Text style={S.copyTxt}>{t('report.action', 'Report')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -641,6 +656,14 @@ export default function AIChatScreen({ navigation, route }) {
   const flatRef    = useRef(null);
   const lastSentAt = useRef(0);
 
+  // The AI reply being reported (ReportSheet target), or null. A live reply has
+  // no server id — the chat endpoint does not return one — so its text goes as
+  // the snapshot; a reply loaded from history also carries its message id.
+  const [reportTarget, setReportTarget] = useState(null);
+  const openReport = useCallback((msg) => {
+    setReportTarget({ targetType: 'AI_MESSAGE', targetId: msg.serverId || undefined, snapshot: msg.text || '' });
+  }, []);
+
   const [isRecording,  setIsRecording]  = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioLevel,   setAudioLevel]   = useState(0);
@@ -694,7 +717,8 @@ export default function AIChatScreen({ navigation, route }) {
       if (result.conversationId && !conversationId) setConvId(result.conversationId);
       // Pure conversational chat — no diagnosis/market cards. Crop-disease
       // diagnosis lives in the dedicated Crop Scan flow.
-      const aiMsg = { role: 'ai', text: result.reply, lang: msgLang };
+      // `generated` marks text the model wrote — the bubbles that get Report.
+      const aiMsg = { role: 'ai', text: result.reply, lang: msgLang, generated: true };
       if (Array.isArray(result.followUps) && result.followUps.length) aiMsg.followUps = result.followUps;
       addMessage(aiMsg);
     } catch (err) {
@@ -906,6 +930,7 @@ export default function AIChatScreen({ navigation, route }) {
           // Sarvam STT returns `detectedLanguage` like 'mr-IN' — remember it so Listen
           // replays in the same language the user spoke in.
           lang: (result.detectedLanguage || '').split('-')[0] || undefined,
+          generated: true,
         };
         if (Array.isArray(result.followUps) && result.followUps.length) aiMsg.followUps = result.followUps;
         addMessage(aiMsg);
@@ -999,6 +1024,7 @@ export default function AIChatScreen({ navigation, route }) {
           if (convo?.messages?.length) {
             setMessages(convo.messages.map(m => ({
               id: m.id, role: m.role === 'assistant' ? 'ai' : 'user', text: m.content,
+              generated: m.role === 'assistant', serverId: m.id,
               diagnosisData: m.messageType === 'diagnosis' ? m.structuredData : null,
               marketData:    m.messageType === 'market'    ? m.structuredData : null,
             })));
@@ -1141,6 +1167,7 @@ export default function AIChatScreen({ navigation, route }) {
               language={language}
               isLast={index === messages.length - 1}
               onFollowUp={onFollowUpPress}
+              onReport={openReport}
             />
           )}
           ListFooterComponent={typing ? (
@@ -1253,6 +1280,8 @@ export default function AIChatScreen({ navigation, route }) {
         onSessionPress={(item) => navigation.push('AIChat', { conversationId: item.id })}
         onDeleteSession={deleteSession}
       />
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
     </AnimatedScreen>
   );

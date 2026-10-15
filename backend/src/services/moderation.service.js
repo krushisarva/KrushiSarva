@@ -49,7 +49,7 @@ export async function enqueueFlag({ entityType, entityId, authorId = null, reaso
  * List the moderation queue, newest first. Defaults to PENDING (the work queue).
  * @param {object} [opts]
  * @param {string} [opts.status]      one of MODERATION_STATUSES (default PENDING)
- * @param {string} [opts.entityType]  'Review' | 'Product'
+ * @param {string} [opts.entityType]  'Review' | 'Product' | a user-report type
  * @param {number} [opts.limit]
  */
 export async function listFlags({ status = 'PENDING', entityType, limit = 50 } = {}) {
@@ -58,6 +58,12 @@ export async function listFlags({ status = 'PENDING', entityType, limit = 50 } =
   if (entityType) where.entityType = entityType;
   return prisma.contentFlag.findMany({
     where,
+    // No `metadata`: a user-report flag carries up to 50 reports of free text,
+    // and the list shows none of it — the detail endpoint returns it.
+    select: {
+      id: true, entityType: true, entityId: true, authorId: true, reasons: true, score: true,
+      status: true, reviewedAt: true, resolution: true, createdAt: true, updatedAt: true,
+    },
     orderBy: { createdAt: 'desc' },
     take: Math.min(Math.max(limit, 1), 200),
   });
@@ -74,8 +80,21 @@ export async function resolveFlag({ id, status, reviewedById = null, note = null
   }
   const existing = await prisma.contentFlag.findUnique({ where: { id } });
   if (!existing) return null;
-  return prisma.contentFlag.update({
+  const now = new Date();
+  const flagUpdate = prisma.contentFlag.update({
     where: { id },
-    data:  { status, reviewedById, reviewedAt: new Date(), resolution: note },
+    data:  { status, reviewedById, reviewedAt: now, resolution: note },
   });
+  if (existing.entityType !== 'AnimalListing') return flagUpdate;
+
+  // Animal-listing reports keep their own rows (mirrored into this queue when
+  // filed); the moderator's decision closes the ones still open, in step.
+  const [updated] = await prisma.$transaction([
+    flagUpdate,
+    prisma.listingReport.updateMany({
+      where: { listingId: existing.entityId, status: 'PENDING' },
+      data:  { status, resolvedAt: now },
+    }),
+  ]);
+  return updated;
 }

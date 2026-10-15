@@ -24,7 +24,7 @@ import fs          from 'fs';
 import os          from 'os';
 import { authenticate } from '../middleware/auth.js';
 import { uuidParamGuard } from '../middleware/uuidParams.js';
-import { sendSuccess, sendError, sendNotFound, sendServerError, parsePageNumber } from '../utils/response.js';
+import { sendSuccess, sendError, parsePageNumber } from '../utils/response.js';
 import { ENV } from '../config/env.js';
 import {
   sarvamSTT,
@@ -47,13 +47,9 @@ import {
 // survives for the one path with no hold to reconcile — a scan poll that lands
 // after the submitting process lost its pendingScans entry.
 import { deductCredits, getCreditSummary, reserveCredits, settleCredits, releaseCredits } from '../services/aiCredit.service.js';
-import { CREDIT_PACKS, publicCreditPack } from '../services/aiCredit.service.js';
-import {
-  initiateCreditPurchase, confirmCreditPurchase, getCreditPurchaseStatus,
-} from '../services/aiCreditPayment.service.js';
 import { buildFarmerChatContext } from '../services/chatContext.service.js';
 import { getWeatherData } from '../services/weather.service.js';
-import { aiChatLimit, aiScanLimit, aiVoiceLimit, redisRateLimit } from '../middleware/redisRateLimit.js';
+import { aiChatLimit, aiScanLimit, aiVoiceLimit } from '../middleware/redisRateLimit.js';
 import { idempotency } from '../middleware/idempotency.js';
 import redis from '../config/redis.js';
 import { withLeaderLock } from '../utils/leaderLock.js';
@@ -772,7 +768,7 @@ router.post('/chat', authenticate, requireFeature('ai_chat'), aiChatLimit, idemp
   const reserveFeature = hasImage ? 'ai_scan_gemini' : 'ai_chat_gemini';
   const hold = await reserveCredits(req.user.id, reserveFeature);
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -944,7 +940,7 @@ router.post('/soil-card-ocr', authenticate, requireFeature('ai_soil_ocr'), aiCha
   // both passed. reserveCredits is the conditional decrement, so only one can.
   const hold = await reserveCredits(req.user.id, 'ai_soil_ocr');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -1011,7 +1007,7 @@ router.post('/voice', authenticate, requireFeature('ai_voice'), aiVoiceLimit, id
   const hold = await reserveCredits(req.user.id, 'ai_voice');
   if (!hold.ok) {
     cleanUp(file.path);
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -1255,7 +1251,7 @@ router.post('/tts', authenticate, aiChatLimit, async (req, res) => {
   // so concurrent calls can't TOCTOU-overspend, and a Sarvam failure refunds.
   const hold = await reserveCredits(req.user.id, 'ai_tts');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -1282,7 +1278,7 @@ router.post('/translate', authenticate, aiChatLimit, async (req, res) => {
   // Meter translation (flat floor debit) — atomic reserve/settle/release.
   const hold = await reserveCredits(req.user.id, 'ai_translate');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -1720,7 +1716,7 @@ router.post('/scan/submit', authenticate, requireFeature('ai_scan'), aiScanLimit
   const hold = await reserveCredits(req.user.id, 'ai_scan_gemini');
   if (!hold.ok) {
     cleanupFile();
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
   const releaseScanHold = () =>
     releaseCredits(req.user.id, 'ai_scan_gemini', { reserved: hold.reserved, holdId: hold.holdId })
@@ -1856,7 +1852,9 @@ router.post('/scan/submit', authenticate, requireFeature('ai_scan'), aiScanLimit
     await releaseScanHold();
     logger.error({ err }, '[Express/Scan/submit] enqueue failed');
     const st = err.status || 500;
-    const msg = st === 402 ? 'You’ve used all your AI credits for this month. They refill on the 1st.'
+    // A 402 here is FastAPI's DAILY spend cap (security/spend.py, resets at UTC
+    // midnight), not the monthly ledger — so it says "today", not "next month".
+    const msg = st === 402 ? "You've reached today's free AI limit. Please try again tomorrow."
       : st === 429 ? 'Too many scans right now — please wait a moment and try again.'
       : st === 503 ? 'The diagnosis service is busy. Please try again in a moment.'
       : st === 504 ? 'The diagnosis service took too long. Please try again.'
@@ -2114,7 +2112,7 @@ router.post('/scan', authenticate, requireFeature('ai_scan'), aiScanLimit, (req,
   const hold = await reserveCredits(req.user.id, 'ai_scan_gemini');
   if (!hold.ok) {
     try { if (file?.path) fs.unlinkSync(file.path); } catch { /* ignore */ }
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
   let scanSettled = false;
   const releaseScanHold = () =>
@@ -2463,7 +2461,7 @@ router.post('/scan/:sessionId/chat', authenticate, requireFeature('ai_chat'), ai
   // must reserve + settle credits (previously it was unmetered — free token burn).
   const hold = await reserveCredits(req.user.id, 'ai_chat_gemini');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -2673,7 +2671,7 @@ router.post('/alerts', authenticate, requireFeature('ai_alerts'), aiChatLimit, a
   // "no new LLM endpoint without a ledger interaction").
   const hold = await reserveCredits(req.user.id, 'ai_chat_gemini');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
 
   try {
@@ -2808,6 +2806,7 @@ router.delete('/conversations/:id', authenticate, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/ai/credits — User's AI credit balance & history
+// (the monthly fair-use allowance; nothing here is for sale any more)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/credits', authenticate, async (req, res) => {
   try {
@@ -2815,123 +2814,13 @@ router.get('/credits', authenticate, async (req, res) => {
     return sendSuccess(res, summary);
   } catch (err) {
     logger.error('[Credits] %s', err.message);
-    return sendError(res, 'Failed to fetch credit info', 500);
+    return sendError(res, 'Could not load your AI usage. Please try again.', 500);
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Credit pack purchase (PAY-004)
-//
-// The money half lives in services/aiCreditPayment.service.js; these routes are
-// transport only — validate, authenticate, call, shape the response. The two
-// properties worth stating here, because they are what the endpoints are FOR:
-//
-//   1. The client names a PACK, never an amount. /initiate takes `packId` and
-//      resolves the price from CREDIT_PACKS server-side. A price or amount in
-//      the request body is not read by anything.
-//   2. Credits are granted exactly once per payment, whether the app's confirm
-//      or Razorpay's webhook gets there first, and however often either is
-//      retried — see the header of aiCreditPayment.service.js for the mechanism.
-//
-// Field names (`razorpayOrderId`, `amountInPaise`, `receipt`, `mock`) match
-// AgriStore's /orders/initiate exactly, because the app drives every payment
-// purpose through one checkout client.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Each /initiate creates a real order at the gateway, so it is worth a ceiling
- * of its own — a loop here is free for the caller and not for us. Generous
- * enough that a farmer retrying a flaky checkout is never blocked.
- */
-const creditPurchaseLimit = redisRateLimit({
-  max: 12,
-  windowSec: 300,
-  prefix: 'rl:ai:credits:purchase',
-  keyGenerator: (req) => req.user?.id || req.ip,
-  message: 'Too many purchase attempts. Please wait a few minutes.',
-});
-
-/** Reject junk before it reaches a payment path; length caps match the DB columns. */
-const isRef = (v, max = 64) => typeof v === 'string' && v.length > 0 && v.length <= max;
-
-// GET /api/v1/ai/credits/packs — what can be bought, and for how much.
-router.get('/credits/packs', authenticate, (_req, res) =>
-  sendSuccess(res, { packs: CREDIT_PACKS.map(publicCreditPack) }));
-
-// POST /api/v1/ai/credits/purchase/initiate — { packId } → a gateway order.
-router.post(
-  '/credits/purchase/initiate',
-  authenticate,
-  creditPurchaseLimit,
-  idempotency('ai_credit_purchase_initiate'),
-  async (req, res) => {
-    if (!isRef(req.body?.packId)) return sendError(res, 'packId is required', 400);
-    try {
-      const out = await initiateCreditPurchase({ userId: req.user.id, packId: req.body.packId });
-      return sendSuccess(res, {
-        razorpayOrderId: out.providerOrderId,
-        // `amount` is the rupee figure older clients render directly;
-        // `amountInPaise` is what the checkout sheet is actually opened with.
-        amount: out.pack.priceInr,
-        amountInPaise: out.amountInPaise,
-        currency: 'INR',
-        receipt: out.receipt,
-        pack: out.pack,
-        mock: out.mock,
-      });
-    } catch (err) {
-      // 400 UNKNOWN_PACK and 503 INTENT_NOT_RECORDED both arrive tagged
-      // `expose`, so their real message reaches the farmer; anything else is a
-      // 500 with a safe message and a logged stack.
-      return sendServerError(res, err, 'Could not start the purchase. Please try again.');
-    }
-  },
-);
-
-// POST /api/v1/ai/credits/purchase/confirm — the app reporting a paid checkout.
-router.post(
-  '/credits/purchase/confirm',
-  authenticate,
-  idempotency('ai_credit_purchase_confirm'),
-  async (req, res) => {
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body || {};
-    if (!isRef(razorpayOrderId) || !isRef(razorpayPaymentId) || !isRef(razorpaySignature, 128)) {
-      return sendError(res, 'razorpayOrderId, razorpayPaymentId and razorpaySignature are required', 400);
-    }
-    try {
-      const result = await confirmCreditPurchase({
-        userId: req.user.id, razorpayOrderId, razorpayPaymentId, razorpaySignature,
-      });
-      // Not this user's credit purchase — indistinguishable from one that does
-      // not exist, so a valid signature cannot be used to probe other accounts.
-      if (!result) return sendNotFound(res, 'Payment');
-      return sendSuccess(res, {
-        credited: result.credited,
-        balance: result.balance,
-        // True when this payment had already been settled — by the webhook, or
-        // by an earlier attempt at this same request. The purchase succeeded;
-        // this call simply had nothing left to do. The app must treat it as
-        // success, not as a reason to retry.
-        alreadyProcessed: result.alreadyProcessed,
-        status: result.status,
-      });
-    } catch (err) {
-      return sendServerError(res, err, 'Payment verification failed. Please try again.');
-    }
-  },
-);
-
-// GET /api/v1/ai/credits/purchase/status/:providerOrderId — "did it go through?"
-router.get('/credits/purchase/status/:providerOrderId', authenticate, async (req, res) => {
-  const { providerOrderId } = req.params;
-  if (!isRef(providerOrderId)) return sendError(res, 'Invalid payment reference', 400);
-  try {
-    const status = await getCreditPurchaseStatus({ userId: req.user.id, providerOrderId });
-    if (!status) return sendNotFound(res, 'Payment');
-    return sendSuccess(res, status);
-  } catch (err) {
-    return sendServerError(res, err, 'Could not check this payment. Please try again.');
-  }
-});
+// Credit-pack purchase (PAY-004) was removed on 2026-10-15: AI credits can no
+// longer be bought. GET /credits/packs and /credits/purchase/* no longer exist
+// (an older app gets a 404 and shows buying as unavailable). The ledger itself
+// stays, as the hidden monthly fair-use limit behind every 402 above.
 
 export default router;

@@ -88,7 +88,7 @@ export function safeErrorMessage(error, fallback = 'Something went wrong. Please
   const status = error.response?.status;
   if (status === 400) return 'Invalid request. Please check your details and try again.';
   if (status === 401) return 'Session expired. Please log in again.';
-  if (status === 402) return error.response?.data?.error?.message || 'Insufficient credits.';
+  if (status === 402) return error.response?.data?.error?.message || "You've reached this month's free AI limit. It resets on the 1st of next month.";
   const refusal = error.response?.data?.error;
   if ((status === 403 || status === 409) && HUMAN_REFUSAL_CODES.has(refusal?.details?.code)
       && typeof refusal.message === 'string' && refusal.message.trim()) {

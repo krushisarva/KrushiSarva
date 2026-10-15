@@ -13,6 +13,7 @@ import { validate } from '../middleware/validate.js';
 import prisma from '../config/db.js';
 import { sendSuccess, sendCreated, sendError, sendNotFound, parsePageSize } from '../utils/response.js';
 import { stripHtml } from '../utils/encrypt.js';
+import { isBlockedBetween, USER_BLOCKED, BLOCKED_SEND_MESSAGE } from '../services/animalListing.service.js';
 
 const router = Router();
 router.param('userId', uuidParamGuard); // conversation-partner user id — reject non-UUIDs with 400
@@ -177,6 +178,10 @@ router.post(
 
     const receiver = await prisma.user.findUnique({ where: { id: req.params.userId } });
     if (!receiver) return sendNotFound(res, 'User');
+    // Same refusal as the socket dm_send and the animal-chat send.
+    if (await isBlockedBetween(req.user.id, receiver.id)) {
+      return sendError(res, BLOCKED_SEND_MESSAGE, 403, undefined, { code: USER_BLOCKED });
+    }
 
     const message = await prisma.directMessage.create({
       data: {

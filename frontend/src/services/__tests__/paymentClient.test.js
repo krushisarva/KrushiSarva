@@ -1,14 +1,13 @@
 /**
- * The payment client is the only place three different paid flows agree on what
- * goes on the wire, so these tests pin the four things that would cost real
- * money if they drifted:
+ * The payment client is where the paid flows agree on what goes on the wire,
+ * so these tests pin the four things that would cost real money if they drifted:
  *
  *   1. the `{ success, data }` envelope is unwrapped — a screen that reads the
  *      wrapper instead of the payload opens a checkout with no order id;
  *   2. the abort signal reaches axios — without it a screen that unmounts
  *      mid-request leaks the request and then writes state into a dead tree;
- *   3. a credit purchase sends `{ packId }` and NOTHING else — a body that can
- *      carry an amount is a body someone will set to ₹1 for the ₹500 pack
+ *   3. an initiate body names WHAT is bought and NEVER what it costs — a body
+ *      that can carry an amount is a body someone will set to ₹1
  *      (CLAUDE.md §51: the client is never trusted for money);
  *   4. a non-2xx is CLASSIFIED, not thrown raw — the shop learned this the hard
  *      way: a bare catch turns "your session expired" and "you have no signal"
@@ -27,10 +26,6 @@ const {
   initiateRentBooking,
   confirmRentBooking,
   fetchRentPaymentStatus,
-  fetchCreditPacks,
-  initiateCreditPurchase,
-  confirmCreditPurchase,
-  fetchCreditPurchaseStatus,
   classifyError,
   PAYMENT_ERRORS,
 } = require('../paymentClient');
@@ -78,14 +73,6 @@ describe('the { success, data } envelope is unwrapped', () => {
     expect(out).toEqual({ booking: { id: 'B1' }, paymentStatus: 'PAID' });
   });
 
-  test('credit confirm returns { credited, balance, alreadyProcessed }', async () => {
-    api.post.mockResolvedValue(envelope({ credited: 100, balance: 340, alreadyProcessed: false }));
-    const out = await confirmCreditPurchase({
-      razorpayOrderId: 'order_C1', razorpayPaymentId: 'pay_2', razorpaySignature: 'sig',
-    });
-    expect(out).toEqual({ credited: 100, balance: 340, alreadyProcessed: false });
-  });
-
   test('a status read returns { status, paid, amount }', async () => {
     api.get.mockResolvedValue(envelope({ status: 'PAID', paid: true, amount: 1200 }));
     await expect(fetchRentPaymentStatus('order_R1')).resolves.toEqual({
@@ -95,19 +82,9 @@ describe('the { success, data } envelope is unwrapped', () => {
 
   test('an empty envelope becomes null, never undefined-dot-something', async () => {
     api.post.mockResolvedValue({ data: { success: true } });
-    await expect(initiateCreditPurchase({ packId: 'p1' })).resolves.toBeNull();
-  });
-
-  test('packs normalise to an array from either shape', async () => {
-    api.get.mockResolvedValueOnce(envelope([{ id: 'p1' }]));
-    await expect(fetchCreditPacks()).resolves.toEqual([{ id: 'p1' }]);
-
-    api.get.mockResolvedValueOnce(envelope({ packs: [{ id: 'p2' }] }));
-    await expect(fetchCreditPacks()).resolves.toEqual([{ id: 'p2' }]);
-
-    // An unexpected body renders "no packs"; it must not crash a .map().
-    api.get.mockResolvedValueOnce(envelope(null));
-    await expect(fetchCreditPacks()).resolves.toEqual([]);
+    await expect(initiateRentBooking({
+      listingId: 'L1', type: 'machinery', startDate: '2026-10-01', endDate: '2026-10-02',
+    })).resolves.toBeNull();
   });
 });
 
@@ -115,8 +92,6 @@ describe('the { success, data } envelope is unwrapped', () => {
 describe('the abort signal is passed through', () => {
   test.each([
     ['rent payment status', () => fetchRentPaymentStatus('order_R1', signal)],
-    ['credit purchase status', () => fetchCreditPurchaseStatus('order_C1', signal)],
-    ['credit packs', () => fetchCreditPacks(signal)],
   ])('%s forwards it to axios', async (_name, call) => {
     api.get.mockResolvedValue(envelope({}));
     await call();
@@ -140,25 +115,6 @@ describe('the abort signal is passed through', () => {
 
 // ── 3. No client-supplied amount ──────────────────────────────────────────────
 describe('a price never leaves the client', () => {
-  test('credit purchase sends { packId } and nothing else', async () => {
-    api.post.mockResolvedValue(envelope({ razorpayOrderId: 'order_C1' }));
-
-    // A caller that tries to help itself to a price — the whole point of
-    // destructuring rather than spreading.
-    await initiateCreditPurchase({
-      packId: 'pack_500',
-      amount: 1,
-      amountInPaise: 100,
-      price: 1,
-      currency: 'INR',
-    });
-
-    const [url, body] = api.post.mock.calls[0];
-    expect(url).toBe('/ai/credits/purchase/initiate');
-    expect(body).toEqual({ packId: 'pack_500' });
-    expect(Object.keys(body)).toEqual(['packId']);
-  });
-
   test('rent initiate sends only what is being booked, never what it costs', async () => {
     api.post.mockResolvedValue(envelope({ razorpayOrderId: 'order_R1' }));
 
@@ -229,7 +185,9 @@ describe('a non-2xx is classified rather than thrown raw', () => {
 
   test('an expired session classifies as AUTH, not as a failed payment', async () => {
     api.post.mockRejectedValue(httpError(401, {}));
-    const raised = await initiateCreditPurchase({ packId: 'p1' }).catch((e) => e);
+    const raised = await initiateRentBooking({
+      listingId: 'L1', type: 'machinery', startDate: '2026-10-01', endDate: '2026-10-02',
+    }).catch((e) => e);
     expect(classifyError(raised).code).toBe(PAYMENT_ERRORS.AUTH);
   });
 
@@ -244,7 +202,7 @@ describe('a non-2xx is classified rather than thrown raw', () => {
     const cancelled = new Error('canceled');
     cancelled.code = 'ERR_CANCELED';
     api.get.mockRejectedValue(cancelled);
-    const raised = await fetchCreditPurchaseStatus('order_C1').catch((e) => e);
+    const raised = await fetchRentPaymentStatus('order_R1').catch((e) => e);
     expect(classifyError(raised)).toBeNull();
   });
 });

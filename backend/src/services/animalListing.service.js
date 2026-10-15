@@ -147,6 +147,51 @@ export async function isBlockedBetween(a, b) {
   return !!hit;
 }
 
+/**
+ * Error code on every refusal a block causes (HTTP `error.code`, socket `error`
+ * event `code`), so an app can tell "blocked" apart from any other 403.
+ */
+export const USER_BLOCKED = 'USER_BLOCKED';
+export const BLOCKED_SEND_MESSAGE = 'You can no longer message this user.';
+
+const NO_BLOCK = Object.freeze({ blockedByMe: false, canMessage: true });
+
+/**
+ * Block state between `me` and each of `otherIds`, in ONE query however many
+ * ids there are (the inbox asks for a whole page at once).
+ *
+ * `blockedByMe` is the only direction revealed. "They blocked me" surfaces as
+ * nothing more than `canMessage: false` — telling someone they were blocked
+ * invites them to work around it.
+ *
+ * @returns {Promise<Map<string, {blockedByMe:boolean, canMessage:boolean}>>}
+ *   only ids with a block in either direction appear; see blockStateFrom
+ */
+export async function blockStatesWith(me, otherIds) {
+  const out = new Map();
+  if (!me || !otherIds?.length) return out;
+  const rows = await prisma.userBlock.findMany({
+    where: {
+      OR: [
+        { blockerId: me, blockedId: { in: otherIds } },
+        { blockerId: { in: otherIds }, blockedId: me },
+      ],
+    },
+    select: { blockerId: true, blockedId: true },
+  });
+  for (const r of rows) {
+    const other = r.blockerId === me ? r.blockedId : r.blockerId;
+    const byMe = r.blockerId === me || out.get(other)?.blockedByMe === true;
+    out.set(other, { blockedByMe: byMe, canMessage: false });
+  }
+  return out;
+}
+
+/** One id's entry from a blockStatesWith map, defaulting to "no block". */
+export function blockStateFrom(states, otherId) {
+  return states.get(otherId) ?? NO_BLOCK;
+}
+
 /** Expiry stamp for a newly created or renewed listing. */
 export function listingExpiry(from = new Date()) {
   return new Date(from.getTime() + LISTING_TTL_DAYS * 86_400_000);

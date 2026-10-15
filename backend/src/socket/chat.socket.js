@@ -24,7 +24,9 @@
  *  group_new_message, group_history, group_typing_update
  *  dm_new_message, dm_typing_update, dm_read_receipt
  *  user_online, user_offline
- *  error
+ *  error   — a send refused because of a block carries
+ *            { code: 'USER_BLOCKED', message, chatId, clientMsgId } (send_message)
+ *            or { code: 'USER_BLOCKED', message, receiverId } (dm_send)
  */
 import { verifyAccessToken } from '../utils/jwt.js';
 import prisma from '../config/db.js';
@@ -34,6 +36,7 @@ import logger from '../utils/logger.js';
 import { createConnectionLimiter, onLimited as onLimitedRaw, isId } from './socketRateLimit.js';
 import { ConnectionRegistry } from './connectionLimiter.js';
 import { cancelVoiceStream, cancelVoiceStreamsForUser } from '../services/voiceStream.registry.js';
+import { isBlockedBetween, USER_BLOCKED, BLOCKED_SEND_MESSAGE } from '../services/animalListing.service.js';
 
 // Message text off the wire: strings only, tags stripped, capped — the same
 // rule send_message has always applied. Returns null when nothing is left.
@@ -204,6 +207,14 @@ export function registerChatSocket(io) {
       // message — we then re-broadcast the row that already exists so the
       // sender's optimistic bubble still resolves.
       const cmid = clientMsgId ? String(clientMsgId).slice(0, 64) : null;
+      // The same refusal POST /chats/:chatId/messages makes. Without it this
+      // event was a full bypass of a block: stored, broadcast to both sides.
+      // Nothing is stored or broadcast; only the sender hears why.
+      const other = chat.buyerId === userId ? chat.sellerId : chat.buyerId;
+      if (await isBlockedBetween(userId, other)) {
+        socket.emit('error', { code: USER_BLOCKED, message: BLOCKED_SEND_MESSAGE, chatId, clientMsgId: cmid });
+        return;
+      }
       let message;
       try {
         message = await prisma.chatMessage.create({
@@ -243,13 +254,20 @@ export function registerChatSocket(io) {
       // never prevented it.
       const chat = await prisma.chat.findFirst({
         where: { id: chatId, OR: [{ sellerId: userId }, { buyerId: userId }] },
-        select: { id: true },
+        select: { id: true, buyerId: true, sellerId: true },
       });
       if (!chat) return;
-      await prisma.chatMessage.updateMany({
-        where: { chatId, readAt: null, NOT: { senderId: userId } },
-        data: { readAt: new Date() },
-      });
+      // The rows are still marked read (the reader's own unread state), but a
+      // blocked counterpart gets no read receipt.
+      const other = chat.buyerId === userId ? chat.sellerId : chat.buyerId;
+      const [, blocked] = await Promise.all([
+        prisma.chatMessage.updateMany({
+          where: { chatId, readAt: null, NOT: { senderId: userId } },
+          data: { readAt: new Date() },
+        }),
+        isBlockedBetween(userId, other),
+      ]);
+      if (blocked) return;
       io.to(chatId).emit('messages_read', { chatId, userId });
     });
 
@@ -316,6 +334,11 @@ export function registerChatSocket(io) {
       const safeText = cleanText(text);
       const imageUrl = cleanImageUrl(rawImageUrl);
       if (!safeText && !imageUrl) return;
+      // No delivery between blocked users, in either direction.
+      if (await isBlockedBetween(userId, receiverId)) {
+        socket.emit('error', { code: USER_BLOCKED, message: BLOCKED_SEND_MESSAGE, receiverId });
+        return;
+      }
       const message = await prisma.directMessage.create({
         data: { senderId: userId, receiverId, text: safeText, imageUrl },
       });
@@ -327,17 +350,25 @@ export function registerChatSocket(io) {
       socket.emit('dm_new_message', { ...message, sender });
     });
 
-    onLimited(socket, allow, 'dm_typing', 'typing', ({ receiverId, isTyping }) => {
-      if (!isId(receiverId)) return;
+    onLimited(socket, allow, 'dm_typing', 'typing', async ({ receiverId, isTyping }) => {
+      if (!isId(receiverId) || receiverId === userId) return;
+      // Dropped silently when blocked: a typing frame is ephemeral, and an
+      // error per keystroke would only be noise.
+      if (await isBlockedBetween(userId, receiverId)) return;
       io.to(`user:${receiverId}`).emit('dm_typing_update', { senderId: userId, isTyping: isTyping === true });
     });
 
     onLimited(socket, allow, 'dm_read', 'read', async ({ senderId: msgSenderId }) => {
       if (!isId(msgSenderId)) return;
-      await prisma.directMessage.updateMany({
-        where: { senderId: msgSenderId, receiverId: userId, readAt: null },
-        data: { readAt: new Date() },
-      });
+      // Rows marked read either way; no receipt to a blocked counterpart.
+      const [, blocked] = await Promise.all([
+        prisma.directMessage.updateMany({
+          where: { senderId: msgSenderId, receiverId: userId, readAt: null },
+          data: { readAt: new Date() },
+        }),
+        isBlockedBetween(userId, msgSenderId),
+      ]);
+      if (blocked) return;
       io.to(`user:${msgSenderId}`).emit('dm_read_receipt', { by: userId });
     });
 

@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 876 keys.
+// 872 keys.
 
 export default {
   "aiChat.attachHint": "तुरंत जांच के लिए अपनी फसल की फोटो भेजें।",
@@ -16,10 +16,6 @@ export default {
   "aiChat.newChatTitle": "नई चैट शुरू करें?",
   "aiChat.photoAttached": "फोटो जुड़ी",
   "aiChat.photoNote": "नोट जोड़ें (वैकल्पिक)…",
-  "aiCredits.balanceLeft": "Balance Left",
-  "aiCredits.buySoon": "Buy Soon",
-  "aiCredits.monthlyBudget": "Monthly Budget",
-  "aiCredits.usedThisMonth": "Used This Month",
   "aiHome.history.chat": "Chat",
   "aiHome.history.scan": "Scan",
   "aiHome.history.voice": "Voice",

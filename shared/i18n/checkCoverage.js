@@ -46,7 +46,7 @@ const REPO_ROOT = path.join(__dirname, '..', '..');
 // the other ~778 missing keys belong to the marketplace, animal-trade and
 // onboarding surfaces and are somebody else's work order.
 const AI_NAMESPACES = [
-  'ai', 'aiBrand', 'aiChat', 'aiCredits', 'aiHome', 'aiHub', 'aiVoice',
+  'ai', 'aiBrand', 'aiChat', 'aiHome', 'aiHub', 'aiLimit', 'aiVoice',
   'cropScan', 'diagReport', 'diagnosis', 'market', 'pastReport', 'pastReportPdf',
   'planner', 'scanHistory', 'scheme', 'voiceChat', 'voiceHistory',
 ];

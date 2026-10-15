@@ -1,28 +1,33 @@
 import { useRef, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Animated, StatusBar, TextInput,
+  Dimensions, Animated, StatusBar, TextInput, Linking,
 } from 'react-native';
 import PhotoIcon from '../../components/PhotoIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import { showPopup } from '../../utils/popup';
 
 
+// `url` is the scheme's official government portal. Only schemes with ONE
+// well-known official site carry it; the card shows no link button without it
+// (KCC is applied for at banks, PKVY through the district office).
 const SCHEMES = [
   {
     id: 1,
     name: 'PM-KISAN',
     code: 'PMKISAN',
+    url: 'https://pmkisan.gov.in',
     fullName: 'Pradhan Mantri Kisan Samman Nidhi',
     benefit: '₹6,000/year',
     benefitType: 'Cash Transfer',
     status: 'eligible',
     icon: 'cash-outline',
     color: COLORS.primary,
-    desc: 'Direct income support of ₹6,000/year to small & marginal farmers in 3 installments of ₹2,000.',
-    eligibility: ['Land holding < 2 hectares', 'Valid Aadhaar', 'Registered bank account'],
+    desc: 'Direct income support of ₹6,000/year to land-owning farmer families in 3 installments of ₹2,000.',
+    eligibility: ['Family owns farm land (any size; some groups, such as income-tax payers, are excluded)', 'Valid Aadhaar', 'Registered bank account'],
     howToApply: 'Apply via PM-KISAN portal or nearest CSC centre.',
     deadline: 'Rolling — apply anytime',
   },
@@ -30,6 +35,7 @@ const SCHEMES = [
     id: 2,
     name: 'PMFBY',
     code: 'PMFBY',
+    url: 'https://pmfby.gov.in',
     fullName: 'Pradhan Mantri Fasal Bima Yojana',
     benefit: 'Up to ₹50,000 coverage',
     benefitType: 'Crop Insurance',
@@ -60,6 +66,7 @@ const SCHEMES = [
     id: 4,
     name: 'Soil Health Card',
     code: 'NMSA-SHC',
+    url: 'https://soilhealth.dac.gov.in',
     fullName: 'Soil Health Card Scheme',
     benefit: 'Free soil testing',
     benefitType: 'Advisory',
@@ -154,10 +161,23 @@ function SchemeCard({ scheme, onExpand, expanded, t }) {
             <Text style={SC.deadlineText}>{scheme.deadline}</Text>
           </View>
 
-          <TouchableOpacity style={[SC.applyBtn, { backgroundColor: scheme.color }]} activeOpacity={0.85} accessibilityRole="button">
-            <Text style={SC.applyBtnText}>{t('scheme.applyNow')}</Text>
-            <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
-          </TouchableOpacity>
+          {scheme.url ? (
+            <TouchableOpacity
+              style={[SC.applyBtn, { backgroundColor: scheme.color }]}
+              // openURL rejects when no app can open the link; show the
+              // address so the farmer can still reach the official portal.
+              onPress={() => Linking.openURL(scheme.url).catch(() => showPopup(
+                t('profile.linkFailedTitle', 'Could not open link'),
+                t('govNotice.openFailed', { url: scheme.url, defaultValue: 'Open {{url}} in your phone browser.' }),
+              ))}
+              activeOpacity={0.85}
+              accessibilityRole="link"
+              accessibilityLabel={`${t('govNotice.officialWebsite', 'Official website')}: ${scheme.name}`}
+            >
+              <Text style={SC.applyBtnText}>{t('govNotice.officialWebsite', 'Official website')}</Text>
+              <Ionicons name="open-outline" size={14} color={COLORS.white} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
     </TouchableOpacity>
@@ -229,6 +249,15 @@ export default function SchemeScreen({ navigation }) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={SC.list}>
+        {/* Play "government affiliation" rule: say plainly we are not a
+            government app and point farmers at the official portals. */}
+        <View style={SC.notice} accessible>
+          <Ionicons name="information-circle-outline" size={16} color={COLORS.textMedium} />
+          <Text style={SC.noticeText}>
+            {t('govNotice.schemes', 'KrushiSarva is not affiliated with any government body. Scheme details here are short summaries and may be out of date; always confirm on the official government portal before applying.')}
+          </Text>
+        </View>
+
         {filtered.map(scheme => (
           <SchemeCard
             key={scheme.id}
@@ -297,6 +326,12 @@ const SC = StyleSheet.create({
 
   // Scheme card
   list: { paddingHorizontal: 18, paddingBottom: 48, gap: 10 },
+  notice: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: COLORS.white, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  noticeText: { flex: 1, fontSize: 12, color: COLORS.textMedium, lineHeight: 17 },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 16, padding: 16, gap: 12,

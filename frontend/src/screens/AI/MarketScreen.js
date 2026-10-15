@@ -752,6 +752,11 @@ export default function MarketScreen({ navigation }) {
                   );
                 })}
               </View>
+              {/* Play "government affiliation" rule: name the source and say we
+                  are not a government app, wherever official prices are shown. */}
+              <Text style={M.govNote}>
+                {t('govNotice.mandiSource', 'Prices from data.gov.in (Agmarknet). KrushiSarva is not a government app and is not affiliated with any government body.')}
+              </Text>
             </AnimCard>
           </Animated.View>
         )}
@@ -1008,9 +1013,11 @@ const M = StyleSheet.create({
   // is 5.43:1.
   sourceBadgeText:{ fontSize: 9, color: KHET.mutedForeground, fontWeight: '600' },
 
+  govNote:        { fontSize: 11, lineHeight: 15, color: KHET.mutedForeground, marginTop: KSPACE.s8 },
+
   // ── Mandi
   // GAP: no KELEV tier matches.
-  mandiCard:       { backgroundColor: COLORS.surface, borderRadius: KRADIUS.r16, borderWidth: KBORDER.hairline, borderColor: COLORS.border, overflow: 'hidden', shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 },
+  mandiCard:      { backgroundColor: COLORS.surface, borderRadius: KRADIUS.r16, borderWidth: KBORDER.hairline, borderColor: COLORS.border, overflow: 'hidden', shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 },
   mandiRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: KSPACE.s14 },
   mandiRowTop:     { backgroundColor: COLORS.mintWhite },
   mandiLeft:       { flex: 1 },

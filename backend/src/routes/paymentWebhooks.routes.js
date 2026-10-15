@@ -54,7 +54,6 @@ import {
 } from '../services/paymentIntent.service.js';
 import { shopWebhookHandler } from '../services/shopPayment.service.js';
 import { rentWebhookHandler } from '../services/rentPayment.service.js';
-import { aiCreditsWebhookHandler } from '../services/aiCreditPayment.service.js';
 import prisma from '../config/db.js';
 import { rateLimiter, clientIp } from '../middleware/rateLimit.js';
 import { recordEvent, SHOP_EVENTS } from '../services/shopMetrics.service.js';
@@ -75,12 +74,22 @@ const PURPOSE_HANDLERS = {
   // precisely so an ordinary failed booking payment is not reported as an
   // unhandled purpose at ERROR with an alert.
   [PAYMENT_PURPOSE.RENT_BOOKING]: rentWebhookHandler,
-  // Credits are granted by whichever of the webhook and /purchase/confirm
-  // arrives first; both route through the same keyed grant, so the second one
-  // to land is a no-op rather than a second top-up.
-  [PAYMENT_PURPOSE.AI_CREDITS]: aiCreditsWebhookHandler,
+  // AI_CREDITS    → retired, see RETIRED_PURPOSES below; deliberately absent.
   // ANIMAL_TOKEN  → PAY-005 is an open product decision; deliberately absent.
 };
+
+/**
+ * Purposes this build used to settle and deliberately no longer does.
+ *
+ * AI credits can no longer be bought (owner decision, 2026-10-15). A late
+ * capture, failure or refund for an old credit-pack payment — a Razorpay retry,
+ * or an order raised just before the deploy — is acknowledged with 200 and a
+ * warning, and grants NOTHING. The shared half (event claim, intent status)
+ * still runs, so a paid one stays visible in the admin payment-intent queue
+ * for a manual refund. It is not reported as an unhandled-purpose ALERT,
+ * because the absence is a decision, not missing code.
+ */
+const RETIRED_PURPOSES = new Set([PAYMENT_PURPOSE.AI_CREDITS]);
 
 /**
  * This router is mounted ahead of the global per-IP limiter (it has to be, to get
@@ -109,6 +118,14 @@ router.use(rateLimiter({
  * exists to make impossible.
  */
 async function ignoreUnhandledPurpose(eventId, { intent, eventType }) {
+  if (RETIRED_PURPOSES.has(intent?.purpose)) {
+    logger.warn({
+      eventId, eventType, intentId: intent.id, purpose: intent.purpose,
+      providerOrderId: intent.providerOrderId,
+    }, '[Webhook] event for a retired payment purpose — acknowledged, nothing granted');
+    await finishWebhookEvent(eventId, { status: 'IGNORED', error: `retired purpose ${intent.purpose}` });
+    return;
+  }
   logger.error({
     eventId, eventType, intentId: intent?.id, purpose: intent?.purpose,
     providerOrderId: intent?.providerOrderId,
