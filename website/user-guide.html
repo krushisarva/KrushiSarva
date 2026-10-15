@@ -5,17 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>User guide — KrushiSarva</title>
   <meta name="description" content="Step-by-step help for farmers, sellers (Krushi Seva Kendras) and the KrushiSarva team.">
-  <meta name="theme-color" content="#0f5a26">
+  <meta name="theme-color" content="#04170c">
   <link rel="icon" href="assets/img/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="assets/styles.css">
+  <script>
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('anim');
+      setTimeout(function () { document.documentElement.classList.remove('anim'); }, 1500);
+    }
+  </script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <div class="progress" aria-hidden="true"><span></span></div>
 
-  <header class="site-header">
+  <header class="site-header" data-dark>
     <div class="container header-row">
       <a href="index.html" class="brand" aria-label="KrushiSarva home">
-        <img src="assets/img/logo.png" alt="KrushiSarva" width="834" height="245">
+        <img class="brand-dark" src="assets/img/logo.png" alt="KrushiSarva" width="834" height="245">
+        <span class="brand-light"><img src="assets/img/favicon.png" alt="" width="64" height="64"><span>KrushiSarva</span></span>
       </a>
       <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
         <span class="sr-only">Menu</span><span class="bars" aria-hidden="true"></span>
@@ -26,35 +37,52 @@
         <a href="index.html#users">Who it is for</a>
         <a href="user-guide.html" aria-current="page">User guide</a>
         <a href="index.html#team">Team</a>
-        <a href="index.html#contact" class="btn btn-primary btn-sm">Contact us</a>
+        <a href="index.html#contact" class="btn btn-lime btn-sm">Contact us</a>
       </nav>
     </div>
   </header>
 
   <main id="main">
-    <section id="top" class="guide-hero">
+    <section id="top" class="hero guide-hero">
+      <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="grid-lines" aria-hidden="true"></div>
       <div class="container">
-        <nav class="crumbs" aria-label="Breadcrumb"><a href="index.html">Home</a> / User guide</nav>
-        <p class="eyebrow">User guide</p>
-        <h1>How to use KrushiSarva</h1>
-        <p class="lead">Step-by-step help for each of the three kinds of users. Choose yours.</p>
-        <div class="picker">
-          <a class="pick" href="#farmers"><img src="assets/img/app-farmer.png" alt="" width="256" height="256"><span><strong>Farmer guide</strong><span>KrushiSarva app, Android &middot; 11 tasks</span></span></a>
+        <nav class="crumbs" aria-label="Breadcrumb" data-hero><a href="index.html">Home</a> / User guide</nav>
+        <p class="pill" data-hero><span class="dot"></span>26 step-by-step tasks</p>
+        <h1 class="hero-title" data-split>How to use <em>KrushiSarva</em></h1>
+        <p class="lead" data-hero>Step-by-step help for each of the three kinds of users. Choose yours, or search for a task.</p>
+        <div class="search" data-hero>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <label class="sr-only" for="guide-search">Search the guide</label>
+          <input id="guide-search" type="search" placeholder="Search, for example: delivery code, KYC, mandi" autocomplete="off">
+        </div>
+        <p id="search-status" class="sr-only" role="status" aria-live="polite"></p>
+        <div class="picker" data-hero>
+          <a class="pick" href="#farmers"><img src="assets/img/app-farmer.png" alt="" width="256" height="256"><span><strong>Farmer guide</strong><span>KrushiSarva app, Android &middot; 13 tasks</span></span></a>
           <a class="pick" href="#sellers"><img src="assets/img/app-seller.png" alt="" width="256" height="256"><span><strong>Seller guide</strong><span>Seller app for Krushi Seva Kendras, Android &middot; 7 tasks</span></span></a>
           <a class="pick" href="#team"><span class="role-mark" aria-hidden="true">KS</span><span><strong>KrushiSarva team guide</strong><span>Admin console, web &middot; 6 tasks</span></span></a>
         </div>
       </div>
     </section>
 
+    <div class="tabs-bar">
+      <nav class="container tabs" aria-label="Guide sections">
+        <span class="tabs-ink" aria-hidden="true"></span>
+        <a href="#farmers">Farmers</a>
+        <a href="#sellers">Sellers</a>
+        <a href="#team">KrushiSarva team</a>
+      </nav>
+    </div>
+
     <section id="farmers" class="guide" aria-labelledby="farmers-title">
       <div class="container">
-        <div class="guide-head">
+        <div class="guide-head" data-reveal>
           <img src="assets/img/app-farmer.png" alt="" width="256" height="256">
           <div><h2 id="farmers-title">Farmer guide</h2><p>KrushiSarva app, Android</p></div>
         </div>
-        <p class="guide-intro">For farmers. Install the KrushiSarva app on an Android phone and sign in with your mobile number.</p>
+        <p class="guide-intro" data-reveal>For farmers. Install the KrushiSarva app on an Android phone and sign in with your mobile number.</p>
         <div class="tasks">
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Sign in and set up</h3>
             <p class="task-why">Use this to create your account and tell the app about your farm.</p>
             <ol class="steps">
@@ -67,7 +95,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Only your name and district are required. Tap <b>Skip</b> to add farm details later.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Scan a sick crop</h3>
             <p class="task-why">Use this to find out what is wrong with a crop from a photo and get treatment steps.</p>
             <ol class="steps">
@@ -80,7 +108,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Take the photo in daylight, 20–30 cm from the affected leaf. If the photo is too unclear to read, it does not count towards your monthly limit.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Ask Krushi AI</h3>
             <p class="task-why">Use this to ask farming questions by typing or speaking.</p>
             <ol class="steps">
@@ -88,11 +116,11 @@
               <li>Type your question, or tap a suggestion such as <b>My crop has yellow spots</b>.</li>
               <li>To speak instead, tap the mic and talk in Hindi or English.</li>
               <li>For a full spoken conversation, open <b>Krushi Vaani</b> under <b>AI Tools</b>.</li>
-              <li>Find past answers under <b>Chat history</b> or <b>Voice history</b>.</li>
+              <li>Find past answers under <b>Chat history</b> or <b>Voice history</b>. Tap <b>Report</b> under an answer if it looks wrong.</li>
             </ol>
             <p class="tip"><strong>Tip:</strong> Krushi AI is free to use. Each account has a fair monthly limit on scans and chats, and it resets on the 1st of every month.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Check weather and mandi prices</h3>
             <p class="task-why">Use this to plan farm work around the weather and to find the best market price.</p>
             <ol class="steps">
@@ -104,7 +132,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> When you are offline, Weather shows the last saved forecast and how old it is.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Buy farm inputs</h3>
             <p class="task-why">Use this to order seeds, fertilisers, tools and other inputs.</p>
             <ol class="steps">
@@ -117,7 +145,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> For Cash on Delivery the button says <b>Place Order</b>. For online payment it opens a secure payment page.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Track or cancel an order</h3>
             <p class="task-why">Use this to see where your order is, or to cancel it.</p>
             <ol class="steps">
@@ -128,7 +156,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> You can cancel only before the shop confirms the order. If you paid online, the refund usually reaches your account in 5–7 working days.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Buy or sell livestock</h3>
             <p class="task-why">Use this to find animals near you, or to sell your own animal.</p>
             <ol class="steps">
@@ -138,9 +166,9 @@
               <li>Add up to 4 photos, choose the animal type, and enter breed, age, weight and price.</li>
               <li>Tap <b>Post Free Listing</b>.</li>
             </ol>
-            <p class="tip"><strong>Tip:</strong> Always see the animal in person, and pay only after you receive it.</p>
+            <p class="tip"><strong>Tip:</strong> Always see the animal in person, and pay only after you receive it. If an ad looks wrong, tap <b>Report listing</b> or <b>Block seller</b> at the bottom of it.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Rent machinery or labour</h3>
             <p class="task-why">Use this to hire a tractor or farm workers, or to earn money by listing your own.</p>
             <ol class="steps">
@@ -152,7 +180,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> A booking is confirmed only when the owner accepts it. You get a notification when they do.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Record farm work</h3>
             <p class="task-why">Use this to keep a dated diary of the work, costs and income for each crop.</p>
             <ol class="steps">
@@ -164,7 +192,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Record costs and sales as they happen, so you can see your profit for the season.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Send a crop report to a shop</h3>
             <p class="task-why">Use this to get product advice from a nearby Krushi Seva Kendra after a crop scan.</p>
             <ol class="steps">
@@ -175,7 +203,28 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> You can add the shop's suggested products to your cart, or call the shop from the report.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
+            <h3>Report or block someone</h3>
+            <p class="task-why">Use this to stop unwanted messages, or to tell us about wrong or harmful content.</p>
+            <ol class="steps">
+              <li>In a livestock chat, tap the three-dot <b>More options</b> button at the top right.</li>
+              <li>Tap <b>Report user</b>, choose a reason, then tap <b>Send report</b>.</li>
+              <li>To stop all contact, tap <b>Block user</b>, then <b>Block</b>.</li>
+              <li>To undo, open <b>Account</b> › <b>Account Settings</b> › <b>Blocked users</b> and tap <b>Unblock</b>.</li>
+            </ol>
+            <p class="tip"><strong>Tip:</strong> You can also tap <b>Report this result</b> on a crop scan, <b>Report listing</b> on a rental, or <b>Report</b> on a product review.</p>
+          </article>
+          <article class="task" data-reveal>
+            <h3>Update the app</h3>
+            <p class="task-why">Use this to get the newest version when you choose.</p>
+            <ol class="steps">
+              <li>When <b>New version available</b> appears, tap <b>Update now</b>, or tap <b>Later</b>.</li>
+              <li>Or open <b>Account</b>, scroll to <b>App version</b> and tap it to check for updates.</li>
+              <li>If an update is offered, tap <b>Update</b>, then <b>Restart</b> when it is ready.</li>
+            </ol>
+            <p class="tip"><strong>Tip:</strong> “You're up to date” means there is nothing to install.</p>
+          </article>
+          <article class="task" data-reveal>
             <h3>Delete your account</h3>
             <p class="task-why">Use this to permanently erase your personal data.</p>
             <ol class="steps">
@@ -193,13 +242,13 @@
 
     <section id="sellers" class="guide" aria-labelledby="sellers-title">
       <div class="container">
-        <div class="guide-head">
+        <div class="guide-head" data-reveal>
           <img src="assets/img/app-seller.png" alt="" width="256" height="256">
           <div><h2 id="sellers-title">Seller guide</h2><p>Seller app for Krushi Seva Kendras, Android</p></div>
         </div>
-        <p class="guide-intro">For Krushi Seva Kendras (local farm-supply shops). Your shop goes live after our team verifies your KYC.</p>
+        <p class="guide-intro" data-reveal>For Krushi Seva Kendras (local farm-supply shops). Your shop goes live after our team verifies your KYC.</p>
         <div class="tasks">
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Sign in to the app</h3>
             <p class="task-why">This is how you get into the seller app with your mobile number.</p>
             <ol class="steps">
@@ -211,7 +260,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> The seller app uses the same phone account as the KrushiSarva farmer app.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Complete business profile and KYC</h3>
             <p class="task-why">This tells KrushiSarva who you are, so that your shop can be verified.</p>
             <ol class="steps">
@@ -224,7 +273,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> You can prepare products before approval, but nothing goes on sale until your KYC shows <b>Verified</b>. If it is rejected, the app shows the reason. Correct the details and save again.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Add a product</h3>
             <p class="task-why">This puts a product on sale in the KrushiSarva store.</p>
             <ol class="steps">
@@ -237,7 +286,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> In <b>My products</b> you can edit or delete a product, or turn its switch off to hide it from buyers.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Handle an order</h3>
             <p class="task-why">This takes a farmer's order from new to delivered.</p>
             <ol class="steps">
@@ -250,7 +299,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Use the <b>Call</b> and <b>Map</b> buttons on the order to reach the farmer.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Check payment status</h3>
             <p class="task-why">This tells you whether to collect money when you deliver an order.</p>
             <ol class="steps">
@@ -262,7 +311,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> The amount shown includes any delivery charge.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Reply to a crop report</h3>
             <p class="task-why">This lets you advise a nearby farmer who sent you an AI crop diagnosis.</p>
             <ol class="steps">
@@ -275,12 +324,12 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Tap <b>Call farmer</b> if you need more details. To change your advice later, use <b>Update recommendation</b>.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Manage your seller account</h3>
             <p class="task-why">This covers reviews, delivery areas, notifications and deleting your account.</p>
             <ol class="steps">
               <li>On the dashboard, tap <b>Profile</b>.</li>
-              <li>Open <b>Ratings &amp; reviews</b> to read what buyers said after delivery.</li>
+              <li>Open <b>Ratings &amp; reviews</b> to read what buyers said after delivery. Tap <b>Report</b> under a review to send it to our team.</li>
               <li>Open <b>Delivery areas</b> to set PIN codes, delivery days and any extra charge.</li>
               <li>Use the <b>Notifications</b> switch to turn order alerts on or off.</li>
               <li>To leave KrushiSarva, tap <b>Delete my account</b>. Confirm with the code sent by SMS.</li>
@@ -294,13 +343,13 @@
 
     <section id="team" class="guide" aria-labelledby="team-title">
       <div class="container">
-        <div class="guide-head">
+        <div class="guide-head" data-reveal>
           <span class="role-mark" aria-hidden="true">KS</span>
           <div><h2 id="team-title">KrushiSarva team guide</h2><p>Admin console, web</p></div>
         </div>
-        <p class="guide-intro">For KrushiSarva staff. Shown here so partners can see how the platform is run day to day.</p>
+        <p class="guide-intro" data-reveal>For KrushiSarva staff. Shown here so partners can see how the platform is run day to day.</p>
         <div class="tasks">
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Sign in and find your way</h3>
             <p class="task-why">Staff sign in with their own account and only see the areas their role allows.</p>
             <ol class="steps">
@@ -311,7 +360,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> If your role does not cover a page, that page does not appear in your sidebar.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Review seller KYC</h3>
             <p class="task-why">This checks a seller's identity and bank details before they can sell.</p>
             <ol class="steps">
@@ -323,7 +372,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Bank and ID numbers stay hidden until a reviewer asks to see them and gives a reason.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Manage the product catalogue</h3>
             <p class="task-why">This keeps the store's product list accurate and up to date.</p>
             <ol class="steps">
@@ -335,7 +384,7 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> Export first to get the exact column layout for an import. <b>Remove</b> hides a product but does not delete it.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Watch payments and refunds</h3>
             <p class="task-why">This shows where each customer payment stands and finds payments that need a person to act.</p>
             <ol class="steps">
@@ -346,18 +395,19 @@
             </ol>
             <p class="tip"><strong>Tip:</strong> <b>Refund by hand</b> lists only the automatic refunds that failed.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Handle trust and safety</h3>
-            <p class="task-why">This covers flagged content, possible fraud and disputes between users.</p>
+            <p class="task-why">This covers user reports, flagged content, possible fraud and disputes between users.</p>
             <ol class="steps">
-              <li>Open <b>Moderation</b> to see reviews and products flagged automatically.</li>
-              <li>Open an item and read why it was flagged. Choose <b>Approve</b> or <b>Reject</b>.</li>
+              <li>Open <b>Moderation</b> to see content users reported, and reviews and products flagged automatically.</li>
+              <li>Open an item and read the reports or flag reasons. For a user report choose <b>Dismiss (no violation)</b> or <b>Uphold (violation)</b>. For an automatic flag choose <b>Approve</b> or <b>Reject</b>.</li>
               <li>Open <b>Fraud Clusters</b> to review accounts that may be linked.</li>
               <li>In <b>Disputes</b>, choose <b>New dispute</b> for an animal-trade, rental or order problem.</li>
               <li>Assign the dispute and update its status. Resolving it needs a written resolution.</li>
             </ol>
+            <p class="tip"><strong>Tip:</strong> Deciding a report only records it. To remove the content or suspend the person, open it from its own admin page.</p>
           </article>
-          <article class="task">
+          <article class="task" data-reveal>
             <h3>Check the audit log</h3>
             <p class="task-why">This is a read-only record of sensitive actions that staff have taken.</p>
             <ol class="steps">
@@ -373,18 +423,25 @@
       </div>
     </section>
 
-    <section class="contact">
-      <div class="container contact-inner">
-        <h2>Stuck on a step?</h2>
-        <p>Write to us and tell us which screen you are on. We will help.</p>
-        <a class="btn btn-gold" href="mailto:krushisarva@gmail.com">krushisarva@gmail.com</a>
+    <p class="no-results container">No task matches that search. Try a shorter word, such as "order" or "scan".</p>
+
+    <section id="contact" class="contact" style="padding-top: clamp(72px, 10vw, 120px)">
+      <div class="container">
+        <div class="contact-card" data-reveal>
+          <div class="aurora aurora-soft" aria-hidden="true"><i></i><i></i></div>
+          <h2>Stuck on a step?</h2>
+          <p>Write to us and tell us which screen you are on. We will help.</p>
+          <a class="btn btn-lime btn-lg" href="mailto:krushisarva@gmail.com">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+            krushisarva@gmail.com</a>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="container footer-row">
-      <img src="assets/img/logo.png" alt="KrushiSarva" width="834" height="245" loading="lazy">
+      <a href="index.html" class="footer-brand"><img src="assets/img/favicon.png" alt="" width="64" height="64"><span>KrushiSarva</span></a>
       <nav aria-label="Footer">
         <a href="index.html#what-we-do">What we do</a>
         <a href="index.html#product">Product</a>
@@ -397,6 +454,14 @@
     </div>
   </footer>
 
-  <script src="assets/site.js"></script>
+  <button class="motion-toggle" type="button" aria-pressed="false" title="Pause animations">
+    <svg class="i i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14"/><path d="M15 5v14"/></svg>
+    <svg class="i i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7V5Z"/></svg>
+    <span class="sr-only">Pause animations</span>
+  </button>
+
+  <script src="assets/vendor/gsap.min.js" defer></script>
+  <script src="assets/vendor/ScrollTrigger.min.js" defer></script>
+  <script src="assets/site.js" defer></script>
 </body>
 </html>
