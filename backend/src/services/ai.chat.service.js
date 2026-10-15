@@ -26,7 +26,7 @@ function makeGeminiClient() {
 let _gemini = null;
 const gemini = () => { if (!_gemini) _gemini = makeGeminiClient(); return _gemini; };
 
-const GEMINI_MODEL = ENV.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = ENV.GEMINI_MODEL || 'gemini-3.6-flash';
 
 // ── Season helper (pure — also imported by planner + ai routes) ────────────────
 export function getCurrentSeason() {

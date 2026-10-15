@@ -25,8 +25,10 @@ const SETTINGS_CACHE_TTL_MS = 60_000;
 // failure. Text features (chat, treatment) may use any model below; VISION features
 // (diagnose, soil OCR) must use a vision-capable model — see VISION_MODEL_OPTIONS.
 const LLM_MODEL_OPTIONS = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash · fast + cheap (Google)' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro · higher accuracy (Google)' },
+  // Free-tier Gemini. Gemini 2.5 is closed to new API keys and Pro models have no
+  // free quota (HTTP 429), so neither is offered.
+  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash · free tier (Google)' },
+  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite · free tier, lighter (Google)' },
   { value: 'gpt-4o', label: 'GPT-4o · vision (OpenAI)' },
   { value: 'gpt-4o-mini', label: 'GPT-4o mini · fast, vision (OpenAI)' },
   { value: 'claude-opus-4-8', label: 'Claude Opus 4.8 · vision (Anthropic)' },
@@ -75,19 +77,17 @@ export const SETTINGS_MANIFEST = [
   // features (diagnose, soil OCR) are limited to vision-capable models; a missing
   // provider key surfaces a clear error. Diagnose/treatment have NO model fallback —
   // a model that errors fails that scan loudly (by design), so pick a keyed provider.
-  { key: 'ai.model.chat', type: 'ENUM', category: 'AI Models', label: 'Text chat model', description: 'LLM for the farmer text assistant (chat). Any provider works; if the primary is unavailable it falls back Gemini→Groq so the farmer still gets a reply. Switching e.g. Gemini Flash↔Pro is verified working.', envKey: 'AI_TEXT_CHAT_MODEL', default: 'gemini-2.5-flash', options: LLM_MODEL_OPTIONS },
-  { key: 'ai.model.diagnose', type: 'ENUM', category: 'AI Models', label: 'Disease diagnosis model', description: 'Vision LLM that identifies the disease from the leaf photo — the always-on first pass of every scan. Vision-capable models only (Groq is text-only, excluded). No fallback: an unkeyed or failing model fails the scan, so pick a provider whose key is set.', envKey: 'AI_CROP_DIAGNOSE_MODEL', default: 'gemini-2.5-flash', options: VISION_MODEL_OPTIONS },
-  // NOTE (cost): this default is 'gemini-2.5-pro' and Express forwards it as
-  // model_treatment on BOTH scan paths, so it overrides FastAPI's own default for
-  // this feature (llm_dispatch._DEFAULTS CROP_TREATMENT = gemini-2.5-flash). Pro is
-  // ~4x Flash per million output tokens and this call runs at max_tokens 8192, so it
-  // is the single largest controllable line item on a scan. The content is already
-  // constrained to a closed list of registered actives by rag_retrieve and
-  // post-filtered by validate_treatment — i.e. template filling, not open reasoning
-  // — so Flash is defensible. Flipping it is an ACCURACY call that needs the golden
-  // set to answer, not an engineering one: left on Pro deliberately, pending that.
-  { key: 'ai.model.treatment', type: 'ENUM', category: 'AI Models', label: 'Treatment plan model', description: 'Text LLM that writes the RAG-grounded spray/IPM treatment plan after diagnosis. Skipped automatically for uncertain or out-of-scope diagnoses. Pro is the default for accuracy and overrides the FastAPI-side Flash default — it is roughly 4× the output-token price of Flash, so it is the biggest per-scan cost lever on this page.', envKey: 'AI_CROP_TREATMENT_MODEL', default: 'gemini-2.5-pro', options: LLM_MODEL_OPTIONS },
-  { key: 'ai.model.soilOcr', type: 'ENUM', category: 'AI Models', label: 'Soil-card OCR model', description: 'Vision LLM that reads the 12 parameters off a soil health card photo. Vision-capable models only (Groq is text-only, excluded).', envKey: 'AI_SOIL_OCR_MODEL', default: 'gemini-2.5-flash', options: VISION_MODEL_OPTIONS },
+  { key: 'ai.model.chat', type: 'ENUM', category: 'AI Models', label: 'Text chat model', description: 'LLM for the farmer text assistant (chat). Any provider works; if the primary is unavailable it falls back Gemini→Groq so the farmer still gets a reply. Switching e.g. Gemini Flash↔Flash-Lite works live.', envKey: 'AI_TEXT_CHAT_MODEL', default: 'gemini-3.6-flash', options: LLM_MODEL_OPTIONS },
+  { key: 'ai.model.diagnose', type: 'ENUM', category: 'AI Models', label: 'Disease diagnosis model', description: 'Vision LLM that identifies the disease from the leaf photo — the always-on first pass of every scan. Vision-capable models only (Groq is text-only, excluded). No fallback: an unkeyed or failing model fails the scan, so pick a provider whose key is set.', envKey: 'AI_CROP_DIAGNOSE_MODEL', default: 'gemini-3.6-flash', options: VISION_MODEL_OPTIONS },
+  // NOTE: Express forwards this default as model_treatment on BOTH scan paths, so it
+  // overrides FastAPI's own default for this feature. It was 'gemini-2.5-pro' until
+  // 2026-10-15; Gemini 2.5 is closed to new API keys and Pro has no free-tier quota,
+  // so it is now gemini-3.6-flash. The content is constrained to a closed list of
+  // registered actives by rag_retrieve and post-filtered by validate_treatment —
+  // template filling, not open reasoning — so Flash is defensible; re-check
+  // accuracy against the golden set before moving it to a paid Pro model.
+  { key: 'ai.model.treatment', type: 'ENUM', category: 'AI Models', label: 'Treatment plan model', description: 'Text LLM that writes the RAG-grounded spray/IPM treatment plan after diagnosis. Skipped automatically for uncertain or out-of-scope diagnoses. Gemini 3.6 Flash (free tier) is the default and overrides the FastAPI-side default; a paid model here is the biggest per-scan cost lever on this page.', envKey: 'AI_CROP_TREATMENT_MODEL', default: 'gemini-3.6-flash', options: LLM_MODEL_OPTIONS },
+  { key: 'ai.model.soilOcr', type: 'ENUM', category: 'AI Models', label: 'Soil-card OCR model', description: 'Vision LLM that reads the 12 parameters off a soil health card photo. Vision-capable models only (Groq is text-only, excluded).', envKey: 'AI_SOIL_OCR_MODEL', default: 'gemini-3.6-flash', options: VISION_MODEL_OPTIONS },
   { key: 'ai.model.voiceStt', type: 'ENUM', category: 'AI Models', label: 'Voice / audio STT model', description: 'Speech-to-text for the voice assistant. Sarvam Saaras is Indic-tuned (recommended for Marathi/Hindi/regional); Whisper falls back to Sarvam until enabled.', envKey: 'AI_VOICE_STT_MODEL', default: 'sarvam:saaras:v3', options: VOICE_STT_OPTIONS },
 
   // ── AI diagnosis behaviour ──────────────────────────────────────────────────

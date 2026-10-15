@@ -186,8 +186,9 @@ Free-text fields are control-stripped and length-capped at the route boundary
 ### 6.4 The call + retries
 `call_llm_vision` ([`agents/llm_dispatch.py`](../agents/llm_dispatch.py) →
 [`agents/llm_utils.py`](../agents/llm_utils.py)):
-- Model: `AI_CROP_DIAGNOSE_MODEL` (default `gemini-2.5-flash`), `max_tokens=8192`, Gemini "thinking"
-  tokens disabled on Flash to avoid mid-JSON truncation.
+- Model: `AI_CROP_DIAGNOSE_MODEL` (default `gemini-3.6-flash`), `max_tokens=8192`, Gemini "thinking"
+  tokens disabled on Flash (`thinkingBudget: 0`) to avoid mid-JSON truncation; Flash-Lite gets no
+  thinking config at all (it rejects a budget of 0 and does not think by default).
 - **Two-temperature retry**: attempt 1 at `temp=0.0` (deterministic); if the JSON fails to parse or
   the disease is empty, attempt 2 at `temp=0.5`. Tokens accumulate across both attempts.
 - **No cross-model fallback by design** — if Gemini is down the agent returns `service_unavailable`
@@ -225,7 +226,7 @@ ENABLE_ENSEMBLE
 differential probability (and that differential > 0.25).
 
 [`agents/ensemble_agent.py`](../agents/ensemble_agent.py) `run_parallel()` fans out the same
-image + context to **Gemini Pro + Flash** concurrently (each with a 90s timeout — a failed member
+image + context to **Gemini 3.6 Flash + 3.5 Flash-Lite** concurrently (each with a 90s timeout — a failed member
 just means fewer votes), then [`agents/reconciler.py`](../agents/reconciler.py) `fuse()`:
 
 1. **Canonicalize** every model's disease name
@@ -285,7 +286,7 @@ Enforces full IPM rigor: pathogen-based routing (viral → vector control, no cu
 twice), pollinator safety during bloom, PHI/REI enforcement, real Indian brand names + approximate
 MRP, applicator PPE, and a strict flat-JSON contract.
 
-Model: `AI_CROP_TREATMENT_MODEL` (default `gemini-2.5-flash`), text call. Result is **cached**
+Model: `AI_CROP_TREATMENT_MODEL` (default `gemini-3.6-flash`), text call. Result is **cached**
 (Redis 7d / in-memory 24h) keyed on disease + crop + severity + tier + `registry_version`, so any
 registry bump auto-invalidates the cache.
 
@@ -329,9 +330,9 @@ name from machine-translation corruption with a placeholder token.
 |-------|-------|--------|-----------|
 | Image quality | none (Pillow CV) | — | binary go/no-go |
 | Weather risk | none (rules) | — | safe default |
-| **Diagnosis** | `gemini-2.5-flash` (vision) | [`diagnose.v2.md`](../agents/prompts/diagnose.v2.md) | `temp 0.0→0.5` retry; else `service_unavailable` |
-| Ensemble | `gemini-2.5-pro` + `flash` | same diagnose prompt | per-member timeout, graceful |
-| **Treatment** | `gemini-2.5-flash` (text) | [`treatment.v1.md`](../agents/prompts/treatment.v1.md) | cultural-only fallback |
+| **Diagnosis** | `gemini-3.6-flash` (vision) | [`diagnose.v2.md`](../agents/prompts/diagnose.v2.md) | `temp 0.0→0.5` retry; else `service_unavailable` |
+| Ensemble | `gemini-3.6-flash` + `gemini-3.5-flash-lite` | same diagnose prompt | per-member timeout, graceful |
+| **Treatment** | `gemini-3.6-flash` (text) | [`treatment.v1.md`](../agents/prompts/treatment.v1.md) | cultural-only fallback |
 | Report | none (template) | — | — |
 
 Provider plumbing: [`agents/llm_dispatch.py`](../agents/llm_dispatch.py) (flat per-feature,
@@ -345,8 +346,8 @@ ensemble).
 
 | Var | Default | Effect |
 |-----|---------|--------|
-| `AI_CROP_DIAGNOSE_MODEL` | `gemini-2.5-flash` | Diagnosis vision model |
-| `AI_CROP_TREATMENT_MODEL` | `gemini-2.5-flash` | Treatment text model |
+| `AI_CROP_DIAGNOSE_MODEL` | `gemini-3.6-flash` | Diagnosis vision model |
+| `AI_CROP_TREATMENT_MODEL` | `gemini-3.6-flash` | Treatment text model |
 | `IMAGE_UNUSABLE_THRESHOLD` | 0.4 | Hard-reject image below this |
 | `IMAGE_QUALITY_THRESHOLD` | 0.6 | Mark image "marginal" below this |
 | `DIAGNOSIS_ESCALATE_BELOW` | 0.5 | Set `needs_advisor` / block chemicals below this |

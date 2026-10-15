@@ -54,7 +54,7 @@ function getClient() {
 
 function getModel() {
   return ENV.GEMINI_API_KEY
-    ? (ENV.GEMINI_MODEL || 'gemini-2.5-flash')
+    ? (ENV.GEMINI_MODEL || 'gemini-3.6-flash')
     : 'gpt-4o';
 }
 

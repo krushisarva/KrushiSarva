@@ -300,7 +300,7 @@ export const ENV = {
   // ── AI & Weather (Krishi Raksha + FarmMind) ────────────────────────────────
   // Gemini is FREE (15 RPM / 1 M tokens/day). Get key: https://aistudio.google.com/app/apikey
   GEMINI_API_KEY:      process.env.GEMINI_API_KEY  || '',
-  GEMINI_MODEL:        process.env.GEMINI_MODEL    || 'gemini-2.5-flash',
+  GEMINI_MODEL:        process.env.GEMINI_MODEL    || 'gemini-3.6-flash',
   OPENAI_API_KEY:      process.env.OPENAI_API_KEY  || '',
   OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY || '',
 

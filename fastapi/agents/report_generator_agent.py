@@ -1069,7 +1069,7 @@ def _generate_template_report(
     severity      = disease_info.get("severity", "Unknown")
     needs_advisor = diagnosis.get("needs_advisor", False)
 
-    pipeline_model = "gemini-2.5-flash"
+    pipeline_model = "gemini-3.6-flash"
 
     # ── Build 4 report sections ──
     section1 = _build_section1_farmer_summary(
