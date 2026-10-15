@@ -31,15 +31,17 @@ const LLM_MODEL_OPTIONS = [
   { value: 'gpt-4o-mini', label: 'GPT-4o mini · fast, vision (OpenAI)' },
   { value: 'claude-opus-4-8', label: 'Claude Opus 4.8 · vision (Anthropic)' },
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 · vision (Anthropic)' },
-  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B · text-only (Groq)' },
+  // Groq retired Llama 3.3 70B for free/developer plans on 2026-08-16; GPT-OSS 120B
+  // is its replacement there (an open-weight model Groq hosts, not OpenAI's API).
+  { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B · text-only (Groq)' },
 ];
 
 // Vision-capable subset — for features that send an image (disease diagnosis, soil
-// OCR). Groq's Llama has NO vision, so it is excluded here; offering it for a vision
+// OCR). Groq's GPT-OSS has NO vision, so it is excluded here; offering it for a vision
 // feature would hard-fail the call (the FastAPI dispatch rejects a non-vision model
 // for vision). Keeping it out of the dropdown is the guard.
 const VISION_MODEL_OPTIONS = LLM_MODEL_OPTIONS.filter(
-  (m) => m.value !== 'llama-3.3-70b-versatile',
+  (m) => m.value !== 'openai/gpt-oss-120b',
 );
 
 // value convention: '<provider>:<modelId>' (split on the FIRST colon). The route

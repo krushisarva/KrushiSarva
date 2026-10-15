@@ -2,7 +2,7 @@
 Unit tests for agents/llm_dispatch.py — the flat per-feature LLM config.
 
 KrushiSarva routes per-feature by model-id prefix (WI-11). Covers:
-  - _detect_provider maps gemini-*/gpt-*/claude-*/llama-* and rejects the rest
+  - _detect_provider maps gemini-*/gpt-*/claude-*/openai/gpt-oss-*/llama-* and rejects the rest
   - get_feature_config reads AI_<FEATURE>_* env vars correctly
   - defaults (all Gemini) are used when env vars are unset
 """
@@ -44,10 +44,19 @@ class TestDetectProvider:
         assert _detect_provider("llama-3.3-70b-versatile", None) == "groq"
         assert _detect_provider("mixtral-8x7b", None) == "groq"
 
+    def test_gpt_oss_routes_to_groq_not_openai(self):
+        # openai/gpt-oss-* are open-weight models Groq hosts (the free-plan
+        # replacement for Llama 3.3 70B since 2026-08-16). They must go to Groq
+        # with GROQ_API_KEY, never to OpenAI's API, which is what a bare gpt-* is.
+        assert _detect_provider("openai/gpt-oss-120b", None) == "groq"
+        assert _detect_provider("openai/gpt-oss-20b", None) == "groq"
+        assert _detect_provider("gpt-4o-mini", None) == "openai"
+
     def test_unknown_prefixes_raise(self):
         # An unroutable id must fail at config time, not at call time with an
         # empty credential against an endpoint that does not exist.
-        for bad in ("deepseek-chat", "grok-2", "whisper-large-v3-turbo", "", "foo-mystery"):
+        for bad in ("deepseek-chat", "grok-2", "whisper-large-v3-turbo", "", "foo-mystery",
+                    "openai/gpt-4o", "qwen/qwen3.8-27b"):
             with pytest.raises(ConfigError):
                 _detect_provider(bad, None)
 
@@ -152,7 +161,7 @@ class TestGroqFallback:
             res = _groq_fallback(feat)
             assert res is not None, feat
             model, key = res
-            assert model == "llama-3.3-70b-versatile"
+            assert model == "openai/gpt-oss-120b"
             assert key == "gsk_test"
 
     def test_off_for_non_chat_features_even_with_key(self, monkeypatch):
@@ -181,4 +190,22 @@ class TestGroqFallback:
         monkeypatch.setattr(d, "GROQ_API_KEY", "gsk_test", raising=False)
         monkeypatch.setenv("AI_ALERT_GROQ_FALLBACK", "true")
         res = _groq_fallback("ALERT")
-        assert res is not None and res[0] == "llama-3.3-70b-versatile"
+        assert res is not None and res[0] == "openai/gpt-oss-120b"
+
+
+# ── Groq request fields for reasoning models ─────────────────────────────────
+
+class TestGroqModelParams:
+    def test_gpt_oss_gets_reasoning_headroom_and_hides_reasoning(self):
+        from agents.llm_utils import _GPT_OSS_REASONING_HEADROOM, _groq_model_params
+        p = _groq_model_params("openai/gpt-oss-120b", 512)
+        # The voice path's 512-token cap must not be eaten by hidden reasoning.
+        assert p["max_tokens"] == 512 + _GPT_OSS_REASONING_HEADROOM
+        assert p["include_reasoning"] is False
+        assert p["reasoning_effort"] == "low"
+
+    def test_other_groq_models_send_only_the_cap(self):
+        # include_reasoning / reasoning_effort are reasoning-model fields; a
+        # non-reasoning model must not receive them.
+        from agents.llm_utils import _groq_model_params
+        assert _groq_model_params("llama-3.3-70b-versatile", 4096) == {"max_tokens": 4096}

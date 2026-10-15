@@ -320,10 +320,11 @@ image: Optional[dict]        # {data:b64, mime_type} | None
 | Feature | Default model | Key |
 |---|---|---|
 | `CHAT_WRITER` / `CHAT_ENHANCER` / `CHAT_VISION` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
-| `TEXT_CHAT` (legacy single-pass) | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| `TEXT_CHAT` (legacy single-pass) | `gemini-2.5-flash` | `GEMINI_API_KEY` |
 | `VOICE_STT` | `whisper-large-v3-turbo` | `GROQ_API_KEY` |
-| `CROP_DIAGNOSE` / `CROP_TREATMENT` | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` |
-| `ALERT` / `PEST` | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| `CROP_DIAGNOSE` / `CROP_TREATMENT` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
+| `ALERT` / `PEST` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
+| Text-chat fallback (Groq, last resort) | `openai/gpt-oss-120b` | `GROQ_API_KEY` |
 
 > Chat stages default to **Gemini 2.5 Flash** because the pipeline makes 3 calls/message and Groq's free tier would `429` under that load.
 

@@ -20,7 +20,7 @@ All three currently depend on **third-party hosted models**:
 
 - **Google Gemini** (`gemini-2.5-flash` default, `gemini-2.5-pro` for escalation) — the sole production LLM for vision diagnosis, treatment text, chat, alerts, soil-card OCR.
 - **Sarvam AI** — Indic speech-to-text (STT), text-to-speech (TTS), and translation.
-- **Groq** (`llama-3.3-70b-versatile`) — optional last-resort *text-chat* fallback.
+- **Groq** (`openai/gpt-oss-120b`) — optional last-resort *text-chat* fallback.
 - **OpenAI** (`gpt-4o`) — optional single ensemble vision voter, off by default.
 
 **This document exists so an LLM design partner can answer: "How do we build an in-house LLM agent (and supporting models) that powers these three services, reduces/eliminates the third-party dependency, and preserves the strong safety/compliance guarantees the current system has?"**
@@ -275,7 +275,7 @@ Express settles credits with actual token_info → persist user+assistant AIMess
 | `chat_service.py:_voice_reply` (line 450) | Gemini | `gemini-2.5-flash` (CHAT_WRITER, voice mode) | Single concise spoken-style reply (<90 words, no markdown) |
 | `chat_service.py:_vision_reply` (line 472) | Gemini | `gemini-2.5-flash` (`AI_CHAT_VISION_MODEL`) | General image understanding (NOT crop-disease — that's `/ai/scan`). NO fallback |
 | `llm_dispatch.py:call_llm_text` capacity fallback (line 273) | Gemini | `gemini-2.5-pro` (Flash↔Pro swap) | Capacity fallback for chat features (separate quota) |
-| `llm_dispatch.py:call_llm_text` Groq fallback (line 289) | Groq | `llama-3.3-70b-versatile` | **Last-resort** cross-provider text-chat fallback (only if `GROQ_API_KEY` set) |
+| `llm_dispatch.py:call_llm_text` Groq fallback (line 289) | Groq | `openai/gpt-oss-120b` | **Last-resort** cross-provider text-chat fallback (only if `GROQ_API_KEY` set) |
 | `ai.chat.service.js:chatWithFarmMind` (line 529) — **LEGACY, unused for inference** | Gemini | `gemini-2.5-flash` (ENV.GEMINI_MODEL) | Legacy single-call chat; superseded |
 
 ### 4.5 Context / "RAG"
@@ -372,7 +372,7 @@ VoiceChatScreen.playBase64Audio() → expo-av Audio.Sound (and types reply on-sc
 | 7 | Chat (vision) | `call_gemini_vision` (via `_vision_reply`) | Gemini | `gemini-2.5-flash` | Gemini REST, inline_data |
 | 8 | Chat (voice mode) | `call_gemini_text` (via `_voice_reply`) | Gemini | `gemini-2.5-flash` | Gemini REST |
 | 9 | Chat (capacity fallback) | `llm_dispatch.py:call_llm_text` line 273 | Gemini | `gemini-2.5-pro` | Gemini REST (Flash↔Pro swap) |
-| 10 | Chat (cross-provider fallback) | `fastapi/agents/llm_utils.py:call_groq_text` | Groq | `llama-3.3-70b-versatile` | raw httpx POST `https://api.groq.com/openai/v1/chat/completions`, Bearer. Only if `GROQ_API_KEY` |
+| 10 | Chat (cross-provider fallback) | `fastapi/agents/llm_utils.py:call_groq_text` | Groq | `openai/gpt-oss-120b` | raw httpx POST `https://api.groq.com/openai/v1/chat/completions`, Bearer. Only if `GROQ_API_KEY` |
 | 11 | Soil OCR | `fastapi/services/soil_ocr_service.py:extract_soil_card` → `call_llm_vision` | Gemini | `gemini-2.5-flash` (`AI_SOIL_OCR_MODEL`) | Gemini REST, inline_data |
 | 12 | Smart Alerts | `call_gemini_text` (via `alert_service.py`) | Gemini | `gemini-2.5-flash` (`AI_ALERT_MODEL`) | Gemini REST |
 | 13 | Pest enhancement | `call_gemini_text` (PEST feature) | Gemini | `gemini-2.5-flash` (`AI_PEST_MODEL`) | Gemini REST |
@@ -626,7 +626,7 @@ These are the concrete questions to put to Claude Chat when designing the in-hou
 |---|---|
 | `GEMINI_API_KEY` | Sole production LLM key (required in prod) |
 | `AI_<FEATURE>_MODEL` / `_API_KEY` / `_BASE_URL` | Per-feature override (`base_url` vestigial today); features: TEXT_CHAT, CHAT_WRITER, CHAT_ENHANCER, CHAT_VISION, SOIL_OCR, CROP_DIAGNOSE, CROP_TREATMENT, ALERT, PEST |
-| `GROQ_API_KEY` / `GROQ_FALLBACK_MODEL` | Optional chat fallback (`llama-3.3-70b-versatile`) |
+| `GROQ_API_KEY` / `GROQ_FALLBACK_MODEL` | Optional chat fallback (`openai/gpt-oss-120b`) |
 | `OPENAI_API_KEY` / `OPENAI_DIAGNOSE_MODEL` | Optional ensemble vision voter (`gpt-4o`) |
 | `SARVAM_API_KEY` | Voice STT/TTS/translate + report translation |
 | `ENABLE_ENSEMBLE` | Multi-model diagnose fan-out (default `false`) |
