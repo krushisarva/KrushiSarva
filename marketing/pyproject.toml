@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ksm"
+version = "0.1.0"
+description = "KrushiSarva marketing autopilot: daily Marathi farmer videos, approved on Telegram, published to YouTube/Instagram/Facebook"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "anthropic>=1.15,<2",
+  "httpx>=0.28,<0.29",
+  "pydantic>=2.14,<3",
+  "PyYAML>=6.0,<7",
+  "keyring>=25.7,<26",
+  "pillow>=12.3,<13",
+  "regex>=2026.9.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1,<10", "respx>=0.23,<0.24"]
+
+[project.scripts]
+ksm = "ksm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ksm = ["migrations/*.sql", "writer/prompts/*.md", "checks/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "render: needs ffmpeg-full with libass (local Mac only)",
+  "live: calls real external APIs (run by hand)",
+]
+addopts = "-q"

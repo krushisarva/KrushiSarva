@@ -17,3 +17,6 @@ frontend/
 docs/
 Bugs/
 scripts/
+
+# Marketing autopilot runs on the founder's Mac, not in the backend image.
+marketing/

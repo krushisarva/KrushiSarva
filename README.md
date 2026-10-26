@@ -27,6 +27,7 @@ CROPSETU2/
 │                 the specifier at this folder. See shared/README.md.
 ├── admin/        Vite + React + TypeScript. Internal admin console.
 ├── docs/         Architecture and review documents.
+├── marketing/    Marathi video marketing autopilot (Python 3.12, runs on a Mac). See marketing/README.md.
 └── README.md
 ```
 

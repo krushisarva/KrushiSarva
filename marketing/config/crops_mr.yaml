@@ -1,0 +1,85 @@
+# Commodities for the आजचा बाजारभाव (mandi) series, read by ksm.sources.agmarknet.
+#
+# agmarknet: exact commodity strings as data.gov.in returns them (case-insensitive match).
+#   These are best guesses from Agmarknet naming and the backend's COMMODITY_MAP —
+#   VERIFY ON DAY-0 FACET QUERY (list distinct `commodity` values for Maharashtra) and
+#   remove any string that never appears.
+# varieties: preferred variety order when one market reports several (first wins;
+#   otherwise the lowest modal is used, never the most flattering one).
+# msp_crop / msp_variety: lookup into msp.yaml; used as the outlier reference
+#   (a market whose modal is more than ±70 % away from it is dropped).
+# show_vs_msp: whether the video may compare today's price with that MSP. False when
+#   the MSP in msp.yaml belongs to a different marketing season than today's sales.
+# key_markets: listed first in the payload (markets_mr.yaml keys).
+commodities:
+  soybean:
+    name_mr: सोयाबीन
+    agmarknet: ["Soyabean", "Soybean"]          # verify on day-0 facet query
+    varieties: ["Yellow", "Other"]
+    msp_crop: soybean
+    msp_variety: null
+    show_vs_msp: true                            # KMS 2026-27 applies to sales from 1 Oct 2026
+    key_markets: [Latur, Akola, Washim, Hingoli, Amravati]
+    max_markets: 8
+  cotton:
+    name_mr: कापूस
+    agmarknet: ["Cotton"]                        # verify on day-0 facet query
+    varieties: []                                # staple is not reliably in Agmarknet's variety field
+    msp_crop: cotton
+    msp_variety: medium staple                   # reference; the long-staple MSP is shown alongside
+    msp_other_varieties: [long staple]
+    show_vs_msp: true
+    key_markets: [Akot, Amravati, Yavatmal, Wardha, Jalgaon]
+    max_markets: 8
+  onion:
+    name_mr: कांदा
+    agmarknet: ["Onion"]                         # verify on day-0 facet query
+    varieties: ["Red", "Other"]
+    msp_crop: null                               # no MSP; outliers are judged against the median
+    show_vs_msp: false
+    key_markets: [Lasalgaon, Pimpalgaon, Nashik, Pune, Solapur]
+    max_markets: 8
+  tur:
+    name_mr: तूर
+    agmarknet: ["Arhar (Tur/Red Gram)(Whole)", "Arhar/Tur", "Arhar(Tur/Red Gram)(Whole)"]  # verify on day-0 facet query
+    varieties: ["Red", "White", "Other"]
+    msp_crop: tur
+    msp_variety: null
+    show_vs_msp: true
+    key_markets: [Latur, Akola, Amravati, Jalna, Solapur]
+    max_markets: 8
+  chana:
+    name_mr: हरभरा
+    agmarknet: ["Bengal Gram(Gram)(Whole)", "Gram", "Bengal Gram (Gram)(Whole)"]  # verify on day-0 facet query
+    varieties: ["Desi (Whole)", "Other"]
+    msp_crop: gram                               # RMS 2027-28 row: outlier reference only
+    msp_variety: null
+    show_vs_msp: false                           # chana sold now belongs to RMS 2026-27, not 2027-28
+    key_markets: [Latur, Akola, Jalna, Amravati, Solapur]
+    max_markets: 8
+  maize:
+    name_mr: मका
+    agmarknet: ["Maize"]                         # verify on day-0 facet query
+    varieties: ["Yellow", "Hybrid/Local", "Other"]
+    msp_crop: null                               # KMS 2026-27 maize MSP not yet in msp.yaml
+    show_vs_msp: false
+    key_markets: [Jalgaon, Malegaon, Nashik, Pune, Solapur]
+    max_markets: 8
+
+# Marathi crop names for glossary/hashtags (not used for mandi matching).
+names_mr:
+  soybean: सोयाबीन
+  cotton: कापूस
+  onion: कांदा
+  tur: तूर
+  chana: हरभरा
+  gram: हरभरा
+  maize: मका
+  wheat: गहू
+  rabi_jowar: रब्बी ज्वारी
+  jowar: ज्वारी
+  safflower: करडई
+  rapeseed-mustard: मोहरी
+  lentil: मसूर
+  barley: जव
+  paddy: धान

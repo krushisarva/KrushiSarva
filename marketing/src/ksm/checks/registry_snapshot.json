@@ -1,0 +1,247 @@
+{
+  "registry_version": "2026.06.06-r2",
+  "source_file": "fastapi/safety/chemicals.py",
+  "sources": [
+    "CIB&RC Annexure-VI (2024)",
+    "Insecticides Act 1968 (Central + state amendments)",
+    "FRAC/IRAC/HRAC code lists"
+  ],
+  "banned_actives": [
+    "alachlor",
+    "aldicarb",
+    "aldrin",
+    "benomyl",
+    "benzene hexachloride",
+    "calcium cyanide",
+    "carbaryl",
+    "carbofuran",
+    "chlordane",
+    "chlorfenvinphos",
+    "chlorobenzilate",
+    "copper acetoarsenite",
+    "ddt",
+    "diazinon",
+    "dibromochloropropane",
+    "dichlorvos",
+    "dicofol",
+    "dieldrin",
+    "dinocap",
+    "endosulfan",
+    "endrin",
+    "ethion",
+    "ethyl parathion",
+    "ethylene dibromide",
+    "fenarimol",
+    "fenthion",
+    "heptachlor",
+    "lindane",
+    "linuron",
+    "maleic hydrazide",
+    "menazon",
+    "methomyl",
+    "methoxy ethyl mercury chloride",
+    "methyl parathion",
+    "metoxuron",
+    "monocrotophos",
+    "nitrofen",
+    "paraquat dimethyl sulfate",
+    "pentachloronitrobenzene",
+    "pentachlorophenol",
+    "phenylmercury acetate",
+    "phorate",
+    "phosphamidon",
+    "sodium cyanide",
+    "sodium methanearsonate",
+    "tetradifon",
+    "thiometon",
+    "toxaphene",
+    "triazophos",
+    "trichlorfon",
+    "trichloroacetic acid",
+    "tridemorph"
+  ],
+  "state_banned": {
+    "kerala": [
+      "2,4-d",
+      "acetamiprid",
+      "atrazine",
+      "chlorpyrifos",
+      "deltamethrin",
+      "glyphosate",
+      "imidacloprid",
+      "lambda-cyhalothrin",
+      "paraquat",
+      "thiamethoxam"
+    ],
+    "punjab": [
+      "monocrotophos",
+      "phorate"
+    ],
+    "sikkim": []
+  },
+  "registered_actives": {
+    "acetamiprid": {
+      "aliases": [],
+      "type": "insecticide"
+    },
+    "azoxystrobin": {
+      "aliases": [
+        "amistar"
+      ],
+      "type": "fungicide"
+    },
+    "bacillus subtilis": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "beauveria bassiana": {
+      "aliases": [],
+      "type": "insecticide"
+    },
+    "bordeaux mixture": {
+      "aliases": [
+        "bordeaux"
+      ],
+      "type": "fungicide"
+    },
+    "captan": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "chlorantraniliprole": {
+      "aliases": [
+        "coragen"
+      ],
+      "type": "insecticide"
+    },
+    "chlorothalonil": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "copper oxychloride": {
+      "aliases": [
+        "blitox"
+      ],
+      "type": "fungicide"
+    },
+    "cymoxanil": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "deltamethrin": {
+      "aliases": [
+        "decis"
+      ],
+      "type": "insecticide"
+    },
+    "difenoconazole": {
+      "aliases": [
+        "score"
+      ],
+      "type": "fungicide"
+    },
+    "dimethomorph": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "emamectin benzoate": {
+      "aliases": [
+        "proclaim"
+      ],
+      "type": "insecticide"
+    },
+    "flubendiamide": {
+      "aliases": [
+        "fame"
+      ],
+      "type": "insecticide"
+    },
+    "fosetyl-al": {
+      "aliases": [
+        "aliette"
+      ],
+      "type": "fungicide"
+    },
+    "hexaconazole": {
+      "aliases": [
+        "contaf"
+      ],
+      "type": "fungicide"
+    },
+    "imidacloprid": {
+      "aliases": [
+        "confidor"
+      ],
+      "type": "insecticide"
+    },
+    "lambda-cyhalothrin": {
+      "aliases": [
+        "karate"
+      ],
+      "type": "insecticide"
+    },
+    "mancozeb": {
+      "aliases": [
+        "dithane"
+      ],
+      "type": "fungicide"
+    },
+    "metalaxyl": {
+      "aliases": [
+        "metalaxyl-m",
+        "ridomil"
+      ],
+      "type": "fungicide"
+    },
+    "propiconazole": {
+      "aliases": [
+        "tilt"
+      ],
+      "type": "fungicide"
+    },
+    "pseudomonas fluorescens": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "spinosad": {
+      "aliases": [
+        "tracer"
+      ],
+      "type": "insecticide"
+    },
+    "streptomycin sulphate": {
+      "aliases": [
+        "streptocycline"
+      ],
+      "type": "bactericide"
+    },
+    "tebuconazole": {
+      "aliases": [
+        "folicur"
+      ],
+      "type": "fungicide"
+    },
+    "thiamethoxam": {
+      "aliases": [
+        "actara"
+      ],
+      "type": "insecticide"
+    },
+    "trichoderma harzianum": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "trichoderma viride": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "trifloxystrobin": {
+      "aliases": [],
+      "type": "fungicide"
+    },
+    "zineb": {
+      "aliases": [],
+      "type": "fungicide"
+    }
+  }
+}

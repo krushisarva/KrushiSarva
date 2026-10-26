@@ -1,0 +1,79 @@
+# Dated events, 16 Oct – 30 Nov 2026 (ksm.sources.calendar).
+#
+# official:      true only when the source is a government site in sources_allowlist.yaml.
+# use_in_script: true = the date may be stated in a video (needs source_url). Unofficial
+#                deadlines stay false: they are planning hints until an official notice
+#                (PIB, GR, CCI, pmkisan, nsmny) confirms them. Never state an instalment
+#                or relief date without an official source.
+# use_from / use_until: the window in which the planner may use the event.
+events:
+  - id: rms-2027-28-msp
+    date: 2026-09-30
+    kind: announcement
+    title_en: "Cabinet approves Rabi Marketing Season 2027-28 MSPs (wheat 2610, gram 5958, safflower 7215, rapeseed-mustard 6613, lentil 7390, barley 2286 ₹/qtl)"
+    title_mr: "रब्बी विपणन हंगाम 2027-28 चे हमीभाव जाहीर"
+    official: true
+    use_in_script: true
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    use_from: 2026-10-16
+    use_until: 2026-11-30
+    notes: "Applies to the crop sown now and sold from April 2027. Figures live in msp.yaml."
+
+  - id: kapas-kisan-registration-close
+    date: 2026-10-31
+    kind: deadline
+    title_en: "Kapas Kisan app registration for selling cotton to CCI at MSP closes (reported)"
+    title_mr: "कापूस किसान ॲप नोंदणीची अंतिम मुदत (वृत्तानुसार)"
+    official: false
+    use_in_script: false       # no CCI/official notice found; confirm on cotcorp.org.in first
+    source_url: https://www.esakal.com/marathwada/aurangabad/cotton-registration-app
+    use_from: 2026-10-16
+    use_until: 2026-10-31
+    msp_note: "Say which staple: medium staple ₹8,267, long staple ₹8,667 per quintal (KMS 2026-27, msp.yaml)."
+    notes: "Documents reported: 7/12 with cotton entry in e-Pik Pahani, Aadhaar, Aadhaar-linked mobile. A 13 q/ha cap is a 2025-26 figure, NOT confirmed for 2026-27 — do not use."
+
+  - id: kharif-procurement-centres
+    date: 2026-10-15
+    kind: announcement
+    title_en: "Maharashtra plans 950+ MSP procurement centres for soybean, tur, moong, urad (reported); registration dates not announced"
+    title_mr: "सोयाबीन, तूर, मूग, उडीद हमीभाव खरेदी केंद्रे (वृत्तानुसार) — नोंदणी तारखा अजून जाहीर नाहीत"
+    official: false
+    use_in_script: false       # wait for the official NAFED/NCCF/state notice with dates
+    source_url: https://www.freepressjournal.in/mumbai/maharashtra-over-950-msp-procurement-centres-planned-for-kharif-2026-27-1528-lakh-tonnes-storage-capacity-arranged
+    use_from: 2026-10-16
+    use_until: 2026-11-30
+
+  - id: drought-declared-265-talukas
+    date: 2026-09-25
+    kind: announcement
+    title_en: "Drought declared in 265 of 358 Maharashtra talukas (reported)"
+    title_mr: "राज्यातील 265 तालुक्यांत दुष्काळ जाहीर (वृत्तानुसार)"
+    official: false
+    use_in_script: false       # cite the Maharashtra GR (gr.maharashtra.gov.in) before using
+    source_url: https://www.downtoearth.org.in/natural-disasters/maharashtra-declares-drought-in-265-talukas-as-crop-losses-mount-after-weak-monsoon
+    use_from: 2026-10-16
+    use_until: 2026-11-30
+    notes: "Background for the drought-year rabi guide. Direct crop-loss compensation was not announced as of 26 Sep."
+
+  - id: diwali-week-apmc-closures
+    date: 2026-11-06
+    kind: market_closure
+    title_en: "Diwali week (about 6-10 Nov): many APMCs close or report little; expect sparse Agmarknet data"
+    title_mr: "दिवाळी आठवडा — अनेक बाजार समित्या बंद"
+    official: false
+    use_in_script: false       # planning hint only: fill the morning slot with evergreen videos
+    source_url: null
+    use_from: 2026-11-05
+    use_until: 2026-11-11
+
+  - id: diwali-2026
+    date: 2026-11-08
+    kind: festival
+    title_en: "Diwali (Lakshmi Puja), Sunday 8 Nov 2026"
+    title_mr: "दिवाळी (लक्ष्मीपूजन)"
+    official: false
+    use_in_script: true        # a festival date, not a scheme/relief date; no greeting-only videos
+    source_url: https://dekhopanchang.com/en/festivals/diwali
+    use_from: 2026-11-01
+    use_until: 2026-11-10
+    notes: "Dhanteras about 6 Nov and Bhaubeej about 10 Nov come from secondary sites; do not state them. Useful-only posts, e.g. 'check MSP centre registration before selling soybean'."

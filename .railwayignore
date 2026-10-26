@@ -8,3 +8,6 @@ docs/
 audit/
 Bugs/
 scripts/
+
+# Marketing autopilot runs on the founder's Mac, not on Railway.
+marketing/

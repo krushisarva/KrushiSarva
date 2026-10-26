@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by `ksm install`. Placeholders: {{PYTHON}} {{KSM_HOME}} {{PATH}}.
+     A per-user LaunchAgent in the Aqua (logged-in GUI) session: the Keychain is unlocked
+     there, and it never needs to read ~/Desktop (macOS TCC would block a background job). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.krushisarva.marketing</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{PYTHON}}</string>
+    <string>-m</string>
+    <string>ksm</string>
+    <string>daemon</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>WorkingDirectory</key>
+  <string>{{KSM_HOME}}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{PATH}}</string>
+    <key>KSM_HOME</key>
+    <string>{{KSM_HOME}}</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{{KSM_HOME}}/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{KSM_HOME}}/logs/launchd.err.log</string>
+</dict>
+</plist>

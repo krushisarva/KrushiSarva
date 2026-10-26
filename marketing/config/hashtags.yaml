@@ -1,0 +1,21 @@
+# Hashtags per series. Instagram/Facebook allow at most 5 per post (checks/limits.py),
+# so use `base` + at most one crop tag (+ one more only if still <= 5 in total).
+# YouTube Shorts: 3-5 hashtags in the description; #shorts is not needed.
+series:
+  mandi:      ["#बाजारभाव", "#शेतकरी", "#shetkari", "#maharashtra"]
+  rabi_guide: ["#रब्बी", "#शेतकरी", "#shetkari", "#maharashtra"]
+  yojana:     ["#योजना", "#शेतकरी", "#shetkari", "#maharashtra"]
+  pik_doctor: ["#पीकडॉक्टर", "#शेतकरी", "#shetkari"]
+  weather:    ["#हवामान", "#शेतकरी", "#maharashtra"]
+  app_howto:  ["#KrushiSarva", "#शेतकरी", "#shetkari"]
+crops:
+  soybean: "#सोयाबीन"
+  cotton: "#कापूस"
+  onion: "#कांदा"
+  tur: "#तूर"
+  chana: "#हरभरा"
+  maize: "#मका"
+  wheat: "#गहू"
+  rabi_jowar: "#ज्वारी"
+  safflower: "#करडई"
+max_per_post: 5

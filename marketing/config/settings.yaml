@@ -1,0 +1,47 @@
+# Non-secret settings for the marketing autopilot. Secrets live in the macOS Keychain.
+timezone: Asia/Kolkata
+
+# Two daily slots. Times are IST. produce_from/approve_by/late_until are relative to
+# the slot's date: "-1d 20:30" = the previous day at 20:30.
+slots:
+  - kind: fresh          # आजचा बाजारभाव — built the evening before from the previous day's prices
+    publish_time: "07:00"
+    produce_from: "-1d 20:30"
+    approve_by: "0d 06:45"
+    late_until: "0d 10:00"
+  - kind: advisory       # रब्बी पेरणी / योजना / पीक डॉक्टर
+    publish_time: "19:00"
+    produce_from: "0d 09:00"
+    approve_by: "0d 18:45"
+    late_until: "0d 21:30"
+
+quiet_hours: ["22:30", "05:30"]   # never publish inside this window (IST)
+evergreen_min_approved: 2
+approval_resend_after_hours: 20   # Telegram keeps button taps for only 24 h
+max_redos: 2
+
+budget:
+  monthly_inr: 1500
+  usd_inr: 88
+
+claude:
+  model: claude-opus-5-5
+  writer_effort: medium
+  factcheck_effort: low
+  vision_effort: low
+
+video:
+  max_seconds: 58
+
+guards:
+  min_free_disk_gb: 5
+  purge_disk_gb: 3
+
+# Milestone M1 publishes to YouTube only. Add "fb", "ig" in M2 after the day-0 Meta tests.
+platforms: ["yt"]
+
+# Publishers log what they would do instead of calling the APIs. Turn off after the dry-run week.
+dry_run: true
+
+# Play Store listing. Leave empty until the app is public: no download CTA is ever generated without it.
+app_cta_url: ""

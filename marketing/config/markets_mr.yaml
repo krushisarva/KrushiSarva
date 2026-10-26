@@ -1,0 +1,42 @@
+# Maharashtra APMC market strings (as Agmarknet returns them) -> Marathi label.
+#
+# Keys are BEST GUESSES at Agmarknet's `market` strings and MUST be verified with the
+# day-0 facet query (distinct `market` values for Maharashtra). Matching is exact
+# (case-insensitive, whitespace collapsed) on the key or an alias. Sub-yards such as
+# "Lasalgaon(Vinchur)" are different markets: do not alias them to the main yard.
+# A market missing here is DROPPED from videos (no unverified label ever goes on screen).
+# Never take labels from the backend's DISTRICT_MANDIS.
+markets:
+  Latur:        {mr: लातूर, district: Latur}
+  Akola:        {mr: अकोला, district: Akola}
+  Washim:       {mr: वाशिम, district: Washim}
+  Amravati:     {mr: अमरावती, district: Amravati, aliases: ["Amarawati"]}
+  Lasalgaon:    {mr: लासलगाव, district: Nashik}
+  Pimpalgaon:   {mr: पिंपळगाव, district: Nashik, aliases: ["Pimpalgaon Baswant"]}
+  Nashik:       {mr: नाशिक, district: Nashik}
+  Pune:         {mr: पुणे, district: Pune}
+  Solapur:      {mr: सोलापूर, district: Solapur}
+  Jalgaon:      {mr: जळगाव, district: Jalgaon}
+  Nagpur:       {mr: नागपूर, district: Nagpur}
+  Yavatmal:     {mr: यवतमाळ, district: Yavatmal}
+  Hingoli:      {mr: हिंगोली, district: Hingoli}
+  Beed:         {mr: बीड, district: Beed}
+  Jalna:        {mr: जालना, district: Jalna}
+  Parbhani:     {mr: परभणी, district: Parbhani}
+  Ahmednagar:   {mr: अहिल्यानगर, district: Ahmednagar, aliases: ["Ahilyanagar"]}
+  Kolhapur:     {mr: कोल्हापूर, district: Kolhapur}
+  Sangli:       {mr: सांगली, district: Sangli}
+  Wardha:       {mr: वर्धा, district: Wardha}
+  Akot:         {mr: अकोट, district: Akola}
+  Karanja:      {mr: कारंजा, district: Washim}
+  Malegaon:     {mr: मालेगाव, district: Nashik}
+  Nanded:       {mr: नांदेड, district: Nanded}
+  Dharashiv:    {mr: धाराशिव, district: Dharashiv, aliases: ["Osmanabad"]}
+  Chhatrapati Sambhajinagar: {mr: छत्रपती संभाजीनगर, district: Chhatrapati Sambhajinagar, aliases: ["Aurangabad"]}
+  Buldhana:     {mr: बुलढाणा, district: Buldhana}
+  Khamgaon:     {mr: खामगाव, district: Buldhana}
+  Hinganghat:   {mr: हिंगणघाट, district: Wardha}
+  Dhule:        {mr: धुळे, district: Dhule}
+  Rahuri:       {mr: राहुरी, district: Ahmednagar}
+  Yeola:        {mr: येवला, district: Nashik}
+  Satana:       {mr: सटाणा, district: Nashik}

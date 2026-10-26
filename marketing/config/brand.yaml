@@ -1,0 +1,141 @@
+# Brand kit for rendered videos. Read by ksm.render (layout/cards/ass) and `ksm doctor`
+# (which re-hashes every font and brand file below and refuses to render on a mismatch).
+
+# Palette: shared/constants/khetTheme.js (KHET tokens).
+palette:
+  primary: "#005f21"      # deep forest green
+  glow: "#31aa40"         # primaryGlow
+  accent: "#c9f2c0"
+  secondary: "#e3f5da"
+  ink: "#06210d"          # foreground
+  background: "#f9fdf6"
+  gold: "#e0af3b"
+
+# Fonts are vendored in assets/fonts (SIL Open Font License 1.1, licence text next to each family).
+# Source: https://github.com/google/fonts (main branch, fetched 2026-10-16). Family names are the
+# OpenType name-table ID 1 values, which is what libass matches the ASS Fontname against.
+fonts:
+  files:
+    Mukta-ExtraBold.ttf:
+      family: "Mukta ExtraBold"
+      sha256: 328eeebffe06fac60d60b46fe60c3995a908d2347e9c285f1eef1a0c9d73e004
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/mukta/Mukta-ExtraBold.ttf
+    Mukta-SemiBold.ttf:
+      family: "Mukta SemiBold"
+      sha256: f437fb098f8f29acb8628617cb2682f0780ef22fa8b0443de1f66090c36e510a
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/mukta/Mukta-SemiBold.ttf
+    Mukta-Medium.ttf:
+      family: "Mukta Medium"
+      sha256: 4db18bd8f19582607e8a6af0c4bf158b4b3378b426e42ad39d444d216c70074c
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/mukta/Mukta-Medium.ttf
+    Mukta-Regular.ttf:
+      family: "Mukta"
+      sha256: 2958e4af564507df2a856164df6f9978dacb03f999a4f34a0c269dc8a4de9688
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/mukta/Mukta-Regular.ttf
+    Mukta-OFL.txt:
+      sha256: 2ee5e8e47cd7d08f60bb9555f72b25912c9e81b13f5bc9a0551ddf943da6ca98
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/mukta/OFL.txt
+    # Variable font (wght 400-800); google/fonts ships no static ExtraBold. The Hook style asks for
+    # bold; if libass cannot select the ExtraBold named instance it emboldens the default instance.
+    Baloo2-VariableFont_wght.ttf:
+      family: "Baloo 2"
+      sha256: d47a6852548059b1db49a1319d06d499d546c3fa2237cf9eee9c43c8abb025c2
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/baloo2/Baloo2%5Bwght%5D.ttf
+    Baloo2-OFL.txt:
+      sha256: ad09b05dc8bc678c9daf7c4c5f7ef1f55e5726127f4330b2e98e40b9dffcb860
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/baloo2/OFL.txt
+    # Fallback for any glyph the display fonts lack.
+    NotoSansDevanagari-VariableFont_wdth_wght.ttf:
+      family: "Noto Sans Devanagari"
+      sha256: 14ec4af41f27482216d1c2229f417ff9b1425e1babb014e57d1d40d03229853e
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth,wght%5D.ttf
+    NotoSansDevanagari-OFL.txt:
+      sha256: a216f6f8d85c7228093e0ee5e258d9d377e6671f68acb4db1930b29583d0f331
+      source: https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/OFL.txt
+
+  # ASS style -> font. `bold` sets the ASS Bold flag (only needed for the variable Baloo 2).
+  styles:
+    Hook: {file: Baloo2-VariableFont_wght.ttf, bold: true}
+    Caption: {file: Mukta-ExtraBold.ttf}
+    Label: {file: Mukta-SemiBold.ttf}
+    Number: {file: Mukta-ExtraBold.ttf}
+    Tag: {file: Mukta-Medium.ttf}
+    Source: {file: Mukta-Regular.ttf}
+    EndCard: {file: Mukta-ExtraBold.ttf}
+
+# Copied from frontend/assets (repo). Watermark = splash mark, 140 px at (740, 390).
+brand_files:
+  brand/splash-mark.png:
+    sha256: 960e28aec87220dbf770c35d1f657661156641e2137e3a2ae0e4dabb23f817b6
+    source: frontend/assets/splash-mark.png
+  brand/krushisarva-header.png:
+    sha256: efb2c9c039f6b04ea653bd8523b0a9e0f154e50462ffcd5c7ecd6f3d441aa93d
+    source: frontend/assets/krushisarva-header.png
+watermark: brand/splash-mark.png
+
+# End card (shown with the CTA sentence). No app-download line: that needs settings.app_cta_url.
+end_card:
+  lines:
+    - "फॉलो करा"
+    - "गावाच्या WhatsApp ग्रुपवर पाठवा"
+    - "तुमचा तालुका कमेंट करा"
+
+# Brand illustrations (flat-vector masters). `ksm install` copies the candidate ids below from
+# docs/branding/masters/<id>.png into <KSM_HOME>/assets/illustrations/ — the background agent
+# cannot read the repo (macOS TCC blocks ~/Desktop). The renderer only uses an id that passes
+# BOTH the prefix allow-list and the forbidden-token/deny checks; anything else becomes a plain
+# branded gradient. SYMPTOM / SCOUT / SEV are diagnosis art and must never appear (IMAGE_ASSETS.md).
+illustrations:
+  allowed_prefixes: [CROP-, SCENE-, SCHEME-, MACH-, WX-, IRR-, SOIL-, ACT-]
+  forbidden_tokens: [SYMPTOM, SCOUT, SEV]
+  denied_ids: [ACT-SPRAY, ACT-FERTILIZER, ACT-SCOUT, ACT-EXPENSE, ACT-INCOME, MACH-sprayer, MACH-sprayer-1]
+  candidates:
+    - CROP-Soybean
+    - CROP-Cotton
+    - CROP-Onion
+    - CROP-Tur_Dal
+    - CROP-Gram
+    - CROP-Wheat
+    - CROP-Jowar
+    - CROP-Bajra
+    - CROP-Maize
+    - CROP-Sugarcane
+    - CROP-Grapes
+    - CROP-Pomegranate
+    - CROP-Banana
+    - CROP-Tomato
+    - CROP-Groundnut
+    - CROP-Sunflower
+    - CROP-Moong
+    - CROP-Urad
+    - CROP-Rice
+    - CROP-Turmeric
+    - CROP-Garlic
+    - CROP-Green_Chilli
+    - SCENE-land-prep
+    - SCENE-sowing
+    - SCENE-vegetative
+    - SCENE-flowering
+    - SCENE-maturity
+    - SCENE-harvested
+    - SCENE-planning
+    - SCHEME-PMKISAN
+    - SCHEME-PMFBY
+    - SCHEME-KCC
+    - SCHEME-eNAM
+    - SCHEME-PMKSY-PDMC
+    - SCHEME-NMSA-SHC
+    - MACH-tractor
+    - MACH-harvester
+    - MACH-thresher
+    - IRR-drip
+    - IRR-sprinkler
+    - IRR-rainfed
+    - WX-rain
+    - WX-sunny
+    - WX-cloudy
+    - SOIL-black
+    - ACT-SOWING
+    - ACT-HARVEST
+    - ACT-IRRIGATION
+    - ACT-LAND_PREP
