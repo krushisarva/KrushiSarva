@@ -4,7 +4,7 @@
  * any sowing labour cost via farmApi.addActivity (+ advanceStage / addLaborLog).
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, LabeledInput, NotesField, Card,
 } from './_loggerKit';
@@ -38,8 +38,8 @@ export default function SowingLogScreen({ navigation, route }) {
   const canSave = !!method;
 
   const handleSave = useCallback(async () => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('sowingLog.missingInfoTitle'), t('sowingLog.missingInfoBody')); return; }
-    if (!cycleId) { Alert.alert(t('sowingLog.pickCycleTitle'), t('sowingLog.pickCycleBody')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('sowingLog.missingInfoTitle'), t('sowingLog.missingInfoBody')); return; }
+    if (!cycleId) { showPopup(t('sowingLog.pickCycleTitle'), t('sowingLog.pickCycleBody')); return; }
     setSaving(true);
     try {
       await farmApi.addActivity(cycleId, {
@@ -59,7 +59,7 @@ export default function SowingLogScreen({ navigation, route }) {
       setCelebrate(true);
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || 'Error', e.message || t('sowingLog.couldNotSave'));
+      showPopup(t('login.error') || 'Error', e.message || t('sowingLog.couldNotSave'));
     } finally {
       setSaving(false);
     }

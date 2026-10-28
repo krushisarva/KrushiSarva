@@ -371,7 +371,7 @@ def test_stream_final_marks_complete_replies_not_partial(monkeypatch):
     assert final["reply"] == "Spray in the evening." and final["followUps"] == ["Kab?"]
     # The spoken path uses the same structural-turn transport as text chat.
     assert seen["system"] == "" and seen["user"] == "kab spray karu?"
-    assert seen["history"] == history and "FarmMind" in seen["system_instruction"]
+    assert seen["history"] == history and "Krushi Intelligence" in seen["system_instruction"]
 
 
 def _spoken(events):

@@ -245,7 +245,7 @@ whole run and `job_was_enqueued` fires on **every** poll. `POST /ai/scan` is ~14
 blocking round-trips.
 
 Separately: **`weather_service.py:32` hardcodes `host="localhost"`**, so it cannot
-reach Railway's Redis at all.
+reach the previous host's Redis at all.
 
 ---
 

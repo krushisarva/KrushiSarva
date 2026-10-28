@@ -38,32 +38,31 @@ describe('OTP generation security', () => {
 describe('OTP dev bypass — production unreachability', () => {
   // Mirror of the fail-closed resolver in config/env.js (_otpDevBypass). Kept in
   // lockstep so any regression that loosens the real rule trips this test too.
-  const bypassEnabled = ({ optIn, nodeEnv, msg91Key }) =>
-    optIn === 'true' && nodeEnv !== 'production' && !msg91Key;
+  const bypassEnabled = ({ optIn, nodeEnv }) =>
+    optIn === 'true' && nodeEnv !== 'production';
 
-  test('unreachable in production regardless of opt-in or missing SMS key', () => {
-    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'production', msg91Key: '' })).toBe(false);
-    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'production', msg91Key: 'k' })).toBe(false);
+  test('unreachable in production regardless of opt-in', () => {
+    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'production' })).toBe(false);
+    expect(bypassEnabled({ optIn: undefined, nodeEnv: 'production' })).toBe(false);
   });
 
   test('closes the fail-open hole: loose/unset NODE_ENV no longer enables it', () => {
     // The old gate keyed only on NODE_ENV !== 'production', so a prod box that
-    // forgot to set NODE_ENV (or used 'prod'/'staging') with no SMS key accepted
-    // '000000'. Now an explicit opt-in is required, so absent config is safe.
-    expect(bypassEnabled({ optIn: undefined, nodeEnv: undefined, msg91Key: '' })).toBe(false);
-    expect(bypassEnabled({ optIn: undefined, nodeEnv: 'staging', msg91Key: '' })).toBe(false);
-    expect(bypassEnabled({ optIn: undefined, nodeEnv: 'prod', msg91Key: '' })).toBe(false);
+    // forgot to set NODE_ENV (or used 'prod'/'staging') accepted '000000'. Now an
+    // explicit opt-in is required, so absent config is safe.
+    expect(bypassEnabled({ optIn: undefined, nodeEnv: undefined })).toBe(false);
+    expect(bypassEnabled({ optIn: undefined, nodeEnv: 'staging' })).toBe(false);
+    expect(bypassEnabled({ optIn: undefined, nodeEnv: 'prod' })).toBe(false);
   });
 
-  test('enabled only with explicit non-prod opt-in and no live SMS provider', () => {
-    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'development', msg91Key: '' })).toBe(true);
-    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'test', msg91Key: '' })).toBe(true);
-    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'development', msg91Key: 'k' })).toBe(false); // real SMS wired
-    expect(bypassEnabled({ optIn: 'false', nodeEnv: 'development', msg91Key: '' })).toBe(false); // not opted in
+  test('enabled only with an explicit non-prod opt-in', () => {
+    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'development' })).toBe(true);
+    expect(bypassEnabled({ optIn: 'true', nodeEnv: 'test' })).toBe(true);
+    expect(bypassEnabled({ optIn: 'false', nodeEnv: 'development' })).toBe(false); // not opted in
   });
 
   test('the live resolved ENV flag is enabled under the test runner', async () => {
-    // setupFiles sets OTP_DEV_BYPASS_ENABLED=true; NODE_ENV=test, no SMS key →
+    // setupFiles sets OTP_DEV_BYPASS_ENABLED=true; NODE_ENV=test →
     // the suite can log in via the bypass while prod stays locked.
     const { ENV } = await import('../../../src/config/env.js');
     expect(ENV.OTP_DEV_BYPASS).toBe(true);
@@ -92,7 +91,6 @@ describe('OTP dev bypass — production boot guard (subprocess)', () => {
     AI_SHARED_SECRET: 'x'.repeat(24),
     GEMINI_API_KEY: 'test',
     SARVAM_API_KEY: 'test',
-    MSG91_AUTH_KEY: '',
     ...extra,
   });
   const importEnv = (env) =>

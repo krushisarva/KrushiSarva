@@ -1,0 +1,125 @@
+# KrushiSarva on one VPS. Design and reasoning: docs/deploy/VPS_DEPLOY_PLAN.md.
+#
+# On the server this file and the Caddyfile are COPIED to /opt/krushisarva/
+# (next to app/, the git clone, and env/, the secrets). Never edit them inside app/.
+#
+# Rules (§2): never add a `ports:` entry for postgres, redis or fastapi, because
+# Docker-published ports bypass ufw. The only published port is 127.0.0.1:3000.
+name: krushisarva
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host                   # binds 80, 443/tcp, 443/udp on the host and sees real IPv4 + IPv6 client IPs (§5.2)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                 # certificates: keep this volume or risk Let's Encrypt rate limits
+      - caddy_config:/config
+    depends_on: [backend]
+    mem_limit: 128m
+    logging: *logging
+
+  backend:
+    image: krushisarva-backend:${TAG:-latest}
+    build: { context: ./app, dockerfile: Dockerfile }   # the admin panel is built on Vercel, not here
+    command: ["node", "src/server.js"]   # replaces the sh -c CMD so SIGTERM reaches node
+    init: true
+    stop_grace_period: 20s               # the app force-exits after 10 s (backend/src/server.js); Docker's default would SIGKILL at the same moment
+    user: "node"
+    restart: unless-stopped
+    env_file: ./env/backend.env
+    ports: ["127.0.0.1:3000:3000"]       # Caddy's upstream and curl /readyz; never 0.0.0.0
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    mem_limit: 700m
+    healthcheck:                         # node:20-slim has no curl
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  fastapi:
+    image: krushisarva-ai:${TAG:-latest}
+    build: { context: ./app/fastapi }
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1", "--no-access-log"]
+    restart: unless-stopped
+    env_file: ./env/fastapi.env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    mem_limit: 320m
+    healthcheck:                         # /health always returns 200, so read the body
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if b'\"ok\"' in urllib.request.urlopen('http://127.0.0.1:8001/health',timeout=5).read() else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  celery:
+    image: krushisarva-ai:${TAG:-latest}
+    pull_policy: never                   # built by the fastapi service
+    command: ["celery", "-A", "jobs.queue:celery_app", "worker", "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=200"]
+    restart: unless-stopped
+    env_file: ./env/fastapi.env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    mem_limit: 768m                      # two children decoding images at once peak near 750 MB (§3)
+    # Warm shutdown waits for in-flight scans (task_time_limit=300 s in fastapi/jobs/queue.py).
+    # A SIGKILLed scan is redelivered only after Kombu's 1 h visibility_timeout (§12 #16).
+    stop_grace_period: 310s
+    logging: *logging
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: ./env/postgres.env
+    command: >
+      postgres
+      -c max_connections=60
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_wal_size=1GB
+      -c log_min_duration_statement=500
+      -c log_parameter_max_length=0
+    shm_size: 256mb
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    mem_limit: 768m
+    healthcheck:                         # -h 127.0.0.1: the first-boot init server listens on the socket only
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes: ["redisdata:/data"]
+    mem_limit: 384m                      # Celery messages carry scan images inline (§3)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  caddy_data: {}
+  caddy_config: {}

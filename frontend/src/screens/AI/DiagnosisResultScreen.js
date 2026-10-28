@@ -19,8 +19,9 @@
 import { useRef, useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Animated, StatusBar, Alert, Image, Modal,
+  Dimensions, Animated, StatusBar, Image, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import PhotoIcon from '../../components/PhotoIcon';
 import SoilIcon from '../../components/SoilIcons';
@@ -46,6 +47,7 @@ import {
 import Text from '@krushisarva/shared/components/ui/Text';
 import api from '@krushisarva/shared/services/api';
 import KrushiKendraShareSheet from '../../components/KrushiKendraShareSheet';
+import ReportSheet from '../../components/ReportSheet';
 
 const { width: W } = Dimensions.get('window');
 
@@ -229,9 +231,9 @@ export default function DiagnosisResultScreen({ navigation, route }) {
       await api.post('/agristore/cart', product.listingId
         ? { listingId: product.listingId, quantity }
         : { productId: product.id, quantity });
-      Alert.alert(t('share.addedToCartTitle', 'Added'), t('share.addedToCartBody', { name: product.name, defaultValue: '{{name}} added to your cart.' }));
+      showPopup(t('share.addedToCartTitle', 'Added'), t('share.addedToCartBody', { name: product.name, defaultValue: '{{name}} added to your cart.' }));
     } catch (err) {
-      Alert.alert(t('error', 'Error'), err?.response?.data?.error?.message || t('share.cartFailed', 'Could not add to cart.'));
+      showPopup(t('error', 'Error'), err?.response?.data?.error?.message || t('share.cartFailed', 'Could not add to cart.'));
     }
   };
 
@@ -240,6 +242,22 @@ export default function DiagnosisResultScreen({ navigation, route }) {
   // used in the PDF header.
   const shareReportId = d.reportId || d._fullReport?.reportId || null;
   const primaryDiseaseShort = d?.primary_disease?.name || d?.primaryDisease?.name || disease;
+
+  // "Report this result" (Google Play's AI-content rule). The DB row id lets the
+  // team open the full report; the snapshot is what the farmer was shown, so the
+  // report still means something if the row is later erased.
+  const [reportTarget, setReportTarget] = useState(null);
+  const openReport = () => setReportTarget({
+    targetType: 'AI_DIAGNOSIS',
+    targetId: shareReportId || undefined,
+    snapshot: [
+      `${crop}: ${disease}${scientific ? ` (${scientific})` : ''}`,
+      // `confidence` is already a percentage — the hero ring shows it as-is.
+      confidence ? `${Math.round(Number(confidence))}% confidence` : '',
+      severity ? `severity ${severity}` : '',
+      typeof immediateAction === 'string' ? immediateAction : '',
+    ].filter(Boolean).join(' · '),
+  });
 
   const loadShares = async () => {
     if (!shareReportId) return;
@@ -1187,10 +1205,10 @@ ${(() => {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert(t('diagnosis.savedTitle', 'Saved'), t('diagnosis.savedToPath', { path: uri, defaultValue: 'Report saved to:\n{{path}}' }));
+        showPopup(t('diagnosis.savedTitle', 'Saved'), t('diagnosis.savedToPath', { path: uri, defaultValue: 'Report saved to:\n{{path}}' }));
       }
     } catch (err) {
-      Alert.alert(t('error', 'Error'), t('diagnosis.reportGenFailed', 'Could not generate report. Please try again.'));
+      showPopup(t('error', 'Error'), t('diagnosis.reportGenFailed', 'Could not generate report. Please try again.'));
       logger.error('[Download Report] failed to generate PDF:', err?.message);
     } finally {
       setDownloading(false);
@@ -1929,6 +1947,18 @@ ${(() => {
             <Text style={D.disclaimerText}>{t('diagnosis.disclaimer')}</Text>
           </View>
 
+          {/* ── Report this result — quiet, under the disclaimer it relates to ── */}
+          <TouchableOpacity
+            style={D.reportLink}
+            onPress={openReport}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('report.titleResult', 'Report this result')}
+          >
+            <Ionicons name="flag-outline" size={KICON.sm} color={KHET.mutedForeground} />
+            <Text style={D.reportLinkTxt}>{t('report.titleResult', 'Report this result')}</Text>
+          </TouchableOpacity>
+
         </Animated.View>
       </ScrollView>
 
@@ -1939,6 +1969,8 @@ ${(() => {
         reportSummary={{ cropType: crop, primaryDisease: primaryDiseaseShort, riskLevel: severity }}
         onShared={() => loadShares()}
       />
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
 
       {/* Visit Shop modal — seller contact details */}
       <Modal visible={!!visitShop} transparent animationType="slide" onRequestClose={() => setVisitShop(null)}>
@@ -2396,4 +2428,10 @@ const D = StyleSheet.create({
     marginHorizontal: KGUTTER.base, marginTop: KSPACE.s14,
   },
   disclaimerText: { flex: 1, fontSize: 11, lineHeight: 16, color: KHET.mutedForeground },
+  // 44dp tall so a quiet link is still an easy tap.
+  reportLink: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: KSPACE.s6,
+    minHeight: 44, marginHorizontal: KGUTTER.base, marginTop: KSPACE.s8, paddingRight: KSPACE.s12,
+  },
+  reportLinkTxt: { fontSize: 13, fontWeight: '600', color: KHET.mutedForeground, textDecorationLine: 'underline' },
 });

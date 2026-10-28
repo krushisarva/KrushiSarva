@@ -2,8 +2,8 @@
  * Express → FastAPI signed fetch helper
  *
  * Every request to the FastAPI AI service is signed with an HMAC-SHA256
- * over the timestamp, method, path, and body-hash so the FastAPI Railway
- * URL cannot be hit directly from outside Express. The contract matches
+ * over the timestamp, method, path, and body-hash so FastAPI accepts
+ * requests only from Express, even though it has no public URL in production. The contract matches
  * fastapi/security/auth.py exactly — keep them in lockstep.
  *
  * Header contract

@@ -775,18 +775,6 @@ export async function scanSoilCard(base64, mimeType = 'image/jpeg') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI CREDITS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Get user's AI credit balance, history, and available packs.
- */
-export async function getAICredits() {
-  const { data } = await api.get('/ai/credits');
-  return data.data;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // LOAN CALCULATOR
 // ─────────────────────────────────────────────────────────────────────────────
 

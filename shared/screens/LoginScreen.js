@@ -64,7 +64,7 @@ const STEPS = { WELCOME: 'welcome', PHONE: 'phone', OTP: 'otp' };
 const LANGS = ['हिन्दी', 'English', 'मराठी', 'தமிழ்', 'తెలుగు', 'ಕನ್ನಡ', 'বাংলা'];
 const OTP_LEN = OTP_LENGTH;
 // How long "Resend" stays disabled is provider-dependent and comes from
-// AuthContext as `otpResendSeconds` (60 s on Firebase, 30 s on MSG91);
+// AuthContext as `otpResendSeconds` (60 s on Firebase, 30 s on the dev OTP path);
 // resendSeconds() there applies the safe fallback if it is ever missing. The
 // hard-coded 30 that used to live here offered a Firebase resend at half the
 // minute Google enforces — a tap that reports success and sends no SMS.

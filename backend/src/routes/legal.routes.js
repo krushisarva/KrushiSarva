@@ -2,7 +2,8 @@
  * Public legal pages.
  *
  *   GET /legal            index: every document + who operates the platform
- *   GET /legal/:slug      one document (privacy | terms | refunds | cookies)
+ *   GET /legal/:slug      one document (privacy | terms | refunds | cookies |
+ *                         delete-account)
  *   GET /api/v1/legal     the same facts as JSON, for the apps
  *
  * WHY THE API SERVES THESE: both apps and the admin panel need one public URL
@@ -14,9 +15,14 @@
  * DRAFT SAFETY: the documents in backend/legal/ ship as drafts with marked
  * gaps (`owner-todo`) wherever a fact or a decision must come from the owner.
  * A document is published only when ALL of these hold:
- *   - LEGAL_DOCS_APPROVED=true,
+ *   - LEGAL_DOCS_APPROVED=true (skipped only for an entry registered with
+ *     `needsApproval: false` — the delete-account how-to, which Google Play
+ *     needs live before the policies are signed off and which commits to
+ *     nothing the app does not already do),
  *   - no unresolved `owner-todo` marker is left in its rendered output
- *     (a missing business fact renders as one, so it counts).
+ *     (a missing business fact renders as one, so it counts — for every
+ *     document, the exempt one included, unless its registry entry gives
+ *     that fact a `fallbacks` value).
  * Otherwise production serves a short "being finalised" notice — never
  * unreviewed legal text — and development serves the draft with a banner so it
  * can be read and finished.
@@ -64,12 +70,16 @@ function facts() {
 }
 
 /** Fill {{placeholders}} in a fragment. Unknown names are left for the reviewer to see. */
-function fill(fragment) {
+function fill(fragment, fallbacks = {}) {
   const f = facts();
   return fragment.replace(/\{\{(\w+)\}\}/g, (whole, name) => {
     if (!(name in f)) return whole;
     const [value, missing] = f[name];
-    return value ? esc(value) : todo(missing);
+    // A document's own fallback (registered in constants/legal.js) stands in
+    // for an unset fact on that document only; every other one still shows it
+    // as missing.
+    const shown = value || fallbacks[name];
+    return shown ? esc(shown) : todo(missing);
   });
 }
 
@@ -94,8 +104,10 @@ function readFragment(file) {
 function renderDoc(doc) {
   const fragment = readFragment(doc.file);
   if (fragment == null) return { body: null, publishable: false };
-  const body = fill(fragment);
-  return { body, publishable: ENV.LEGAL.docsApproved && !body.includes(TODO_MARK) };
+  const body = fill(fragment, doc.fallbacks);
+  // Strictly `false`: an entry that does not say otherwise needs approval.
+  const approved = doc.needsApproval === false || ENV.LEGAL.docsApproved;
+  return { body, publishable: approved && !body.includes(TODO_MARK) };
 }
 
 function entityBlock() {
@@ -239,13 +251,16 @@ legalApiRouter.get('/', (_req, res) => {
 
 /** Boot-time note for operators: what still blocks publishing, if anything. */
 export function logLegalStatus() {
-  const pending = LEGAL_DOCS.filter((d) => !renderDoc(d).publishable).map((d) => d.slug);
+  const pending = LEGAL_DOCS.filter((d) => !renderDoc(d).publishable);
   if (!pending.length) {
     logger.info('[Legal] all documents published at %s', LEGAL_INDEX_PATH);
     return;
   }
-  const why = ENV.LEGAL.docsApproved
-    ? 'unresolved owner-todo markers or missing LEGAL_* facts'
-    : 'LEGAL_DOCS_APPROVED is not set';
-  logger.warn('[Legal] not published (%s): %s', why, pending.join(', '));
+  // Per document: the approval-exempt delete-account page is held back only by
+  // a missing fact, and blaming LEGAL_DOCS_APPROVED for it would send the
+  // operator after the wrong setting.
+  const why = (d) => (!ENV.LEGAL.docsApproved && d.needsApproval !== false
+    ? 'LEGAL_DOCS_APPROVED is not set'
+    : 'unresolved owner-todo markers or missing LEGAL_* facts');
+  logger.warn('[Legal] not published: %s', pending.map((d) => `${d.slug} (${why(d)})`).join(', '));
 }

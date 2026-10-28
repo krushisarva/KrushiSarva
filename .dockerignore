@@ -4,6 +4,10 @@
 **/.env
 **/.env.*
 !**/.env.example
+# Credential files that live next to the code on a developer machine.
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+**/play-store-credentials.json
 **/.git
 **/.DS_Store
 **/*.log
@@ -11,7 +15,8 @@
 **/.vscode
 **/.idea
 
-# Other services aren't part of the backend image.
+# Other services aren't part of the backend image (the admin panel is built on Vercel).
+admin/
 fastapi/
 frontend/
 docs/

@@ -47,8 +47,11 @@ function peerLabel(row) {
   return row.role === 'buyer' ? 'Seller' : 'Buyer';
 }
 
-function ChatRow({ row, onPress }) {
+function ChatRow({ row, onPress, t }) {
   const thumb = row.listing?.images?.[0];
+  // Only MY block is labelled. A row the other person blocked looks like any
+  // other — nobody is told they were blocked.
+  const blockedByMe = row.blockedByMe === true;
   const animalLine = row.listing
     ? `${row.listing.animal}${row.listing.breed ? ' · ' + row.listing.breed : ''}`
     : 'Listing removed';
@@ -58,7 +61,18 @@ function ChatRow({ row, onPress }) {
     : 'Tap to start the conversation';
 
   return (
-    <TouchableOpacity style={s.row} onPress={() => onPress(row)} activeOpacity={0.7} accessibilityRole="button">
+    <TouchableOpacity
+      style={s.row}
+      onPress={() => onPress(row)}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={[
+        peerLabel(row),
+        blockedByMe ? t('block.blockedLabel', 'Blocked') : null,
+        animalLine,
+        lastText,
+      ].filter(Boolean).join(', ')}
+    >
       {thumb ? (
         <Image source={{ uri: thumb }} style={s.thumb} />
       ) : (
@@ -71,6 +85,12 @@ function ChatRow({ row, onPress }) {
           <Text style={s.name} numberOfLines={1}>
             {peerLabel(row)}
           </Text>
+          {blockedByMe ? (
+            <View style={s.blockedPill} testID="chat-row-blocked">
+              <Ionicons name="ban-outline" size={11} color={COLORS.textMedium} />
+              <Text style={s.blockedPillTxt}>{t('block.blockedLabel', 'Blocked')}</Text>
+            </View>
+          ) : null}
           <Text style={s.time}>{timeAgo(last?.createdAt || row.updatedAt)}</Text>
         </View>
         <Text style={s.animal} numberOfLines={1}>{animalLine}</Text>
@@ -172,6 +192,10 @@ export default function MyAnimalChatsScreen({ navigation }) {
       // it. ChatScreen falls back to the role label.
       peerRole,
       listingTitle,
+      // So a blocked conversation opens closed, not with a composer that
+      // vanishes once the thread loads (or never loads, offline).
+      blockedByMe: row.blockedByMe,
+      canMessage: row.canMessage,
       // Legacy param — keeps older code paths working.
       sellerName: row.counterpart?.name || (peerRole === 'seller' ? 'Seller' : 'Buyer'),
     });
@@ -184,7 +208,16 @@ export default function MyAnimalChatsScreen({ navigation }) {
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('chatWithSeller') || 'Chat with Seller'}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('BlockedUsers')}
+          style={s.backBtn}
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel={t('block.blockedUsers', 'Blocked users')}
+          testID="open-blocked-users"
+        >
+          <Ionicons name="ban-outline" size={22} color={COLORS.textDark} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -209,7 +242,7 @@ export default function MyAnimalChatsScreen({ navigation }) {
         <FlatList
           data={rows}
           keyExtractor={(r) => r.id}
-          renderItem={({ item }) => <ChatRow row={item} onPress={openChat} />}
+          renderItem={({ item }) => <ChatRow row={item} onPress={openChat} t={t} />}
           ItemSeparatorComponent={() => <View style={s.sep} />}
           contentContainerStyle={rows.length === 0 ? { flex: 1 } : { paddingBottom: 32 }}
           refreshControl={
@@ -258,6 +291,8 @@ const s = StyleSheet.create({
   headerLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
   name:       { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.textDark },
   time:       { fontSize: 11, color: COLORS.textMedium, marginLeft: 8 },
+  blockedPill:    { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: COLORS.border },
+  blockedPillTxt: { fontSize: 10.5, fontWeight: '700', color: COLORS.textMedium },
   animal:     { fontSize: 12, color: COLORS.primary, fontWeight: '600', marginBottom: 2 },
   preview:    { fontSize: 13, color: COLORS.textMedium },
   sep:        { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border },

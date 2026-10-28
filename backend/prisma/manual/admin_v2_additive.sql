@@ -1,6 +1,6 @@
 -- Admin panel v2 (WI-1…WI-10) — additive schema, applied MANUALLY.
 --
--- WHY MANUAL: the Railway deploy runs `prisma db push`, which makes the DB match
+-- WHY MANUAL: the old deploy ran `prisma db push`, which makes the DB match
 -- schema.prisma EXACTLY — so it tries to DROP tables it doesn't know about
 -- (FastAPI's ai_scan_diagnoses, its feedback table, etc.). Once those tables hold
 -- data, db push aborts ("data loss") and NONE of the schema applies — which is why
@@ -14,7 +14,12 @@
 -- APPLY (any one):
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/admin_v2_additive.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f backend/prisma/manual/admin_v2_additive.sql
---   Railway → Postgres service → Data/Query tab → paste + run
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/admin_v2_additive.sql
+--   (The VPS database, built by `prisma db push` on 2026-10-14, already has this;
+--   re-running it there fails with "type already exists".)
 --
 -- Idempotent-ish: safe to re-run after the first apply only if you remove already-
 -- created objects, OR just run the single ALTER below first to unblock login.

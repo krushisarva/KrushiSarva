@@ -35,6 +35,10 @@ jest.unstable_mockModule('../../../src/utils/fastapi-signed.js', () => ({
 jest.unstable_mockModule('../../../src/middleware/auth.js', () => ({
   __esModule: true,
   authenticate: (req, _res, next) => { req.user = { id: 'farmer-1' }; next(); },
+  // /sync/trigger is admin-only; the stubbed farmer above is refused.
+  requireRole: (...roles) => (req, res, next) => (
+    roles.includes(req.user?.role) ? next() : res.status(403).json({ success: false })
+  ),
 }));
 
 const express = (await import('express')).default;
@@ -68,6 +72,9 @@ describe('POST /agripredict/predict — credit protocol', () => {
     mockReserve.mockResolvedValue({ ok: false });
     const res = await request(app).post('/api/v1/agripredict/predict').send(BODY);
     expect(res.status).toBe(402);
+    // Credits cannot be bought (2026-10-15): the farmer is told about a free
+    // monthly limit, never about credits or buying.
+    expect(res.body.error.message).toBe("You've reached this month's free AI limit. It resets on the 1st of next month.");
     expect(mockPost).not.toHaveBeenCalled();   // no free predictions
     expect(mockSettle).not.toHaveBeenCalled();
   });

@@ -10,10 +10,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, Dimensions, StatusBar, Platform, Alert,
+  Animated, Dimensions, StatusBar, Platform,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
-import { ArrowLeft, ChevronDown, MessageSquare, Mic, MicOff, PhoneOff, Square as SquareIcon, Plus, Keyboard as KeyboardIcon, X as CloseIcon, ArrowUp } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, MessageSquare, Mic, MicOff, PhoneOff, Square as SquareIcon, Plus, Keyboard as KeyboardIcon, X as CloseIcon, ArrowUp, Flag } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
@@ -27,6 +28,7 @@ import { useFarm } from '../../context/FarmContext';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { COLORS } from '@krushisarva/shared/constants/colors';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
+import ReportSheet from '../../components/ReportSheet';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -60,7 +62,7 @@ function humanReadableVoiceError(err, t = (k, def) => def) {
   const status = err?.response?.status ?? err?.status;
   const serverMsg = err?.response?.data?.error?.message;
   if (status === 429) return t('aiVoice.err.busy', 'Too many requests — please wait 30 seconds and try again.');
-  if (status === 402) return t('aiVoice.err.credits', 'You’ve used all your AI credits for this month. They refill on the 1st.');
+  if (status === 402) return t('aiLimit.reached', "You've reached this month's free AI limit. It resets on the 1st of next month.");
   if (status === 503 || status === 500 || status === 502 || status === 504)
     return t('aiVoice.err.serviceDown', 'The voice service is temporarily down. Please try again in a moment.');
   if (status === 413) return t('aiVoice.err.tooLong', 'That recording was too long. Please keep it shorter.');
@@ -335,9 +337,16 @@ export default function VoiceChatScreen({ navigation }) {
   const [userTranscript, setUserTranscript] = useState('');
   const [aiReply, setAiReply] = useState('');
   const [typedReply, setTypedReply] = useState('');  // typewriter reveal of aiReply (top, Perplexity-style)
-  const [errorMsg, setErrorMsg] = useState('');     // distinct error banner (service down / credits)
+  const [errorMsg, setErrorMsg] = useState('');     // distinct error banner (service down / monthly limit)
   const [showTranscript, setShowTranscript] = useState(false);
   const replyScrollRef = useRef(null);
+  // The reply being reported (ReportSheet target), or null. Voice turns have no
+  // client-side message id, so the reply text goes as the snapshot.
+  const [reportTarget, setReportTarget] = useState(null);
+  // True once this turn's reply has stopped arriving (done, failed, stalled or
+  // stopped). Report waits for it, so a farmer never reports half a sentence —
+  // `streamDoneRef` is the same fact, but a ref cannot re-render the button.
+  const [replyDone, setReplyDone] = useState(false);
 
   const recordRef = useRef(null);
   const lockRef = useRef(false);
@@ -391,6 +400,7 @@ export default function VoiceChatScreen({ navigation }) {
       idleTimerRef.current = null;
       if (streamDoneRef.current || cancelledRef.current) return;
       streamDoneRef.current = true;
+      setReplyDone(true);
       isStreamingRef.current = false;
       cancelActiveStream();
       chunkQueueRef.current = [];
@@ -486,6 +496,7 @@ export default function VoiceChatScreen({ navigation }) {
     // hold released — otherwise the farmer pays for an answer nobody can hear.
     setUserTranscript('');
     setAiReply('');
+    setReplyDone(false);
     setErrorMsg('');
     setShowTranscript(false);
     clearStreamWatchdog();
@@ -498,7 +509,7 @@ export default function VoiceChatScreen({ navigation }) {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(t('aiChat.micPermTitle'), t('aiChat.micPermMsg'));
+        showPopup(t('aiChat.micPermTitle'), t('aiChat.micPermMsg'));
         return;
       }
       await Audio.setAudioModeAsync({
@@ -555,7 +566,7 @@ export default function VoiceChatScreen({ navigation }) {
         }
       });
     } catch (err) {
-      Alert.alert(t('aiChat.recErrorTitle'), err?.message || t('aiVoice.micStartFailed', 'Could not start microphone.'));
+      showPopup(t('aiChat.recErrorTitle'), err?.message || t('aiVoice.micStartFailed', 'Could not start microphone.'));
     } finally {
       lockRef.current = false;
     }
@@ -603,6 +614,7 @@ export default function VoiceChatScreen({ navigation }) {
       playingRef.current = false;
       setTypedReply('');
       setAiReply('');
+      setReplyDone(false);
     } else {
       isStreamingRef.current = false;
     }
@@ -655,6 +667,7 @@ export default function VoiceChatScreen({ navigation }) {
       // Non-streaming fallback — reply + audio came back in the HTTP response.
       isStreamingRef.current = false;
       if (result.reply) setAiReply(result.reply);
+      setReplyDone(true);   // the whole reply came in this one response
       setIsProcessing(false);
       if (result.audio?.audio) {
         try {
@@ -672,6 +685,7 @@ export default function VoiceChatScreen({ navigation }) {
       cancelActiveStream();
       isStreamingRef.current = false;
       streamDoneRef.current = true;
+      setReplyDone(true);
       setErrorMsg(humanReadableVoiceError(err, t));
       setShowTranscript(true);
       setIsProcessing(false);
@@ -766,6 +780,7 @@ export default function VoiceChatScreen({ navigation }) {
     // TERMINATE the background pipeline (stops generation/TTS, refunds the hold).
     cancelledRef.current = true;
     streamDoneRef.current = true;
+    setReplyDone(true);   // nothing more is coming for what is on screen
     chunkQueueRef.current = [];
     clearStreamWatchdog();
     cancelActiveStream();
@@ -818,6 +833,7 @@ export default function VoiceChatScreen({ navigation }) {
       streamDoneRef.current = true;
       setIsProcessing(false);
       if (p.reply) { setAiReply(p.reply); setTypedReply(p.reply); }   // authoritative final text
+      setReplyDone(true);
       if (p.conversationId) setConvId((cur) => cur || p.conversationId);
       // `partial: true` means generation blew its budget or threw mid-stream: the
       // farmer heard a sentence or two of a dosing answer and the rest never
@@ -833,6 +849,7 @@ export default function VoiceChatScreen({ navigation }) {
       if (!active || !matches(p)) return;
       clearStreamWatchdog();
       streamDoneRef.current = true;
+      setReplyDone(true);
       setIsProcessing(false);
       // Only surface the banner if we haven't already spoken anything.
       // The server's `message` is a fixed English sentence (ai.routes.js emits one
@@ -931,6 +948,22 @@ export default function VoiceChatScreen({ navigation }) {
           <View style={S.brandBlock} pointerEvents="none">
             <Text style={S.brandTitle} numberOfLines={1}>{t('aiBrand.vaani', 'Krushi Vaani')}</Text>
           </View>
+          {/* Report the answer on screen (Google Play's AI-content rule). Only
+              once the reply has stopped arriving (replyDone — not just the first
+              words), and only for a real model reply — the "didn't catch that"
+              hint has no transcript and is the app's text. */}
+          {aiReply && userTranscript && replyDone && !isProcessing && !isRecording ? (
+            <TouchableOpacity
+              onPress={() => setReportTarget({ targetType: 'AI_VOICE_MESSAGE', snapshot: aiReply })}
+              style={S.reportBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('report.titleAnswer', 'Report this answer')}
+            >
+              <Flag size={18} color="#F0FDF4" strokeWidth={2.2} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* ── TOP: AI reply types in here and flows downward ── */}
@@ -1012,6 +1045,8 @@ export default function VoiceChatScreen({ navigation }) {
             </View>
           </BlurView>
         </View>
+
+        <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
       </View>
     </AnimatedScreen>
   );
@@ -1046,6 +1081,13 @@ const S = StyleSheet.create({
   brandBlock: {
     marginLeft: 12, justifyContent: 'center',
   },
+  // Same glass circle as Back, pushed to the right edge.
+  reportBtn: {
+    width: 40, height: 40, borderRadius: 20, marginLeft: 'auto',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  },
   brandTitle: {
     fontSize: 17, color: '#F0FDF4', letterSpacing: 0.3,
     fontFamily: INTER_BOLD,
@@ -1077,7 +1119,7 @@ const S = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 10,
     fontFamily: INTER_SEMI,
   },
-  // Distinct, prominent error banner (service down / credits exhausted)
+  // Distinct, prominent error banner (service down / monthly limit reached)
   errorBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12,
     maxWidth: 320, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14,

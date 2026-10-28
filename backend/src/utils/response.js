@@ -2,7 +2,7 @@
  * Standard response helpers — unify the JSON envelope across all routes.
  *
  * Success: { success: true, data, meta? }
- * Error:   { success: false, error: { message, details? } }
+ * Error:   { success: false, error: { message, code?, details? } }
  */
 import { Prisma } from '@prisma/client';
 import logger from './logger.js';
@@ -64,6 +64,10 @@ export function sendCreated(res, data) {
 
 export function sendError(res, message, statusCode = 500, details, extra) {
   const error = { message: String(message || 'Something went wrong') };
+  // A stable machine-readable code, for a refusal the client must tell apart
+  // from others with the same status (USER_BLOCKED vs any other 403). Present
+  // only when the route passes one, so no other caller's output changes.
+  if (extra?.code) error.code = String(extra.code);
   if (details !== undefined) error.details = details;
   // Attach request_id from the response object (set by the request-id
   // middleware) so the client can quote it in support tickets and we can

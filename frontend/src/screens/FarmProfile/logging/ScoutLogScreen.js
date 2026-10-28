@@ -5,7 +5,7 @@
  * advice, alongside the unified SCOUT activity entry.
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, TileGrid, BigNumberInput, LabeledInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -58,8 +58,8 @@ export default function ScoutLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('scoutLog.missingInfoTitle'), t('scoutLog.missingInfoBody')); return; }
-    if (!cycleId) { Alert.alert(t('scoutLog.pickCycleTitle'), t('scoutLog.pickCycleBody')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('scoutLog.missingInfoTitle'), t('scoutLog.missingInfoBody')); return; }
+    if (!cycleId) { showPopup(t('scoutLog.pickCycleTitle'), t('scoutLog.pickCycleBody')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

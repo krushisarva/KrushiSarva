@@ -3,7 +3,7 @@
  *
  * Acceptance: valid Indian mobiles pass (in any real-world format) and invalids
  * are rejected — consistently, from one shared validator, with normalization to
- * the canonical 10-digit form that the DB + MSG91 expect.
+ * the canonical 10-digit form that the DB expects.
  */
 import express from 'express';
 import request from 'supertest';

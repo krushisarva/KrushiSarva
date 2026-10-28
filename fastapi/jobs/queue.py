@@ -457,8 +457,10 @@ def get_job_status(job_id: str) -> dict:
             return {"status": "failed", "data": None, "error": f"result fetch failed: {exc}"}
         return {"status": "done", "data": data, "error": None}
     if state == "FAILURE":
-        err = str(result.result) if result.result else "unknown failure"
-        return {"status": "failed", "data": None, "error": err}
+        # The raw exception names model ids, env vars and temp paths, and Express
+        # forwards this string to the farmer's phone. Log it; return a fixed line.
+        logger.warning("[Queue] job %s failed: %s", job_id, result.result)
+        return {"status": "failed", "data": None, "error": "Scan failed. Please try again."}
     if state == "REVOKED":
         return {"status": "failed", "data": None, "error": "job cancelled"}
     # Unknown Celery state — pass through verbatim

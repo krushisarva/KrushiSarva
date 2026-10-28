@@ -14,7 +14,7 @@ Node.js + Express + PostgreSQL + Redis backend for the FarmEasy agriculture app.
 | Database     | PostgreSQL 16                     |
 | Cache        | Redis 7                           |
 | Auth         | JWT (15 min) + Refresh token (30d)|
-| OTP SMS      | MSG91                             |
+| OTP SMS      | Firebase Phone Auth               |
 | Images       | Cloudinary                        |
 | Real-time    | Socket.io (Animal Trade chat)     |
 | Push         | Expo Push Notifications           |
@@ -188,7 +188,7 @@ farmeasy-backend/
 │   │   ├── animaltrade.routes.js
 │   │   └── community.routes.js
 │   ├── services/
-│   │   └── otp.service.js  ← Send + verify OTP (MSG91 + dev fallback)
+│   │   └── otp.service.js  ← Dev/test OTP (no SMS; code logged + returned)
 │   ├── socket/
 │   │   └── chat.socket.js  ← Socket.io real-time chat
 │   ├── utils/
@@ -205,7 +205,7 @@ farmeasy-backend/
 
 ## Development Notes
 
-- **OTP in dev**: If `MSG91_AUTH_KEY` is not set, OTP is printed to the console — no SMS needed during development.
+- **OTP in dev**: `/auth/send-otp` never sends an SMS — the OTP is printed to the console and returned as `devOtp`, so no SMS is needed during development. Production sign-in uses Firebase Phone Auth (`/auth/firebase-login`); with `NODE_ENV=production`, `/auth/send-otp` returns 503.
 - **Prisma Studio**: Run `npm run db:studio` to browse your DB with a visual UI.
 - **Image uploads**: Cloudinary credentials are optional in dev. Leave them blank to get upload errors (won't break auth/chat/posts).
 # Farmeasy-frontend

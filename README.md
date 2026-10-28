@@ -50,8 +50,8 @@ npm run dev                   # starts on http://localhost:3001/api/v1
 
 Required env: `DATABASE_URL`, `JWT_SECRET` (≥32 chars), `REDIS_URL`,
 `AI_BACKEND_URL` (URL of the running fastapi service).
-Optional: `MSG91_AUTH_KEY` (real SMS — blank = OTP returned in dev response),
-`CLOUDINARY_*`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
+Optional: `FIREBASE_*` (real SMS sign-in through Firebase Phone Auth — without it,
+local login uses the dev OTP returned in the response), `CLOUDINARY_*`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
 `SARVAM_API_KEY`, `DATA_GOV_API_KEY`, `OPENWEATHER_API_KEY`,
 `FIELD_ENCRYPTION_KEY`.
 
@@ -114,9 +114,11 @@ your Mac — no LAN setup or tunnel required.
 
 ## Production
 
-Deployed on Railway (backend + fastapi + Postgres + Redis) and EAS
-(mobile app). Production env vars are set in each service's Railway
-"Variables" tab — never committed.
+Deployed on one Hostinger VPS (virtual private server) with Docker Compose
+(`deploy/docker-compose.yml`: Caddy, backend, fastapi, celery, Postgres,
+Redis), the admin panel on Vercel, and EAS (mobile app). Production env vars
+live on the server in `/opt/krushisarva/env/` — never committed. See
+`docs/deploy/VPS_DEPLOY_PLAN.md`.
 
 Health probes:
 - `GET /healthz` — liveness, no dependencies.

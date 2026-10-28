@@ -6,8 +6,13 @@
  * never part of a list payload. Callers pass plain string cells (no objects).
  */
 function escapeCell(value: string): string {
-  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
+  // A cell starting with = + - @ is a formula to Excel/Sheets, and these cells
+  // hold text users typed (names, dispute reasons, post titles). Prefix a quote
+  // so it stays text; plain numbers such as a negative amount are left alone.
+  const risky = /^[=+\-@\t\r]/.test(value) && !/^-?\d+(\.\d+)?$/.test(value);
+  const v = risky ? `'${value}` : value;
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
 }
 
 export function downloadCsv(filename: string, headers: string[], rows: string[][]) {

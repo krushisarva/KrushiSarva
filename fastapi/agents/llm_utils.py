@@ -50,7 +50,17 @@ _PRICING = {
     # Google — $0.30/$2.50 and $1.25/$10.00 per 1M (Pro: prompts ≤200k).
     "gemini-2.5-flash":            {"input": 0.00030, "output": 0.00250},
     "gemini-2.5-pro":              {"input": 0.00125, "output": 0.01000},
-    # Groq — chat fallback only. $0.59/$0.79 per 1M.
+    # Gemini 3.x free-tier models (the defaults since 2026-10-15; 2.5 is closed to
+    # new keys). Free of charge on the free tier; these are the PAID rates so the
+    # spend cap still has a number. 3.6 Flash $0.75/$3.75 per 1M through
+    # 2026-12-31 (then $1.50/$7.50); 3.5 Flash-Lite $0.30/$2.50.
+    "gemini-3.6-flash":            {"input": 0.00075, "output": 0.00375},
+    "gemini-3.5-flash-lite":       {"input": 0.00030, "output": 0.00250},
+    # Groq — chat fallback only. gpt-oss-120b $0.15/$0.60 per 1M (verified
+    # 2026-10-15, console.groq.com/docs/model/openai/gpt-oss-120b). Llama 3.3 70B
+    # $0.59/$0.79 — retired for free/developer plans 2026-08-16; the row stays so
+    # an old AI_*_GROQ_MODEL setting is still costed, not refused.
+    "openai/gpt-oss-120b":         {"input": 0.00015, "output": 0.00060},
     "llama-3.3-70b-versatile":     {"input": 0.00059, "output": 0.00079},
     # OpenAI — crop-diagnosis ensemble voter. $2.50/$10.00 and $0.15/$0.60 per 1M.
     "gpt-4o":                      {"input": 0.0025,  "output": 0.01},
@@ -155,6 +165,10 @@ def _gemini_thinking_config(model: str, max_tokens: int) -> dict | None:
     Pro's documented minimum budget.
     """
     m = (model or "").lower()
+    if "flash-lite" in m:
+        # Gemini 3.5 Flash-Lite rejects thinkingBudget 0 with HTTP 400 and does
+        # not think unless asked, so send no thinkingConfig at all.
+        return None
     if "flash" in m:
         return {"thinkingBudget": 0}
     if "pro" in m:
@@ -336,7 +350,7 @@ async def call_gemini_vision(
     images_b64: list[dict],       # [{"data": str, "mime_type": str}]
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -478,7 +492,7 @@ async def call_gemini_text(
     user_prompt: str,
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -571,17 +585,40 @@ async def call_gemini_text(
 # Restored as a LAST-RESORT fallback for the text-chat features. When the Gemini
 # primary AND its Flash↔Pro capacity fallback both fail, the dispatcher
 # (agents/llm_dispatch.call_llm_text) tries Groq so the farmer still gets a reply
-# instead of "Chat unavailable" — Groq's free Llama tier has capacity separate
+# instead of "Chat unavailable" — Groq's free plan has capacity separate
 # from Google's, so it survives a Gemini-side outage or quota exhaustion.
-# Text-only: Groq Llama can't do vision, so the vision/diagnose paths never reach
+# Text-only: gpt-oss can't do vision, so the vision/diagnose paths never reach
 # here. OpenAI-compatible /chat/completions shape.
+
+# Extra completion tokens for gpt-oss's hidden reasoning (see _groq_model_params).
+_GPT_OSS_REASONING_HEADROOM = 1024
+
+
+def _groq_model_params(model: str, max_tokens: int) -> dict:
+    """Token cap plus the extra request fields Groq's reasoning models need.
+
+    openai/gpt-oss-* reasons before it answers. Groq returns that reasoning in a
+    separate `reasoning` field (we only read `content`), so include_reasoning=false
+    stops it being sent back at all. The reasoning still spends completion tokens,
+    so the cap gets headroom on top of the reply budget: otherwise a short cap (the
+    voice path uses 512) can be used up by reasoning and return an empty reply.
+    reasoning_effort=low keeps this last-resort fallback fast.
+    """
+    if not (model or "").lower().startswith("openai/gpt-oss-"):
+        return {"max_tokens": max_tokens}
+    return {
+        "max_tokens": max_tokens + _GPT_OSS_REASONING_HEADROOM,
+        "include_reasoning": False,
+        "reasoning_effort": "low",
+    }
+
 
 async def call_groq_text(
     system_prompt: str,
     user_prompt: str,
     groq_api_key: str,
     *,
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "openai/gpt-oss-120b",
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -610,7 +647,7 @@ async def call_groq_text(
             user_prompt,
             history,
         ),
-        "max_tokens": max_tokens,
+        **_groq_model_params(model, max_tokens),
         "temperature": temperature,
     }
     response_format = _openai_response_format(json_mode, response_schema)
@@ -672,7 +709,7 @@ async def stream_gemini_text(
     user_prompt: str,
     gemini_api_key: str,
     *,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 512,
     temperature: float = 0.3,
     system_instruction: str | None = None,
@@ -738,7 +775,7 @@ async def stream_groq_text(
     user_prompt: str,
     groq_api_key: str,
     *,
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "openai/gpt-oss-120b",
     max_tokens: int = 512,
     temperature: float = 0.3,
     system_instruction: str | None = None,
@@ -753,7 +790,7 @@ async def stream_groq_text(
             user_prompt,
             history,
         ),
-        "max_tokens": max_tokens,
+        **_groq_model_params(model, max_tokens),
         "temperature": temperature,
         "stream": True,
         "stream_options": {"include_usage": True},

@@ -8,9 +8,10 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Image, StatusBar,
+  TextInput, ActivityIndicator, Image, StatusBar,
   KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -132,7 +133,7 @@ export default function AddMachineryScreen({ navigation, route }) {
       setLat(gpsCoords.latitude);
       setLng(gpsCoords.longitude);
     } else {
-      Alert.alert(t('rent.permissionDenied'), t('rent.locationPermission'));
+      showPopup(t('rent.permissionDenied'), t('rent.locationPermission'));
     }
   };
 
@@ -171,9 +172,9 @@ export default function AddMachineryScreen({ navigation, route }) {
 
   // ── Pick images ────────────────────────────────────────────────────────────
   const pickImages = async () => {
-    if (images.length >= 5) { Alert.alert(t('products.limitMsg')); return; }
+    if (images.length >= 5) { showPopup(t('products.limitMsg')); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('ai.permissionRequired')); return; }
+    if (status !== 'granted') { showPopup(t('ai.permissionRequired')); return; }
 
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images', quality: 0.75, allowsMultipleSelection: true, base64: true,
@@ -185,9 +186,9 @@ export default function AddMachineryScreen({ navigation, route }) {
   };
 
   const pickFromCamera = async () => {
-    if (images.length >= 5) { Alert.alert(t('products.limitMsg')); return; }
+    if (images.length >= 5) { showPopup(t('products.limitMsg')); return; }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('ai.cameraPermission')); return; }
+    if (status !== 'granted') { showPopup(t('ai.cameraPermission')); return; }
 
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.75 });
     if (res.canceled || !res.assets?.[0]) return;
@@ -197,7 +198,7 @@ export default function AddMachineryScreen({ navigation, route }) {
   // ── Pick video ─────────────────────────────────────────────────────────────
   const pickVideo = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('ai.permissionRequired')); return; }
+    if (status !== 'granted') { showPopup(t('ai.permissionRequired')); return; }
 
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'videos', quality: 0.8,
@@ -208,16 +209,16 @@ export default function AddMachineryScreen({ navigation, route }) {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!category)     { Alert.alert(t('rent.required'), t('rent.selectCategoryAlert')); return; }
-    if (!name.trim())  { Alert.alert(t('rent.required'), t('rent.enterEquipmentName')); return; }
+    if (!category)     { showPopup(t('rent.required'), t('rent.selectCategoryAlert')); return; }
+    if (!name.trim())  { showPopup(t('rent.required'), t('rent.enterEquipmentName')); return; }
     if (!pricePerDay || isNaN(Number(pricePerDay)) || Number(pricePerDay) <= 0 || Number(pricePerDay) > 500000) {
-      Alert.alert(t('rent.required'), t('rent.enterPriceDay') || 'Price per day must be between ₹1 and ₹5,00,000');
+      showPopup(t('rent.required'), t('rent.enterPriceDay') || 'Price per day must be between ₹1 and ₹5,00,000');
       return;
     }
-    if (!location.trim()) { Alert.alert(t('rent.required'), t('rent.enterLocation')); return; }
-    if (!district.trim()) { Alert.alert(t('rent.required'), t('rent.enterDistrict')); return; }
+    if (!location.trim()) { showPopup(t('rent.required'), t('rent.enterLocation')); return; }
+    if (!district.trim()) { showPopup(t('rent.required'), t('rent.enterDistrict')); return; }
     if (availableFrom && availableTo && availableTo < availableFrom) {
-      Alert.alert(t('rent.required'), t('rent.invalidDateRange', 'The end date must be on or after the start date.'));
+      showPopup(t('rent.required'), t('rent.invalidDateRange', 'The end date must be on or after the start date.'));
       return;
     }
 
@@ -240,7 +241,7 @@ export default function AddMachineryScreen({ navigation, route }) {
       }
     } catch (e) {
       setUploading(false);
-      Alert.alert(t('rent.uploadFailed'), t('rent.uploadFailedMsg'));
+      showPopup(t('rent.uploadFailed'), t('rent.uploadFailedMsg'));
       return;
     }
     setUploading(false);
@@ -283,7 +284,7 @@ export default function AddMachineryScreen({ navigation, route }) {
       }
     } catch (err) {
       const msg = err.response?.data?.error?.message || t('rent.error');
-      Alert.alert(t('rent.error'), msg);
+      showPopup(t('rent.error'), msg);
     } finally {
       setSubmitting(false);
     }

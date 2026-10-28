@@ -13,7 +13,13 @@
  *
  * Idempotent: matches by exact name, updates in place. Re-runnable.
  *
- * Run: DATABASE_URL="<railway public url>" node prisma/enrich-products.js
+ * Run locally: node prisma/enrich-products.js
+ * Run in production (the VPS):
+ *   Postgres is not reachable from outside the VPS, so run the script inside
+ *   the backend container over SSH. It gets DATABASE_URL (and the other
+ *   secrets) from /opt/krushisarva/env/backend.env, and it runs the copy baked
+ *   into the image (the root Dockerfile copies backend/, prisma/ included).
+ *     cd /opt/krushisarva && docker compose run --rm backend node prisma/enrich-products.js
  */
 import { PrismaClient } from '@prisma/client';
 

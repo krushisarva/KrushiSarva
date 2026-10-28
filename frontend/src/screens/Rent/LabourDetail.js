@@ -19,8 +19,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Image, ActivityIndicator, Dimensions, StatusBar, Alert, Modal, Linking,
+  Image, ActivityIndicator, Dimensions, StatusBar, Modal, Linking,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import useContactReveal from '../../hooks/useContactReveal';
 import { fs } from '../../utils/responsive';
@@ -37,6 +38,7 @@ import { SkeletonDetail } from '../../components/ui/Skeleton';
 import RentAvailabilityPicker from '../../components/ui/RentAvailabilityPicker';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import ReportSheet from '../../components/ReportSheet';
 import useRentBooking from './components/useRentBooking';
 import { noticeText } from './components/rentBookingFlow';
 import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
@@ -126,6 +128,8 @@ export default function LabourDetail({ route, navigation }) {
   const [notes,       setNotes]       = useState('');
   // { start, end, days, amount, paid, paidAmount } | null
   const [bookingDone, setBookingDone] = useState(null);
+  // "Report listing" (Google Play user-content rule): ReportSheet target or null.
+  const [reportTarget, setReportTarget] = useState(null);
 
   const listingId = id || passedData?.id;
 
@@ -191,7 +195,7 @@ export default function LabourDetail({ route, navigation }) {
       bookingRef.current = false;
       if (!aliveRef.current) return;
       const { title, body } = noticeText(notice, t, inr);
-      Alert.alert(title, body);
+      showPopup(title, body);
       if (notice?.kind === 'SLOT_GONE' || notice?.kind === 'SLOT_TAKEN') {
         setBookFrom(null); setBookTo(null);
       }
@@ -201,11 +205,11 @@ export default function LabourDetail({ route, navigation }) {
 
   const handleBook = useCallback(async () => {
     if (!bookFrom || !bookTo) {
-      Alert.alert(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
+      showPopup(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
       return;
     }
     if (bookedDays <= 0) {
-      Alert.alert(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
+      showPopup(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
       return;
     }
     if (bookingRef.current) return;
@@ -619,6 +623,19 @@ export default function LabourDetail({ route, navigation }) {
             </View>
           ) : null}
 
+          {/* ── Report listing — quiet, last; never on your own listing ── */}
+          {!isOwner && user && (l.id || listingId) ? (
+            <TouchableOpacity
+              style={D.reportLink}
+              onPress={() => setReportTarget({ targetType: 'LABOUR_LISTING', targetId: l.id || listingId })}
+              accessibilityRole="button"
+              accessibilityLabel={t('report.titleListing', 'Report listing')}
+            >
+              <Ionicons name="flag-outline" size={15} color={COLORS.textMedium} />
+              <Text style={D.reportLinkTxt}>{t('report.titleListing', 'Report listing')}</Text>
+            </TouchableOpacity>
+          ) : null}
+
         </View>
       </ScrollView>
 
@@ -714,6 +731,8 @@ export default function LabourDetail({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
     </AnimatedScreen>
   );
@@ -786,6 +805,9 @@ const D = StyleSheet.create({
   // backgroundColor / color come from AVAIL_UI at render time.
   availWindowCard: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 14 },
   availWindowTxt:  { fontSize: 13, fontWeight: '700', flex: 1 },
+  // 44dp tall so a quiet link is still an easy tap.
+  reportLink:    { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 44, paddingRight: 12 },
+  reportLinkTxt: { fontSize: 13, fontWeight: '700', color: COLORS.textMedium },
 
   bottomBar:     { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 12, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.lightGray2 },
   // gap:8 + paddingHorizontal keeps the icon and (possibly long) "Call • phone"

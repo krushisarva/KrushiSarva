@@ -1,12 +1,12 @@
 /**
  * Firebase Phone Auth — thin client wrapper.
  *
- * WHY THIS EXISTS: SMS to Indian numbers needs a DLT-registered sender, so MSG91
- * cannot deliver an OTP until KrushiSarva's DLT registration is approved.
- * Firebase works today because Google is the registered sender.
+ * WHY THIS EXISTS: SMS to Indian numbers needs a DLT-registered sender. Google
+ * is one, so Firebase is how the apps get their sign-in SMS.
  *
- * WHAT IT IS NOT: a replacement for the MSG91 flow. AuthContext keeps both and
- * picks one via FIREBASE_AUTH_ENABLED. The backend keeps both routes.
+ * AuthContext picks this or the development OTP flow (no SMS; the backend
+ * returns the code for auto-fill) via FIREBASE_AUTH_ENABLED. The backend keeps
+ * both routes.
  *
  * API NOTE — @react-native-firebase v26 is MODULAR ONLY. There is no default
  * export and no `auth()` namespace helper any more; the old

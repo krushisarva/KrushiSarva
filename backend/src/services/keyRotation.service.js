@@ -18,6 +18,10 @@ import { needsRotation, rotateCiphertext, activeKeyId } from '../utils/encrypt.j
 const ENCRYPTED_COLUMNS = {
   user:          ['gstNumber', 'lat', 'lng', 'annualHouseholdIncome'],
   sellerProfile: ['bankHolderName', 'bankName', 'bankAccountNumber', 'bankIfsc', 'aadharNumber', 'panNumber'],
+  // The 4-digit proof-of-delivery code (services/orderDelivery.service.js). It is
+  // only USED between "shipped" and "delivered", but it stays on the row, so it
+  // rotates with everything else rather than being left behind on a retired key.
+  orderDelivery: ['code'],
 };
 
 async function reEncryptModel(model, fields, { batchSize, dryRun }) {

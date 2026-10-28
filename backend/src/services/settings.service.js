@@ -25,21 +25,25 @@ const SETTINGS_CACHE_TTL_MS = 60_000;
 // failure. Text features (chat, treatment) may use any model below; VISION features
 // (diagnose, soil OCR) must use a vision-capable model — see VISION_MODEL_OPTIONS.
 const LLM_MODEL_OPTIONS = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash · fast + cheap (Google)' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro · higher accuracy (Google)' },
+  // Free-tier Gemini. Gemini 2.5 is closed to new API keys and Pro models have no
+  // free quota (HTTP 429), so neither is offered.
+  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash · free tier (Google)' },
+  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite · free tier, lighter (Google)' },
   { value: 'gpt-4o', label: 'GPT-4o · vision (OpenAI)' },
   { value: 'gpt-4o-mini', label: 'GPT-4o mini · fast, vision (OpenAI)' },
   { value: 'claude-opus-4-8', label: 'Claude Opus 4.8 · vision (Anthropic)' },
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 · vision (Anthropic)' },
-  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B · text-only (Groq)' },
+  // Groq retired Llama 3.3 70B for free/developer plans on 2026-08-16; GPT-OSS 120B
+  // is its replacement there (an open-weight model Groq hosts, not OpenAI's API).
+  { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B · text-only (Groq)' },
 ];
 
 // Vision-capable subset — for features that send an image (disease diagnosis, soil
-// OCR). Groq's Llama has NO vision, so it is excluded here; offering it for a vision
+// OCR). Groq's GPT-OSS has NO vision, so it is excluded here; offering it for a vision
 // feature would hard-fail the call (the FastAPI dispatch rejects a non-vision model
 // for vision). Keeping it out of the dropdown is the guard.
 const VISION_MODEL_OPTIONS = LLM_MODEL_OPTIONS.filter(
-  (m) => m.value !== 'llama-3.3-70b-versatile',
+  (m) => m.value !== 'openai/gpt-oss-120b',
 );
 
 // value convention: '<provider>:<modelId>' (split on the FIRST colon). The route
@@ -73,19 +77,17 @@ export const SETTINGS_MANIFEST = [
   // features (diagnose, soil OCR) are limited to vision-capable models; a missing
   // provider key surfaces a clear error. Diagnose/treatment have NO model fallback —
   // a model that errors fails that scan loudly (by design), so pick a keyed provider.
-  { key: 'ai.model.chat', type: 'ENUM', category: 'AI Models', label: 'Text chat model', description: 'LLM for the farmer text assistant (chat). Any provider works; if the primary is unavailable it falls back Gemini→Groq so the farmer still gets a reply. Switching e.g. Gemini Flash↔Pro is verified working.', envKey: 'AI_TEXT_CHAT_MODEL', default: 'gemini-2.5-flash', options: LLM_MODEL_OPTIONS },
-  { key: 'ai.model.diagnose', type: 'ENUM', category: 'AI Models', label: 'Disease diagnosis model', description: 'Vision LLM that identifies the disease from the leaf photo — the always-on first pass of every scan. Vision-capable models only (Groq is text-only, excluded). No fallback: an unkeyed or failing model fails the scan, so pick a provider whose key is set.', envKey: 'AI_CROP_DIAGNOSE_MODEL', default: 'gemini-2.5-flash', options: VISION_MODEL_OPTIONS },
-  // NOTE (cost): this default is 'gemini-2.5-pro' and Express forwards it as
-  // model_treatment on BOTH scan paths, so it overrides FastAPI's own default for
-  // this feature (llm_dispatch._DEFAULTS CROP_TREATMENT = gemini-2.5-flash). Pro is
-  // ~4x Flash per million output tokens and this call runs at max_tokens 8192, so it
-  // is the single largest controllable line item on a scan. The content is already
-  // constrained to a closed list of registered actives by rag_retrieve and
-  // post-filtered by validate_treatment — i.e. template filling, not open reasoning
-  // — so Flash is defensible. Flipping it is an ACCURACY call that needs the golden
-  // set to answer, not an engineering one: left on Pro deliberately, pending that.
-  { key: 'ai.model.treatment', type: 'ENUM', category: 'AI Models', label: 'Treatment plan model', description: 'Text LLM that writes the RAG-grounded spray/IPM treatment plan after diagnosis. Skipped automatically for uncertain or out-of-scope diagnoses. Pro is the default for accuracy and overrides the FastAPI-side Flash default — it is roughly 4× the output-token price of Flash, so it is the biggest per-scan cost lever on this page.', envKey: 'AI_CROP_TREATMENT_MODEL', default: 'gemini-2.5-pro', options: LLM_MODEL_OPTIONS },
-  { key: 'ai.model.soilOcr', type: 'ENUM', category: 'AI Models', label: 'Soil-card OCR model', description: 'Vision LLM that reads the 12 parameters off a soil health card photo. Vision-capable models only (Groq is text-only, excluded).', envKey: 'AI_SOIL_OCR_MODEL', default: 'gemini-2.5-flash', options: VISION_MODEL_OPTIONS },
+  { key: 'ai.model.chat', type: 'ENUM', category: 'AI Models', label: 'Text chat model', description: 'LLM for the farmer text assistant (chat). Any provider works; if the primary is unavailable it falls back Gemini→Groq so the farmer still gets a reply. Switching e.g. Gemini Flash↔Flash-Lite works live.', envKey: 'AI_TEXT_CHAT_MODEL', default: 'gemini-3.6-flash', options: LLM_MODEL_OPTIONS },
+  { key: 'ai.model.diagnose', type: 'ENUM', category: 'AI Models', label: 'Disease diagnosis model', description: 'Vision LLM that identifies the disease from the leaf photo — the always-on first pass of every scan. Vision-capable models only (Groq is text-only, excluded). No fallback: an unkeyed or failing model fails the scan, so pick a provider whose key is set.', envKey: 'AI_CROP_DIAGNOSE_MODEL', default: 'gemini-3.6-flash', options: VISION_MODEL_OPTIONS },
+  // NOTE: Express forwards this default as model_treatment on BOTH scan paths, so it
+  // overrides FastAPI's own default for this feature. It was 'gemini-2.5-pro' until
+  // 2026-10-15; Gemini 2.5 is closed to new API keys and Pro has no free-tier quota,
+  // so it is now gemini-3.6-flash. The content is constrained to a closed list of
+  // registered actives by rag_retrieve and post-filtered by validate_treatment —
+  // template filling, not open reasoning — so Flash is defensible; re-check
+  // accuracy against the golden set before moving it to a paid Pro model.
+  { key: 'ai.model.treatment', type: 'ENUM', category: 'AI Models', label: 'Treatment plan model', description: 'Text LLM that writes the RAG-grounded spray/IPM treatment plan after diagnosis. Skipped automatically for uncertain or out-of-scope diagnoses. Gemini 3.6 Flash (free tier) is the default and overrides the FastAPI-side default; a paid model here is the biggest per-scan cost lever on this page.', envKey: 'AI_CROP_TREATMENT_MODEL', default: 'gemini-3.6-flash', options: LLM_MODEL_OPTIONS },
+  { key: 'ai.model.soilOcr', type: 'ENUM', category: 'AI Models', label: 'Soil-card OCR model', description: 'Vision LLM that reads the 12 parameters off a soil health card photo. Vision-capable models only (Groq is text-only, excluded).', envKey: 'AI_SOIL_OCR_MODEL', default: 'gemini-3.6-flash', options: VISION_MODEL_OPTIONS },
   { key: 'ai.model.voiceStt', type: 'ENUM', category: 'AI Models', label: 'Voice / audio STT model', description: 'Speech-to-text for the voice assistant. Sarvam Saaras is Indic-tuned (recommended for Marathi/Hindi/regional); Whisper falls back to Sarvam until enabled.', envKey: 'AI_VOICE_STT_MODEL', default: 'sarvam:saaras:v3', options: VOICE_STT_OPTIONS },
 
   // ── AI diagnosis behaviour ──────────────────────────────────────────────────
@@ -135,6 +137,12 @@ export const SETTINGS_MANIFEST = [
   { key: 'shop.delivery.heavyFee', type: 'NUMBER', category: 'Shop', label: 'Heavy-item delivery fee (₹)', description: 'Applied instead of the parcel fee to items whose shipping class is HEAVY (pumps, large sprayers). Never waived by the free-delivery threshold.', min: 0, max: 1000000, default: 250 },
   { key: 'shop.delivery.freightQuoteRequired', type: 'BOOL', category: 'Shop', label: 'Machinery needs a freight quote', description: 'Items with shipping class FREIGHT (tractor implements, large machinery) cannot be priced by the parcel rules. When on, they cannot be checked out online — the buyer is routed to Request Quote instead of being charged a wrong delivery fee.', default: true },
   { key: 'shop.delivery.codFee', type: 'NUMBER', category: 'Shop', label: 'Cash-on-delivery fee (₹)', description: 'Flat handling fee added once per order paid by cash on delivery. 0 = no fee.', min: 0, max: 10000, default: 0 },
+  // Seller delivery, phase 4 (docs/SELLER_DELIVERY_DESIGN.md §8.5). Starts OFF so
+  // seller app builds from before the delivery code keep working: they send only
+  // { status: 'DELIVERED' }, and with this off that is accepted exactly as before.
+  // A code is still issued, shown to the farmer and checked when a seller sends
+  // one — it is only not DEMANDED until this is turned on.
+  { key: 'shop.delivery.codeRequired', type: 'BOOL', category: 'Shop', label: 'Require the delivery code', description: 'ON = a seller can mark an order delivered only by entering the 4-digit code shown in the farmer’s app, or by choosing a reason for delivering without it. OFF = the code is shown and checked when entered, but not demanded. Leave OFF until sellers have updated their app: an older seller app cannot enter a code and would be unable to mark any order delivered.', default: false },
   { key: 'shop.tax.enabled', type: 'BOOL', category: 'Shop', label: 'Show GST on orders', description: 'When off, tax is recorded as 0 and prices are treated as final. Turn on only once product tax slabs (or the default rate) are correct — the rate is per product, not per order.', default: false },
   { key: 'shop.tax.pricesIncludeTax', type: 'BOOL', category: 'Shop', label: 'Listed prices already include GST', description: 'ON = the seller’s price is the final price and the tax shown is the portion inside it (the normal Indian retail convention). OFF = tax is added on top at checkout.', default: true },
   { key: 'shop.tax.defaultRatePct', type: 'NUMBER', category: 'Shop', label: 'Default GST rate (%)', description: 'Used only for products with no slab of their own. Agri-inputs are not one rate — most seeds are exempt, fertilizers 5%, many pesticides 18% — so set the slab per product and keep this conservative.', min: 0, max: 40, default: 0 },
@@ -189,7 +197,7 @@ export const SETTINGS_MANIFEST = [
   // Routes every crop scan through either the FastAPI agentic pipeline (safety-
   // validated treatment, RAG-grounded) or the deprecated in-process Express
   // scanner. Promoted out of env-only so rolling back a bad AI deploy is a click
-  // instead of a Railway edit + full redeploy. envKey keeps existing deploys on
+  // instead of a server env edit + full redeploy. envKey keeps existing deploys on
   // whatever USE_FASTAPI_FOR_SCAN already says until an admin overrides it.
   { key: 'ai.useFastapiForScan', type: 'BOOL', category: 'AI Models', label: 'Use FastAPI scan pipeline', description: 'ON routes crop scans through the FastAPI agentic pipeline (5-agent, RAG-grounded, safety-validated treatment). OFF falls back to the deprecated in-process Express scanner, which has no treatment validation — use only as an emergency rollback.', envKey: 'USE_FASTAPI_FOR_SCAN', default: false },
   { key: 'app.maintenanceMessage', type: 'STRING', category: 'General', label: 'Maintenance message', description: 'Message shown to users while maintenance mode is on.', default: '' },
@@ -213,9 +221,10 @@ const ENV_MANIFEST = [
   { key: 'AI_SHARED_SECRET', category: 'AI / LLM', secret: true },
   { key: 'AI_BACKEND_URL', category: 'AI / LLM', secret: false },
   { key: 'USE_FASTAPI_FOR_SCAN', category: 'AI / LLM', secret: false },
-  { key: 'MSG91_AUTH_KEY', category: 'SMS / OTP', secret: true },
-  { key: 'MSG91_TEMPLATE_ID', category: 'SMS / OTP', secret: false },
-  { key: 'MSG91_SENDER_ID', category: 'SMS / OTP', secret: false },
+  { key: 'FIREBASE_AUTH_ENABLED', category: 'SMS / OTP', secret: false },
+  { key: 'FIREBASE_PROJECT_ID', category: 'SMS / OTP', secret: false },
+  { key: 'FIREBASE_CLIENT_EMAIL', category: 'SMS / OTP', secret: false },
+  { key: 'FIREBASE_PRIVATE_KEY', category: 'SMS / OTP', secret: true },
   { key: 'CLOUDINARY_CLOUD_NAME', category: 'Media', secret: false },
   { key: 'CLOUDINARY_API_KEY', category: 'Media', secret: true },
   { key: 'CLOUDINARY_API_SECRET', category: 'Media', secret: true },

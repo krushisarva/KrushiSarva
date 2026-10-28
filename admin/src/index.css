@@ -22,17 +22,32 @@
   .card {
     @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
+  /* For a control that HAS a border: the keyboard focus mark is that border
+     turned green with a 1px ring flush against it — one 2px green line. The
+     base ring above sits 1px away, which next to a border reads as two
+     borders (border, gap, ring). Filled and borderless controls keep the base
+     ring: with no border of their own there is nothing to double. */
+  .focus-flush {
+    @apply focus-visible:border-brand-700 focus-visible:ring-1 focus-visible:ring-offset-0;
+  }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
            transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary { @apply btn bg-brand-700 text-white hover:bg-brand-800; }
-  .btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-secondary { @apply btn focus-flush border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
+  /* One border when focused, not two. A text field is :focus-visible on every
+     click, so the base rule above gave it a ring 1px AWAY from the border that
+     had already turned green — border, gap, ring: a double border on every
+     input, select and textarea in the panel. Here the ring sits flush against
+     the border (no offset) and is 1px wide, so the two read as one 2px green
+     border. Still a clear focus mark, and still no layout shift. */
   .input {
     @apply w-full rounded-lg border border-slate-500 bg-white px-3 py-2 text-sm
-           placeholder:text-slate-500 focus:border-brand-700;
+           placeholder:text-slate-500 focus:border-brand-700
+           focus-visible:ring-1 focus-visible:ring-offset-0;
   }
   .label { @apply mb-1 block text-sm font-medium text-slate-700; }
   .table-th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }

@@ -1,21 +1,9 @@
-# KrushiSarva backend + embedded admin SPA (same-origin).
+# KrushiSarva backend (API + Socket.IO + in-process BullMQ worker and cron).
 #
-# Stages: (1) build the admin React/Vite SPA, (2) backend runtime that serves the
-# API (/api/v1/*) and the admin panel (/admin) from one origin.
-# Used by the Railway *backend* service with Root Directory = repo root.
+# The admin panel is NOT in this image: it is built and hosted on Vercel
+# (admin/vercel.json), which proxies /api/* to this backend.
+# Used by deploy/docker-compose.yml on the VPS (build context = repo root).
 
-# ── Stage 1: build the admin SPA ──────────────────────────────────────────────
-FROM node:20-slim AS admin-build
-WORKDIR /admin
-COPY admin/package.json admin/package-lock.json ./
-RUN npm ci
-COPY admin/ ./
-# Same-origin: the SPA calls /api/v1/* on the backend that serves it (no CORS).
-ENV VITE_API_URL=/api/v1
-ENV VITE_ENV_NAME=production
-RUN npm run build           # → /admin/dist
-
-# ── Stage 2: backend runtime ──────────────────────────────────────────────────
 FROM node:20-slim AS backend
 # OpenSSL is required by the Prisma query engine.
 RUN apt-get update -y \
@@ -33,19 +21,14 @@ RUN npm ci
 # App source (node_modules / .env excluded via .dockerignore).
 COPY backend/ ./
 
-# Built admin SPA → resolved by the backend at ../../admin/dist from src/app.js.
-COPY --from=admin-build /admin/dist /app/admin/dist
-
 ENV NODE_ENV=production
-ENV ADMIN_DIST_DIR=/app/admin/dist
 # Prisma's update checker opens a socket to checkpoint.prisma.io and can keep the
 # CLI process alive in a slim container, so `prisma db push && node …` never reaches
 # node. Disable it so the CLI exits cleanly.
 ENV CHECKPOINT_DISABLE=1
 ENV PRISMA_HIDE_UPDATE_MESSAGE=1
-# No EXPOSE: Railway detects an EXPOSEd port as the healthcheck/proxy target,
-# which would mismatch the $PORT the app actually listens on. With none, Railway
-# routes to the PORT env var it injects (which the server binds to).
+# No EXPOSE: deploy/docker-compose.yml decides which port is published, and the
+# server binds to $PORT.
 
 # Start only. Schema changes are applied deliberately, never on container boot.
 #

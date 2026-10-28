@@ -118,8 +118,27 @@ describe('paymentStatusNotice', () => {
 describe('orderRefundLabel', () => {
   test('labels the three refund states', () => {
     expect(orderRefundLabel('refund_pending')).toMatchObject({ key: 'orders.refundPending', done: false });
-    expect(orderRefundLabel('partially_refunded')).toMatchObject({ key: 'orders.partiallyRefunded', done: false });
+    // Settled: the server writes it only after the gateway has made the refund,
+    // so it carries the tick, not the clock that means "still on its way".
+    expect(orderRefundLabel('partially_refunded')).toMatchObject({ key: 'orders.partiallyRefunded', done: true });
     expect(orderRefundLabel('refunded')).toMatchObject({ key: 'orders.refunded', done: true });
+  });
+
+  test('the gateway\'s word for a refund on its way reads the same as ours', () => {
+    // The Razorpay refund webhook writes 'refund_initiated' on the order.
+    expect(orderRefundLabel('refund_initiated')).toEqual(orderRefundLabel('refund_pending'));
+  });
+
+  test('a cash order marked refunded is not told about "the account you paid from"', () => {
+    for (const method of ['cod', 'COD', ' cod ']) {
+      expect(orderRefundLabel('refunded', method)).toEqual({ key: 'orders.statusRefunded', fallback: 'Refunded', done: true });
+    }
+    // Paid online, or the method not known: the usual words.
+    for (const method of ['online', 'upi', undefined, null, 42]) {
+      expect(orderRefundLabel('refunded', method).key).toBe('orders.refunded');
+    }
+    // Only that one sentence names an account; the others are the same for cash.
+    expect(orderRefundLabel('refund_pending', 'cod')).toEqual(orderRefundLabel('refund_pending'));
   });
 
   test('says nothing about a refund when there is nothing to say', () => {

@@ -8,7 +8,9 @@
  *
  *   SHOP_ORDER    shopPayment.service.js — carts, quotes, orders, stock holds
  *   RENT_BOOKING  (PAY-002)
- *   AI_CREDITS    (PAY-004)
+ *   AI_CREDITS    retired 2026-10-15 — credits can no longer be bought. Kept
+ *                 so old rows still parse; the webhook acknowledges and grants
+ *                 nothing (RETIRED_PURPOSES in paymentWebhooks.routes.js)
  *   ANIMAL_TOKEN  declared, deliberately unimplemented (PAY-005)
  *
  * ── Why it was split out ─────────────────────────────────────────────────────
@@ -46,7 +48,7 @@ import { D, toMinorUnits } from '../utils/money.js';
 export const PAYMENT_PURPOSE = Object.freeze({
   SHOP_ORDER: 'SHOP_ORDER',
   RENT_BOOKING: 'RENT_BOOKING',
-  AI_CREDITS: 'AI_CREDITS',
+  AI_CREDITS: 'AI_CREDITS',      // retired: nothing raises one any more (see header)
   ANIMAL_TOKEN: 'ANIMAL_TOKEN',
 });
 

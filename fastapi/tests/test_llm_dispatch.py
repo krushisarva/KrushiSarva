@@ -2,7 +2,7 @@
 Unit tests for agents/llm_dispatch.py — the flat per-feature LLM config.
 
 KrushiSarva routes per-feature by model-id prefix (WI-11). Covers:
-  - _detect_provider maps gemini-*/gpt-*/claude-*/llama-* and rejects the rest
+  - _detect_provider maps gemini-*/gpt-*/claude-*/openai/gpt-oss-*/llama-* and rejects the rest
   - get_feature_config reads AI_<FEATURE>_* env vars correctly
   - defaults (all Gemini) are used when env vars are unset
 """
@@ -44,10 +44,19 @@ class TestDetectProvider:
         assert _detect_provider("llama-3.3-70b-versatile", None) == "groq"
         assert _detect_provider("mixtral-8x7b", None) == "groq"
 
+    def test_gpt_oss_routes_to_groq_not_openai(self):
+        # openai/gpt-oss-* are open-weight models Groq hosts (the free-plan
+        # replacement for Llama 3.3 70B since 2026-08-16). They must go to Groq
+        # with GROQ_API_KEY, never to OpenAI's API, which is what a bare gpt-* is.
+        assert _detect_provider("openai/gpt-oss-120b", None) == "groq"
+        assert _detect_provider("openai/gpt-oss-20b", None) == "groq"
+        assert _detect_provider("gpt-4o-mini", None) == "openai"
+
     def test_unknown_prefixes_raise(self):
         # An unroutable id must fail at config time, not at call time with an
         # empty credential against an endpoint that does not exist.
-        for bad in ("deepseek-chat", "grok-2", "whisper-large-v3-turbo", "", "foo-mystery"):
+        for bad in ("deepseek-chat", "grok-2", "whisper-large-v3-turbo", "", "foo-mystery",
+                    "openai/gpt-4o", "qwen/qwen3.8-27b"):
             with pytest.raises(ConfigError):
                 _detect_provider(bad, None)
 
@@ -65,7 +74,7 @@ class TestGetFeatureConfig:
     def test_falls_back_to_gemini_defaults_when_env_unset(self):
         cfg = get_feature_config("TEXT_CHAT")
         assert cfg.feature == "TEXT_CHAT"
-        assert cfg.model == "gemini-2.5-flash"  # baked-in default
+        assert cfg.model == "gemini-3.6-flash"  # baked-in default
         assert cfg.base_url is None
         assert cfg.provider == "gemini"
         # api_key defaults to GEMINI_API_KEY (may be empty in test env).
@@ -120,7 +129,7 @@ class TestGetFeatureConfig:
         monkeypatch.setenv("AI_TEXT_CHAT_MODEL", "")
         monkeypatch.setenv("AI_TEXT_CHAT_API_KEY", "")
         cfg = get_feature_config("TEXT_CHAT")
-        assert cfg.model == "gemini-2.5-flash"
+        assert cfg.model == "gemini-3.6-flash"
 
 
 # ── Cross-provider Groq chat fallback ─────────────────────────────────────────
@@ -152,7 +161,7 @@ class TestGroqFallback:
             res = _groq_fallback(feat)
             assert res is not None, feat
             model, key = res
-            assert model == "llama-3.3-70b-versatile"
+            assert model == "openai/gpt-oss-120b"
             assert key == "gsk_test"
 
     def test_off_for_non_chat_features_even_with_key(self, monkeypatch):
@@ -181,4 +190,48 @@ class TestGroqFallback:
         monkeypatch.setattr(d, "GROQ_API_KEY", "gsk_test", raising=False)
         monkeypatch.setenv("AI_ALERT_GROQ_FALLBACK", "true")
         res = _groq_fallback("ALERT")
-        assert res is not None and res[0] == "llama-3.3-70b-versatile"
+        assert res is not None and res[0] == "openai/gpt-oss-120b"
+
+
+# ── Groq request fields for reasoning models ─────────────────────────────────
+
+class TestGroqModelParams:
+    def test_gpt_oss_gets_reasoning_headroom_and_hides_reasoning(self):
+        from agents.llm_utils import _GPT_OSS_REASONING_HEADROOM, _groq_model_params
+        p = _groq_model_params("openai/gpt-oss-120b", 512)
+        # The voice path's 512-token cap must not be eaten by hidden reasoning.
+        assert p["max_tokens"] == 512 + _GPT_OSS_REASONING_HEADROOM
+        assert p["include_reasoning"] is False
+        assert p["reasoning_effort"] == "low"
+
+    def test_other_groq_models_send_only_the_cap(self):
+        # include_reasoning / reasoning_effort are reasoning-model fields; a
+        # non-reasoning model must not receive them.
+        from agents.llm_utils import _groq_model_params
+        assert _groq_model_params("llama-3.3-70b-versatile", 4096) == {"max_tokens": 4096}
+
+
+# ── Free-tier Gemini models (2.5 is closed to new API keys) ──────────────────
+
+class TestFreeTierGemini:
+    def test_flash_lite_gets_no_thinking_config(self):
+        # Gemini 3.5 Flash-Lite answers HTTP 400 to thinkingBudget 0, so the
+        # field must be left out entirely; Flash still turns thinking off.
+        from agents.llm_utils import _gemini_thinking_config
+        assert _gemini_thinking_config("gemini-3.5-flash-lite", 512) is None
+        assert _gemini_thinking_config("gemini-3.6-flash", 512) == {"thinkingBudget": 0}
+
+    def test_capacity_fallback_pairs_flash_with_flash_lite(self, monkeypatch):
+        # Pro has no free-tier quota, so Flash-Lite is Flash's capacity partner.
+        from agents.llm_dispatch import _fallback_model
+        monkeypatch.delenv("AI_CHAT_WRITER_FALLBACK_MODEL", raising=False)
+        assert _fallback_model("CHAT_WRITER", "gemini-3.6-flash") == "gemini-3.5-flash-lite"
+        assert _fallback_model("CHAT_WRITER", "gemini-3.5-flash-lite") == "gemini-3.6-flash"
+
+    def test_every_default_model_is_priced(self):
+        # An unpriced model is refused before any call, so a default without a
+        # price row would take the feature down.
+        from agents.llm_dispatch import _DEFAULTS
+        from agents.llm_utils import is_priced
+        for feat, model in _DEFAULTS.items():
+            assert is_priced(model), (feat, model)

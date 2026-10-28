@@ -26,7 +26,7 @@ function makeGeminiClient() {
 let _gemini = null;
 const gemini = () => { if (!_gemini) _gemini = makeGeminiClient(); return _gemini; };
 
-const GEMINI_MODEL = ENV.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = ENV.GEMINI_MODEL || 'gemini-3.6-flash';
 
 // ── Season helper (pure — also imported by planner + ai routes) ────────────────
 export function getCurrentSeason() {
@@ -55,7 +55,8 @@ const PLANNER_PROMPT = (ctx) => {
   const month     = ctx.month     || new Date().toLocaleString('en-IN', { month: 'long' });
   const cropStage = ctx.dayOfSeason ? getCropStageFromAge(ctx.dayOfSeason) : 'Unknown stage';
 
-  return `You are FarmMind's daily task planner for Indian farmers.
+  return `You are the daily task planner of Krushi Intelligence, the AI farming assistant in the KrushiSarva app, for Indian farmers.
+You are an AI assistant, not a human expert, and not a government, ICAR or Krishi Vigyan Kendra service. Never claim human qualifications or government affiliation.
 
 Farm context:
 - Farmer : ${ctx.farmerName || 'Farmer'}

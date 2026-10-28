@@ -240,7 +240,7 @@ default     ─► _agentic_text_reply()   CHAT_WRITER → CHAT_ENHANCER   + fol
  message + history(last 20) + farm_profile + response_length
                        │
  ┌─────────────────────▼──────────────────────┐
- │ STAGE 1 — WRITER (CHAT_WRITER)              │  gemini-2.5-flash · temp 0.3 · 4096 tok
+ │ STAGE 1 — WRITER (CHAT_WRITER)              │  gemini-3.6-flash · temp 0.3 · 4096 tok
  │  system = senior-agronomist persona         │  → "DRAFT answer"
  │         + FARMER PROFILE block              │
  │         + length directive + language rule  │
@@ -319,13 +319,14 @@ image: Optional[dict]        # {data:b64, mime_type} | None
 
 | Feature | Default model | Key |
 |---|---|---|
-| `CHAT_WRITER` / `CHAT_ENHANCER` / `CHAT_VISION` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
-| `TEXT_CHAT` (legacy single-pass) | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| `CHAT_WRITER` / `CHAT_ENHANCER` / `CHAT_VISION` | `gemini-3.6-flash` | `GEMINI_API_KEY` |
+| `TEXT_CHAT` (legacy single-pass) | `gemini-3.6-flash` | `GEMINI_API_KEY` |
 | `VOICE_STT` | `whisper-large-v3-turbo` | `GROQ_API_KEY` |
-| `CROP_DIAGNOSE` / `CROP_TREATMENT` | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` |
-| `ALERT` / `PEST` | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| `CROP_DIAGNOSE` / `CROP_TREATMENT` | `gemini-3.6-flash` | `GEMINI_API_KEY` |
+| `ALERT` / `PEST` | `gemini-3.6-flash` | `GEMINI_API_KEY` |
+| Text-chat fallback (Groq, last resort) | `openai/gpt-oss-120b` | `GROQ_API_KEY` |
 
-> Chat stages default to **Gemini 2.5 Flash** because the pipeline makes 3 calls/message and Groq's free tier would `429` under that load.
+> Chat stages default to **Gemini 3.6 Flash** (on a free-tier Gemini key since 2026-10-15; Gemini 2.5 is closed to new keys) because the pipeline makes 3 calls/message and Groq's free tier would `429` under that load.
 
 ---
 
@@ -405,17 +406,17 @@ FastAPI retries only transient `429/5xx` + timeouts (exp backoff, no fallback). 
 | Var | Default | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | *(empty)* | provider keys |
-| `AI_CHAT_WRITER_MODEL` | `gemini-2.5-flash` | draft stage |
-| `AI_CHAT_ENHANCER_MODEL` | `gemini-2.5-flash` | rewrite stage |
+| `AI_CHAT_WRITER_MODEL` | `gemini-3.6-flash` | draft stage |
+| `AI_CHAT_ENHANCER_MODEL` | `gemini-3.6-flash` | rewrite stage |
 | `AI_CHAT_ENHANCER_ENABLED` | `true` | toggle the 2nd pass |
-| `AI_CHAT_VISION_MODEL` | `gemini-2.5-flash` | image chat |
+| `AI_CHAT_VISION_MODEL` | `gemini-3.6-flash` | image chat |
 | `AI_<FEATURE>_BASE_URL` | *(unset)* | escape hatch for custom/OpenAI-compatible hosts |
 
 **Frontend** — [frontend/src/services/config.js](../frontend/src/services/config.js)
 
 | Var | Resolution |
 |---|---|
-| `EXPO_PUBLIC_API_BASE_URL` | wins if set; else dev `http://<DEV_HOST>:3001/api/v1`, else prod Railway URL |
+| `EXPO_PUBLIC_API_BASE_URL` | wins if set; else dev `http://<DEV_HOST>:3001/api/v1`, else the prod VPS URL (`https://srv2061596.hstgr.cloud/api/v1`) |
 
 ---
 

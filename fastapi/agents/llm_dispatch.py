@@ -7,7 +7,8 @@ MULTI-PROVIDER: the model id's prefix selects the provider —
     gemini-*            → Google Gemini
     gpt-*               → OpenAI
     claude-*            → Anthropic
-    llama-* / mixtral-* → Groq
+    openai/gpt-oss-*    → Groq (open-weight models Groq hosts; NOT OpenAI's API)
+    llama-* / mixtral-* → Groq (retired for free/developer plans 2026-08-16)
 (see _detect_provider). The provider's own API key is resolved automatically
 (GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GROQ_API_KEY); when that
 key is unset, get_feature_config raises a clear ConfigError rather than calling
@@ -75,20 +76,21 @@ AI_FEATURES = (
 # fresh checkout still works. Admin can override any of these by setting the env
 # var. The api key defaults to GEMINI_API_KEY for every feature.
 #
-# Flash is the default everywhere — fast + cheap and the free-tier limits are
-# generous enough for the chat pipeline's multiple calls/message. Switch a
-# feature to gemini-2.5-pro via AI_<FEATURE>_MODEL when you want more accuracy.
+# Gemini 3.6 Flash is the default everywhere: it is on Google's free tier, and
+# Gemini 2.5 is closed to new API keys ("no longer available to new users").
+# Pro models have no free-tier quota (HTTP 429), so only point a feature at one
+# via AI_<FEATURE>_MODEL on a paid (billed) Gemini project.
 _DEFAULTS: dict[str, str] = {
     # feature             default Gemini model id
-    "TEXT_CHAT":          "gemini-2.5-flash",
-    "CHAT_WRITER":        "gemini-2.5-flash",
-    "CHAT_ENHANCER":      "gemini-2.5-flash",
-    "CHAT_VISION":        "gemini-2.5-flash",
-    "SOIL_OCR":           "gemini-2.5-flash",
-    "CROP_DIAGNOSE":      "gemini-2.5-flash",
-    "CROP_TREATMENT":     "gemini-2.5-flash",
-    "ALERT":              "gemini-2.5-flash",
-    "PEST":               "gemini-2.5-flash",
+    "TEXT_CHAT":          "gemini-3.6-flash",
+    "CHAT_WRITER":        "gemini-3.6-flash",
+    "CHAT_ENHANCER":      "gemini-3.6-flash",
+    "CHAT_VISION":        "gemini-3.6-flash",
+    "SOIL_OCR":           "gemini-3.6-flash",
+    "CROP_DIAGNOSE":      "gemini-3.6-flash",
+    "CROP_TREATMENT":     "gemini-3.6-flash",
+    "ALERT":              "gemini-3.6-flash",
+    "PEST":               "gemini-3.6-flash",
 }
 
 
@@ -97,7 +99,7 @@ _DEFAULTS: dict[str, str] = {
 @dataclass(frozen=True)
 class FeatureConfig:
     feature:  str          # e.g. "TEXT_CHAT"
-    model:    str          # e.g. "gemini-2.5-flash"
+    model:    str          # e.g. "gemini-3.6-flash"
     api_key:  str
     base_url: Optional[str] = None  # vestigial — Gemini uses its native REST endpoint
 
@@ -114,8 +116,11 @@ class ConfigError(RuntimeError):
 
 def _detect_provider(model: str, base_url: Optional[str] = None) -> str:
     """Route by model-id prefix (WI-11): gemini-* / gpt-* / claude-* /
-    llama-*|mixtral-*. An unknown prefix is a configuration error we surface
-    immediately rather than at call time."""
+    openai/gpt-oss-* | llama-* | mixtral-*. An unknown prefix is a configuration
+    error we surface immediately rather than at call time.
+
+    `openai/gpt-oss-*` is checked by its full prefix: those are open-weight models
+    served by Groq, while a bare `gpt-*` id is OpenAI's own API."""
     m = (model or "").lower().strip()
     if m.startswith("gemini-"):
         return "gemini"
@@ -123,11 +128,11 @@ def _detect_provider(model: str, base_url: Optional[str] = None) -> str:
         return "openai"
     if m.startswith("claude-"):
         return "anthropic"
-    if m.startswith("llama-") or m.startswith("mixtral-"):
+    if m.startswith("openai/gpt-oss-") or m.startswith("llama-") or m.startswith("mixtral-"):
         return "groq"
     raise ConfigError(
         f"Unsupported model {model!r}. Supported prefixes: "
-        f"gemini-* / gpt-* / claude-* / llama-* (or mixtral-*)."
+        f"gemini-* / gpt-* / claude-* / openai/gpt-oss-* / llama-* (or mixtral-*)."
     )
 
 
@@ -246,6 +251,12 @@ def _fallback_model(feature: str, primary: str) -> Optional[str]:
     if feature not in _AUTO_FALLBACK_FEATURES:
         return None
     p = (primary or "").lower()
+    # Free tier: Flash <-> Flash-Lite (Pro has no free quota).
+    if p == "gemini-3.6-flash":
+        return "gemini-3.5-flash-lite"
+    if p == "gemini-3.5-flash-lite":
+        return "gemini-3.6-flash"
+    # Gemini 2.5 pair, for a paid project that still has access to it.
     if p == "gemini-2.5-flash":
         return "gemini-2.5-pro"
     if p == "gemini-2.5-pro":
@@ -260,7 +271,8 @@ def _fallback_model(feature: str, primary: str) -> Optional[str]:
 # leaves the Gemini-only path — Groq has capacity separate from Google, so it
 # survives a Gemini-side outage / quota exhaustion that retrying Gemini cannot.
 # Off unless GROQ_API_KEY is set (no key → Gemini-only behaviour, unchanged).
-# Text-only — Groq Llama can't do vision, so call_llm_vision never uses it.
+# Text-only — the default Groq model (openai/gpt-oss-120b) can't do vision, so
+# call_llm_vision never uses it.
 # Override per feature: AI_<FEATURE>_GROQ_FALLBACK=false to disable, or
 # AI_<FEATURE>_GROQ_MODEL=<groq-model> to pick a different Groq model.
 _GROQ_FALLBACK_FEATURES = {"TEXT_CHAT", "CHAT_WRITER", "CHAT_ENHANCER"}

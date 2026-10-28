@@ -156,6 +156,34 @@ describe('Farm CRUD — POST/GET/PATCH/DELETE /api/v1/farms', () => {
     expect(res.body.data.landSizeAcres).toBe(6);
     expect(res.body.data.farmName).toBe('North Plot (updated)');
   });
+
+  // updateFarm used to pass the body straight to Prisma, so a nested write
+  // through the `farmer` relation reached the caller's own user row.
+  test('update ignores nested relation writes and server-owned columns', async () => {
+    const res = await request(app)
+      .patch(`${API}/farms/${farmAId}`)
+      .set(farmer.headers)
+      .send({
+        farmAlias: 'Still mine',
+        farmer: { update: { role: 'ADMIN', adminScopes: [], kycStatus: 'VERIFIED' } },
+        farmerId: other.user.id,
+        isActive: false,
+        farmNumber: 99,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.data.farmAlias).toBe('Still mine');
+
+    const me = await prisma.user.findUnique({
+      where: { id: farmer.user.id }, select: { role: true, kycStatus: true },
+    });
+    expect(me.role).toBe(farmer.user.role);
+    expect(me.kycStatus).toBe(farmer.user.kycStatus);
+
+    const farm = await prisma.farm.findUnique({ where: { id: farmAId } });
+    expect(farm.farmerId).toBe(farmer.user.id);
+    expect(farm.isActive).toBe(true);
+    expect(farm.farmNumber).not.toBe(99);
+  });
 });
 
 // ── Active farm switching ────────────────────────────────────────────────────

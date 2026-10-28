@@ -181,6 +181,14 @@ def _get_cache_key(diagnosis: dict, params: dict, tier: str, grounding: dict | N
     re-running validate_treatment on every hit (see run_treatment_agent) —
     the validator is what makes the cache structurally incapable of emitting
     an illegal plan; the key is what stops it being served in the first place.
+
+    ctx is a digest of every free-text value the treatment prompt interpolates
+    that is not otherwise in the key (the farmer's own history fields and the
+    diagnosis model's free text). The cache is shared across users for 7 days:
+    without this, a plan written around one farmer's text — including text
+    crafted to steer the model — was replayed to every other farmer whose
+    crop, disease and farm bucket matched. Farmers who leave those fields
+    empty still share a slot.
     """
     pd = diagnosis.get("primary_diagnosis", {})
     payload = {
@@ -199,6 +207,13 @@ def _get_cache_key(diagnosis: dict, params: dict, tier: str, grounding: dict | N
         # pesticide keeps being served from cache for the 7-day TTL.
         "registry_version":   REGISTRY_VERSION,
         "state_bans_version": STATE_BANS_VERSION,
+        "ctx": hashlib.sha256(json.dumps([
+            params.get("crop_variety"), params.get("previous_crop"),
+            params.get("recent_pesticide_used"), params.get("fertilizer_history"),
+            params.get("farm_history"),
+            pd.get("scientific_name"), pd.get("severity"),
+            diagnosis.get("spread_risk"), diagnosis.get("causal_factors"),
+        ], sort_keys=True, default=str).encode()).hexdigest(),
     }
     if grounding:
         # Stable signature: actives' names + zone (the two grounding

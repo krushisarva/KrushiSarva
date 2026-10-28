@@ -3,7 +3,7 @@ Alert Service — generates smart farm alerts for the FarmEasy dashboard.
 
 Model selection
   Reads ONE Gemini model from .env via `agents/llm_dispatch`:
-    AI_ALERT_MODEL=gemini-2.5-flash           (default)
+    AI_ALERT_MODEL=gemini-3.6-flash           (default)
     AI_ALERT_API_KEY=...                       (default: GEMINI_API_KEY)
 
   No fallback — if the configured model fails, returns an empty alert

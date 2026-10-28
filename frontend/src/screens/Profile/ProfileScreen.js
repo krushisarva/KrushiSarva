@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Switch, Alert, Modal, TextInput, Linking,
-  Image, ImageBackground, ActivityIndicator, Platform, Animated, ScrollView,
-  KeyboardAvoidingView,
+  Switch, Modal, TextInput, Linking,
+  Image, ImageBackground, ActivityIndicator, Platform, Animated, Easing, ScrollView,
+  KeyboardAvoidingView, AccessibilityInfo,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import useFocusRefresh from '../../hooks/useFocusRefresh';
 import PhotoIcon from '../../components/PhotoIcon';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +15,6 @@ import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import { getStatesByRegion, REGION_ORDER } from '../../i18n/stateMappings';
 import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import api from '@krushisarva/shared/services/api';
-import { getAICredits } from '../../services/aiApi';
 import { fetchWeatherForCurrentLocation } from '../../services/weatherApi';
 import { compressImage } from '@krushisarva/shared/utils/mediaCompressor';
 import { openSellerApp } from '../../utils/sellerApp';
@@ -27,6 +27,7 @@ import { KHET, KFONT, KSHADOW } from '@krushisarva/shared/constants/khetTheme';
 import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import PincodeLocationStatus from '@krushisarva/shared/components/PincodeLocationStatus';
 import { usePincodeAutofill } from '@krushisarva/shared/hooks/usePincodeLocation';
+import { useAppUpdate, describeUpdateRow, getAppInfo } from '@krushisarva/shared/hooks/useAppUpdate';
 import { sanitizePincode, PINCODE_INPUT_MAX_LENGTH } from '@krushisarva/shared/utils/pincode';
 import DeleteAccountModal from './DeleteAccountModal';
 import Svg, { Circle, Defs, RadialGradient as SvgRadialGradient, Stop, Path } from 'react-native-svg';
@@ -114,6 +115,146 @@ function RowItem({ icon, iconColor, label, subtitle, onPress, showArrow = true, 
   );
 }
 
+// Icon + colour of the status line under the version, per hook status.
+const UPDATE_NOTE_LOOK = {
+  upToDate:    { icon: 'checkmark-circle', color: D.green },
+  available:   { icon: 'sparkles', color: D.green },
+  ready:       { icon: 'sparkles', color: D.green },
+  error:       { icon: 'alert-circle', color: KHET.destructiveInk },
+};
+
+// Fades in when it mounts. Keyed by its text, so each new status line starts
+// hidden (no flash at full opacity before the fade). Native driver.
+function FadeInNote({ style, children }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.timing(opacity, { toValue: 1, duration: 240, useNativeDriver: true });
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+  return <Animated.View style={[style, { opacity }]}>{children}</Animated.View>;
+}
+
+// App version + the manual update check. Updates no longer apply by themselves
+// on the next launch; this row and the shared banner are how a farmer gets one.
+// The status comes from the shared store, so a check the banner already ran
+// shows here too.
+function AppVersionRow({ isLast }) {
+  const { t } = useLanguage();
+  const appUpdate = useAppUpdate();
+  const { info, status, checkNow, updateNow } = appUpdate;
+  // Note, action and busy flag per state (shared with the seller row).
+  const row = describeUpdateRow(appUpdate);
+  const label = t('appUpdate.versionLabel', 'App version');
+  const version = `${info?.version ?? ''} · ${info?.updateId || t('appUpdate.builtIn', 'built-in')}`;
+  const note = row.note ? t(...row.note) : null;
+  const noteKey = row.note ? row.note[0] : null;
+  const look = UPDATE_NOTE_LOOK[status];
+  const offersUpdate = row.runs === 'update';
+
+  // The refresh icon spins while a check runs, then finishes its turn instead
+  // of snapping back to 0°. Native driver, so it stays smooth on low-end phones.
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (status === 'checking') {
+      spin.setValue(0);
+      const loop = Animated.loop(Animated.timing(spin, {
+        toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true,
+      }));
+      loop.start();
+      return () => loop.stop();
+    }
+    // The update pill replaced the button: no turn left to show.
+    if (offersUpdate) { spin.setValue(0); return undefined; }
+    let gone = false;
+    spin.stopAnimation((v) => {
+      if (gone) return;
+      if (!(v > 0 && v < 1)) { spin.setValue(0); return; }
+      // Starts at the loop's speed and eases to a stop.
+      Animated.timing(spin, {
+        toValue: 1, duration: Math.min(1200, Math.max(150, (1 - v) * 1800)),
+        easing: Easing.out(Easing.quad), useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) spin.setValue(0); });
+    });
+    return () => { gone = true; };
+  }, [status, offersUpdate, spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  // The status is part of the row's label, which TalkBack does not re-read when
+  // it changes, so each new status is announced (not the one already showing
+  // when Profile opens, nor the same one again in a new language).
+  const spokenKey = useRef(noteKey);
+  useEffect(() => {
+    if (noteKey === spokenKey.current) return;
+    spokenKey.current = noteKey;
+    if (note) AccessibilityInfo.announceForAccessibility(note);
+  }, [noteKey, note]);
+
+  // Dev builds and builds without expo-updates have nothing to check.
+  if (!row.showButton) {
+    return <RowItem icon="phone-portrait-outline" iconColor={D.green} label={label} subtitle={version} showArrow={false} isLast={isLast} />;
+  }
+
+  const onAction = () => {
+    if (row.busy) return;
+    // The hook reports failures through `status`; this only keeps a stray rejection quiet.
+    Promise.resolve().then(offersUpdate ? updateNow : checkNow).catch(() => {});
+  };
+  const actionLabel = t(...row.action);
+
+  return (
+    <TouchableOpacity
+      style={[S.rowItem, isLast && { borderBottomWidth: 0 }]}
+      onPress={onAction}
+      activeOpacity={0.6}
+      // No press dimming for a tap the row would ignore.
+      disabled={row.busy}
+      accessibilityRole="button"
+      accessibilityState={{ busy: row.busy }}
+      accessibilityLabel={[label, version, note, actionLabel].filter(Boolean).join(', ')}
+    >
+      <View style={[S.rowIcon, { backgroundColor: D.green + '18' }]}>
+        <Ionicons name="phone-portrait-outline" size={18} color={D.green} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={S.rowLabel}>{label}</Text>
+        <Text style={S.rowSubtitle} numberOfLines={1}>{version}</Text>
+        {note ? (
+          // Wraps rather than cutting off: the error line carries the advice.
+          <FadeInNote key={note} style={S.updateNote}>
+            {look ? <Ionicons name={look.icon} size={13} color={look.color} style={S.updateNoteIcon} /> : null}
+            <Text style={[S.updateNoteText, look && { color: look.color }]}>{note}</Text>
+          </FadeInNote>
+        ) : null}
+      </View>
+      {offersUpdate ? (
+        // An update is on offer: a compact solid pill with a one-word label
+        // (the full action is in the row's accessibility label).
+        <View style={S.updatePill}>
+          {/* Fixed box, so the pill keeps its width when the spinner swaps in. */}
+          <View style={S.updatePillIcon}>
+            {row.busy
+              ? <ActivityIndicator size="small" color={KHET.primaryForeground} style={S.updatePillSpinner} />
+              : <Ionicons
+                  name={status === 'ready' ? 'reload' : row.noteIsError ? 'refresh' : 'arrow-up-circle'}
+                  size={16}
+                  color={KHET.primaryForeground}
+                />}
+          </View>
+          <Text style={S.updatePillText} numberOfLines={1}>{row.short ? t(...row.short) : actionLabel}</Text>
+        </View>
+      ) : (
+        // Nothing on offer: a round refresh button that spins while it checks.
+        <View style={S.checkBtn}>
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <Ionicons name="refresh" size={19} color={D.green} />
+          </Animated.View>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 function QuickTile({ icon, label, color, onPress, index = 0 }) {
   return (
     <EntrySlide delay={index * 80} fromY={20} style={{ flex: 1 }}>
@@ -192,13 +333,13 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
   });
 
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert(t('product.error'), t('profile.nameEmpty')); return; }
-    if (pin.blocksSubmit) { Alert.alert(t('product.error'), t('pincode.fixBeforeSave')); return; }
+    if (!name.trim()) { showPopup(t('product.error'), t('profile.nameEmpty')); return; }
+    if (pin.blocksSubmit) { showPopup(t('product.error'), t('pincode.fixBeforeSave')); return; }
     // Email is optional; only validate format when the user actually typed one.
     // Empty string is sent through to clear it server-side (stored as NULL).
     const emailTrim = email.trim();
     if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      Alert.alert(t('product.error'), t('profile.emailInvalid', 'Enter a valid email address'));
+      showPopup(t('product.error'), t('profile.emailInvalid', 'Enter a valid email address'));
       return;
     }
     setSaving(true);
@@ -208,7 +349,7 @@ function EditProfileModal({ visible, user, onClose, onSaved }) {
       const { data } = await api.put('/users/me', body);
       onSaved(data.data);
     } catch (e) {
-      Alert.alert(t('product.error'), e?.response?.data?.error?.message || t('profile.updateFailed'));
+      showPopup(t('product.error'), e?.response?.data?.error?.message || t('profile.updateFailed'));
     } finally {
       setSaving(false);
     }
@@ -316,15 +457,15 @@ const STAT_CONFIGS = [
 export default function ProfileScreen({ navigation }) {
   const { user, updateUser, logout, refreshUser } = useAuth();
   const { t, language, setLanguage, setLanguageByState, selectedState, LANGUAGES } = useLanguage();
+  // The real app version for the footer (the same value the App version row
+  // shows). Read without subscribing, so update progress never re-renders the screen.
+  const appInfo = getAppInfo();
 
   // Live rental-listing count, fetched from the same endpoints My Rent Listings uses
   // (authoritative — always matches what the user sees on that screen).
   const [rentCount, setRentCount] = useState(null);
-  // Live AI credit balance, shown in the My Activity section. Re-read on focus so an
-  // admin top-up reflects the moment the farmer opens/returns to the profile.
-  const [aiBalance, setAiBalance] = useState(null);
 
-  // Refresh the profile and the activity counts on focus — four requests, so it
+  // Refresh the profile and the activity counts on focus — three requests, so it
   // is gated rather than fired on every visit to the Account tab. Screens that
   // add or remove a rental/animal listing call invalidateFocusData('profile'),
   // which makes the next focus reload immediately regardless of the clock.
@@ -332,10 +473,9 @@ export default function ProfileScreen({ navigation }) {
     refreshUser?.();
     let cancelled = false;
     (async () => {
-      const [mRes, lRes, cRes] = await Promise.allSettled([
+      const [mRes, lRes] = await Promise.allSettled([
         api.get('/rent/machinery/my', { params: { limit: 1 } }),
         api.get('/rent/labour/my',    { params: { limit: 1 } }),
-        getAICredits(),
       ]);
       if (cancelled) return;
       const totalOf = (r) =>
@@ -345,9 +485,6 @@ export default function ProfileScreen({ navigation }) {
       // Only update if at least one call succeeded; otherwise leave the _count fallback.
       if (mRes.status === 'fulfilled' || lRes.status === 'fulfilled') {
         setRentCount(totalOf(mRes) + totalOf(lRes));
-      }
-      if (cRes.status === 'fulfilled') {
-        setAiBalance(cRes.value?.balance ?? null);
       }
     })();
     return () => { cancelled = true; };
@@ -398,7 +535,7 @@ export default function ProfileScreen({ navigation }) {
       updateUser({ notificationsEnabled: next });
     } catch (err) {
       setNotifications(previous);
-      Alert.alert(
+      showPopup(
         t('profile.notifSaveFailedTitle', 'Could not save'),
         err?.response?.data?.error?.message
           || t('profile.notifSaveFailedMsg', 'Your notification setting was not saved. Please try again.'),
@@ -441,7 +578,7 @@ export default function ProfileScreen({ navigation }) {
   const handlePhotoPress = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('profile.permissionNeeded'), t('profile.photoPermission'));
+      showPopup(t('profile.permissionNeeded'), t('profile.photoPermission'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -461,7 +598,7 @@ export default function ProfileScreen({ navigation }) {
       || mime.includes('jpeg') || mime.includes('png') || mime.includes('webp') || mime.includes('jpg');
 
     if (!isValidType) {
-      Alert.alert(t('profile.invalidFileType') || 'Invalid File', t('profile.invalidFileMsg') || 'Please select a JPG, PNG, or WebP image.');
+      showPopup(t('profile.invalidFileType') || 'Invalid File', t('profile.invalidFileMsg') || 'Please select a JPG, PNG, or WebP image.');
       return;
     }
     setUploadingPhoto(true);
@@ -496,7 +633,7 @@ export default function ProfileScreen({ navigation }) {
       // Log the server's real reason (not just axios's "status code 400").
       if (__DEV__) console.warn('[Profile] Upload error:', err.response?.data?.error?.message || err.message, err.response?.status);
       const msg = err.response?.data?.error?.message || t('profile.uploadFailedMsg') || 'Upload failed. Try again.';
-      Alert.alert(t('profile.uploadFailed') || 'Upload Failed', msg);
+      showPopup(t('profile.uploadFailed') || 'Upload Failed', msg);
     } finally {
       setUploadingPhoto(false);
     }
@@ -511,7 +648,7 @@ export default function ProfileScreen({ navigation }) {
   const handleOpenSellerApp = useCallback(async () => {
     const result = await openSellerApp();
     if (result === 'failed') {
-      Alert.alert(
+      showPopup(
         t('profile.sellerAppTitle', 'Open Seller App'),
         t('profile.sellerAppFailed', 'Could not open the seller app on this device.'),
       );
@@ -531,7 +668,7 @@ export default function ProfileScreen({ navigation }) {
       if (!supported) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
-      Alert.alert(
+      showPopup(
         t('profile.linkFailedTitle', 'Could not open link'),
         t('profile.linkFailedMsg', 'No app on this device can open this link.'),
       );
@@ -543,14 +680,14 @@ export default function ProfileScreen({ navigation }) {
    *
    * The previous copy was a hard-coded English alert asserting the data is
    * "never shared with third parties". That is not true — payments go to
-   * Razorpay, OTPs to MSG91, images to Cloudinary, AI features to the model
+   * Razorpay, OTPs to Firebase, images to Cloudinary, AI features to the model
    * provider — and it was unreadable to the Marathi and Hindi majority of users.
    * The replacement is translated, and describes the protections that are
    * genuinely implemented (encryption at rest, masking on read, private KYC
    * storage, erasure on request) rather than an absolute we cannot honour.
    */
   const handlePrivacyCenter = useCallback(() => {
-    Alert.alert(
+    showPopup(
       t('profile.privacyCenter'),
       t('profile.privacyBody'),
       [
@@ -793,6 +930,12 @@ export default function ProfileScreen({ navigation }) {
                 />
               }
             />
+            <RowItem
+              icon="ban-outline" iconColor={D.red}
+              label={t('block.blockedUsers', 'Blocked users')}
+              subtitle={t('block.manageSub', 'See and unblock people you blocked')}
+              onPress={() => navigation.navigate('BlockedUsers')}
+            />
             <RowItem icon="shield-checkmark-outline" iconColor={D.purple} label={t('profile.privacyCenter')} subtitle={t('profile.privacySub')} onPress={handlePrivacyCenter} isLast />
           </SectionCard>
 
@@ -810,17 +953,7 @@ export default function ProfileScreen({ navigation }) {
           <SectionCard delay={240}>
             <SectionHeader title={t('myActivity')} icon="trending-up-outline" iconColor={D.amber} />
             <RowItem icon="paw-outline"       iconColor={D.amber} label={t('myAnimalListings')}          subtitle={t('profile.listingsCount', { count: counts.animalListings || 0 })}   onPress={() => navigation.navigate('MyAnimalListings')} />
-            <RowItem icon="construct-outline" iconColor={D.cyan}  label={t('myRentListings')}            subtitle={t('profile.listingsCount', { count: rentListingCount })} onPress={() => navigation.navigate('MyRentListings')} />
-            <RowItem
-              icon="sparkles-outline"
-              iconColor={D.gold}
-              label={t('profile.aiCredits', 'AI Credits')}
-              subtitle={aiBalance == null
-                ? t('profile.aiCreditsView', 'View your balance')
-                : `${aiBalance} ${t('aiCredits.creditsLeft', 'credits left')}`}
-              onPress={() => navigation.navigate('AIAssistant', { screen: 'AICredits' })}
-              isLast
-            />
+            <RowItem icon="construct-outline" iconColor={D.cyan}  label={t('myRentListings')}            subtitle={t('profile.listingsCount', { count: rentListingCount })} onPress={() => navigation.navigate('MyRentListings')} isLast />
           </SectionCard>
 
           {user?.farmDetail ? (
@@ -872,10 +1005,11 @@ export default function ProfileScreen({ navigation }) {
 
           <SectionCard delay={420}>
             <SectionHeader title={t('profile.feedbackInfo')} icon="chatbubbles-outline" iconColor={D.gold} />
-            <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => Alert.alert(t('profile.thankYou'), t('profile.thankYouMsg'))} />
-            <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => Alert.alert(t('profile.support'), t('profile.callUs'))} />
+            <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => showPopup(t('profile.thankYou'), t('profile.thankYouMsg'))} />
+            <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => showPopup(t('profile.support'), t('profile.callUs'))} />
             <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal(LEGAL_URLS.terms)} />
-            <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} isLast />
+            <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} />
+            <AppVersionRow isLast />
           </SectionCard>
 
           {/* Seller handoff — only for accounts the backend already flipped to
@@ -964,7 +1098,7 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
           </EntrySlide>
 
-          <Text style={S.version}>{t('profile.versionText')}</Text>
+          <Text style={S.version}>{t('profile.versionText', { version: appInfo.version || '—' })}</Text>
           <View style={{ height: 40 }} />
           </View>
         </View>
@@ -1263,6 +1397,27 @@ const S = StyleSheet.create({
   },
   rowLabel: { fontSize: 14.5, fontFamily: KFONT.sansSemi, color: KHET.foreground },
   rowSubtitle: { fontSize: 12, color: KHET.mutedForeground, fontFamily: KFONT.sans, marginTop: 2 },
+  // App version row: round refresh button to check, compact solid pill once an
+  // update is offered. Both keep a 44dp touch height.
+  updateNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 4, marginTop: 4 },
+  // Centres the 13dp icon on the first 16dp line of a status that wraps.
+  updateNoteIcon: { marginTop: 1.5 },
+  updateNoteText: { fontSize: 12, lineHeight: 16, color: KHET.mutedForeground, fontFamily: KFONT.sansSemi, flexShrink: 1 },
+  checkBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: D.green + '14',
+  },
+  updatePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    height: 44, paddingHorizontal: 16, borderRadius: 22,
+    // The primary Button's and the update banner's fill.
+    backgroundColor: KHET.primary, maxWidth: '48%',
+  },
+  updatePillIcon: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  // The small spinner is ~20dp; scaled to the 16dp icon's size.
+  updatePillSpinner: { transform: [{ scale: 0.8 }] },
+  updatePillText: { color: KHET.primaryForeground, fontSize: 13.5, fontFamily: KFONT.sansSemi, flexShrink: 1 },
 
   quickGrid: { flexDirection: 'row', paddingBottom: 4 },
   quickTile: {

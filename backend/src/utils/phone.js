@@ -36,7 +36,7 @@ function fallbackNormalize(str) {
 
 /**
  * Normalize any user-entered Indian mobile to its canonical 10-digit national
- * form (how phones are stored and how MSG91 formats them as `91${phone}`), or
+ * form (how phones are stored), or
  * null if it isn't a valid Indian mobile.
  *
  * Primary path is libphonenumber (rejects foreign numbers, validates ranges);

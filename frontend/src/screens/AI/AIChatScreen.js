@@ -2,14 +2,15 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, Animated,
-  ActivityIndicator, StatusBar, Dimensions, Alert, Easing, Image,
+  ActivityIndicator, StatusBar, Dimensions, Easing, Image,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import {
   Sprout, Mic, Send, Plus, Menu, PenSquare, Paperclip,
   Leaf, ChevronDown, ChevronUp, ChevronRight, Check, X as CloseIcon,
   MessageSquare, ScanLine, History as HistoryIcon,
   ShieldCheck, ShoppingCart, Lightbulb, ToggleLeft, ToggleRight,
-  Volume2, Square as SquareIcon, Loader2, Trash2, Copy,
+  Volume2, Square as SquareIcon, Loader2, Trash2, Copy, Flag,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -32,6 +33,7 @@ import ResponseLengthSelector from './components/ResponseLengthSelector';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage } from '@krushisarva/shared/utils/mediaCompressor';
 import { detectLanguage } from '../../utils/languageDetect';
+import ReportSheet from '../../components/ReportSheet';
 
 const { width: W } = Dimensions.get('window');
 
@@ -66,14 +68,14 @@ const MIN_REC_MS = 500;
 //
 // It did NOT, despite the sentence above: every branch returned an English
 // literal and the result is injected as an AI-styled bubble, so a Marathi farmer
-// was told "You've used all your AI credits" in English by the assistant itself.
+// was told "You've used all your AI ..." in English by the assistant itself.
 // `t` is threaded in as a parameter because this is a module-level function with
 // no hook access — the same shape CropScanScreen's classifyScanError uses.
 function humanReadableError(err, t = (k, def) => def) {
   const status = err?.response?.status ?? err?.status;
   const serverMsg = err?.response?.data?.error?.message;
   if (status === 429) return t('aiChat.err.busy', 'Too many requests — please wait 30 seconds and try again.');
-  if (status === 402) return t('aiChat.err.credits', 'You’ve used all your AI credits for this month. They refill on the 1st — check your balance in the AI home screen.');
+  if (status === 402) return t('aiLimit.reached', "You've reached this month's free AI limit. It resets on the 1st of next month.");
   if (status === 503 || status === 500 || status === 502 || status === 504)
     return t('aiChat.err.serviceDown', 'The AI service is temporarily down. Please try again in a moment.');
   if (status === 413) return t('aiChat.err.tooLarge', 'That was too large. Please try a shorter message or smaller photo.');
@@ -258,7 +260,7 @@ function FormattedAIText({ text }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ── MessageBubble: user = gradient pill / AI = glass pill with Listen button
 // ─────────────────────────────────────────────────────────────────────────────
-function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
+function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp, onReport }) {
   const { t } = useLanguage();
   const isUser = msg.role === 'user';
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -451,6 +453,20 @@ function MessageBubble({ msg, onBuyMedicine, language, isLast, onFollowUp }) {
                   : <Copy size={15} color={MUTED} strokeWidth={2.4} />}
                 <Text style={[S.copyTxt, copied && { color: P_LIGHT }]}>{copied ? 'Copied' : 'Copy'}</Text>
               </TouchableOpacity>
+              {/* Report — on model replies only, not the welcome text or the
+                  app's own error bubbles. Google Play requires it for AI output. */}
+              {msg.generated && onReport ? (
+                <TouchableOpacity
+                  style={S.copyBtn}
+                  onPress={() => onReport(msg)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('report.titleAnswer', 'Report this answer')}
+                >
+                  <Flag size={14} color={MUTED} strokeWidth={2.4} />
+                  <Text style={S.copyTxt}>{t('report.action', 'Report')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -553,7 +569,7 @@ function Sidebar({ isOpen, onClose, sessions, historyLoading, onSessionPress, on
                   <TouchableOpacity
                     style={SB.trashBtn}
                     onPress={() => {
-                      Alert.alert(
+                      showPopup(
                         'Delete conversation?',
                         `"${item.title || 'AI Chat'}" will be removed from your history. This cannot be undone.`,
                         [
@@ -640,6 +656,14 @@ export default function AIChatScreen({ navigation, route }) {
   const flatRef    = useRef(null);
   const lastSentAt = useRef(0);
 
+  // The AI reply being reported (ReportSheet target), or null. A live reply has
+  // no server id — the chat endpoint does not return one — so its text goes as
+  // the snapshot; a reply loaded from history also carries its message id.
+  const [reportTarget, setReportTarget] = useState(null);
+  const openReport = useCallback((msg) => {
+    setReportTarget({ targetType: 'AI_MESSAGE', targetId: msg.serverId || undefined, snapshot: msg.text || '' });
+  }, []);
+
   const [isRecording,  setIsRecording]  = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioLevel,   setAudioLevel]   = useState(0);
@@ -693,7 +717,8 @@ export default function AIChatScreen({ navigation, route }) {
       if (result.conversationId && !conversationId) setConvId(result.conversationId);
       // Pure conversational chat — no diagnosis/market cards. Crop-disease
       // diagnosis lives in the dedicated Crop Scan flow.
-      const aiMsg = { role: 'ai', text: result.reply, lang: msgLang };
+      // `generated` marks text the model wrote — the bubbles that get Report.
+      const aiMsg = { role: 'ai', text: result.reply, lang: msgLang, generated: true };
       if (Array.isArray(result.followUps) && result.followUps.length) aiMsg.followUps = result.followUps;
       addMessage(aiMsg);
     } catch (err) {
@@ -714,7 +739,7 @@ export default function AIChatScreen({ navigation, route }) {
   const confirmReset = useCallback(() => {
     // Nothing to clear (only the welcome bubble) → reset silently.
     if (messages.length <= 1) { resetChat(); return; }
-    Alert.alert(
+    showPopup(
       t('aiChat.newChatTitle', 'Start a new chat?'),
       t('aiChat.newChatBody', 'This clears the current conversation from the screen. Your saved history is not deleted.'),
       [
@@ -730,18 +755,18 @@ export default function AIChatScreen({ navigation, route }) {
     try {
       const c = await compressImage(asset.uri, { needBase64: true });
       const base64 = c?.base64;
-      if (!base64) { Alert.alert('Photo', 'Could not read that image. Please try another.'); return; }
+      if (!base64) { showPopup('Photo', 'Could not read that image. Please try another.'); return; }
       setAttachedImage({ uri: c?.uri || asset.uri, base64, mime_type: 'image/jpeg' });
     } catch (e) {
       if (__DEV__) console.warn('[AIChat] image compress failed', e?.message);
-      Alert.alert('Photo', 'Could not process that image. Please try another.');
+      showPopup('Photo', 'Could not process that image. Please try another.');
     }
   }, []);
 
   const pickFromCamera = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Camera Permission', 'Please allow camera access in Settings → Apps → KrushiSarva → Permissions.');
+      showPopup('Camera Permission', 'Please allow camera access in Settings → Apps → KrushiSarva → Permissions.');
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.85, allowsEditing: true, aspect: [4, 3] });
@@ -751,7 +776,7 @@ export default function AIChatScreen({ navigation, route }) {
   const pickFromGallery = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Photos Permission', 'Please allow photo access in Settings → Apps → KrushiSarva → Permissions.');
+      showPopup('Photos Permission', 'Please allow photo access in Settings → Apps → KrushiSarva → Permissions.');
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
@@ -759,7 +784,7 @@ export default function AIChatScreen({ navigation, route }) {
   }, [attachImage]);
 
   const onAttachPress = useCallback(() => {
-    Alert.alert(t('cropScan.addImage', 'Add a photo'), t('aiChat.attachHint', 'Share a photo of your crop for a quick diagnosis.'), [
+    showPopup(t('cropScan.addImage', 'Add a photo'), t('aiChat.attachHint', 'Share a photo of your crop for a quick diagnosis.'), [
       { text: t('cropScan.takePhoto', 'Take photo'), onPress: pickFromCamera },
       { text: t('cropScan.chooseGallery', 'From gallery'), onPress: pickFromGallery },
       { text: t('common.cancel', 'Cancel'), style: 'cancel' },
@@ -775,7 +800,7 @@ export default function AIChatScreen({ navigation, route }) {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Microphone Permission', 'Please allow microphone access in Settings → Apps → KrushiSarva → Permissions.');
+        showPopup('Microphone Permission', 'Please allow microphone access in Settings → Apps → KrushiSarva → Permissions.');
         return;
       }
       await Audio.setAudioModeAsync({
@@ -852,7 +877,7 @@ export default function AIChatScreen({ navigation, route }) {
       setIsRecording(true); setAudioLevel(0);
     } catch (err) {
       console.error('[Recording] startRecording failed:', err?.message || err);
-      Alert.alert('Recording Error', `Could not start microphone.\n${err?.message || 'Please check microphone permissions and try again.'}`);
+      showPopup('Recording Error', `Could not start microphone.\n${err?.message || 'Please check microphone permissions and try again.'}`);
     } finally {
       recordingLockRef.current = false;
     }
@@ -905,6 +930,7 @@ export default function AIChatScreen({ navigation, route }) {
           // Sarvam STT returns `detectedLanguage` like 'mr-IN' — remember it so Listen
           // replays in the same language the user spoke in.
           lang: (result.detectedLanguage || '').split('-')[0] || undefined,
+          generated: true,
         };
         if (Array.isArray(result.followUps) && result.followUps.length) aiMsg.followUps = result.followUps;
         addMessage(aiMsg);
@@ -972,7 +998,7 @@ export default function AIChatScreen({ navigation, route }) {
         const next = [...prev, item];
         return next.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       });
-      Alert.alert(
+      showPopup(
         'Could not delete',
         err?.response?.data?.error?.message || err?.message || 'Please check your connection and try again.'
       );
@@ -998,6 +1024,7 @@ export default function AIChatScreen({ navigation, route }) {
           if (convo?.messages?.length) {
             setMessages(convo.messages.map(m => ({
               id: m.id, role: m.role === 'assistant' ? 'ai' : 'user', text: m.content,
+              generated: m.role === 'assistant', serverId: m.id,
               diagnosisData: m.messageType === 'diagnosis' ? m.structuredData : null,
               marketData:    m.messageType === 'market'    ? m.structuredData : null,
             })));
@@ -1140,6 +1167,7 @@ export default function AIChatScreen({ navigation, route }) {
               language={language}
               isLast={index === messages.length - 1}
               onFollowUp={onFollowUpPress}
+              onReport={openReport}
             />
           )}
           ListFooterComponent={typing ? (
@@ -1252,6 +1280,8 @@ export default function AIChatScreen({ navigation, route }) {
         onSessionPress={(item) => navigation.push('AIChat', { conversationId: item.id })}
         onDeleteSession={deleteSession}
       />
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
     </AnimatedScreen>
   );

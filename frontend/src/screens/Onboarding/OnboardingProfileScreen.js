@@ -7,9 +7,10 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView,
+  StyleSheet, ActivityIndicator, KeyboardAvoidingView,
   Platform, Image, Animated, Easing,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -240,7 +241,7 @@ export default function OnboardingProfileScreen({ navigation }) {
   const handlePickPhoto = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(t('onboarding.permissionTitle'), t('profile.photoPermission'));
+      showPopup(t('onboarding.permissionTitle'), t('profile.photoPermission'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -255,7 +256,7 @@ export default function OnboardingProfileScreen({ navigation }) {
     const isValidType = ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
       || mime.includes('jpeg') || mime.includes('png') || mime.includes('webp');
     if (!isValidType) {
-      Alert.alert(t('profile.invalidFileType'), t('profile.invalidFileMsg'));
+      showPopup(t('profile.invalidFileType'), t('profile.invalidFileMsg'));
       return;
     }
 
@@ -273,7 +274,7 @@ export default function OnboardingProfileScreen({ navigation }) {
       updateUser({ avatar: data.data.avatar });
       setAvatarUri(data.data.avatar || compressedUri);
     } catch {
-      Alert.alert(t('profile.uploadFailed'), t('profile.uploadFailedMsg'));
+      showPopup(t('profile.uploadFailed'), t('profile.uploadFailedMsg'));
       setAvatarUri(null);
     } finally {
       setUploadingPhoto(false);
@@ -285,10 +286,10 @@ export default function OnboardingProfileScreen({ navigation }) {
     setGpsLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { Alert.alert(t('onboarding.permissionTitle'), t('onboarding.enableLocation')); return; }
+      if (status !== 'granted') { showPopup(t('onboarding.permissionTitle'), t('onboarding.enableLocation')); return; }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setLat(loc.coords.latitude); setLng(loc.coords.longitude);
-    } catch { Alert.alert(t('farmProfile.gpsErrorTitle'), t('farmProfile.gpsErrorMsg')); }
+    } catch { showPopup(t('farmProfile.gpsErrorTitle'), t('farmProfile.gpsErrorMsg')); }
     finally { setGpsLoading(false); }
   };
 
@@ -318,7 +319,7 @@ export default function OnboardingProfileScreen({ navigation }) {
         totalFarms: 1,
       });
     } catch (err) {
-      Alert.alert(t('login.error'), err.response?.data?.error?.message || err.message || t('onboarding.failedTryAgain'));
+      showPopup(t('login.error'), err.response?.data?.error?.message || err.message || t('onboarding.failedTryAgain'));
     } finally { setSaving(false); }
   };
 
@@ -327,7 +328,7 @@ export default function OnboardingProfileScreen({ navigation }) {
     try {
       await skipOnboarding();
       updateUser({ onboardingStep: 'COMPLETE' });
-    } catch { Alert.alert(t('login.error'), t('onboarding.failedToSkip')); }
+    } catch { showPopup(t('login.error'), t('onboarding.failedToSkip')); }
     finally { setSaving(false); }
   };
 

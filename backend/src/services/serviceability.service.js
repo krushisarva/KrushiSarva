@@ -167,8 +167,51 @@ export async function resolveServiceability({ sellerIds = [], pincode, district 
     bySeller.get(r.sellerId).push(r);
   }
 
+  const matchBySeller = new Map(
+    ids.map((id) => [id, pickRow(bySeller.get(id) || [], { pincode: pin, district, state })]),
+  );
+
+  // ── Areas this lookup cannot judge ──────────────────────────────────────────
+  // A district area ("all of Sangli") or a state area can only be matched when
+  // the caller says which district / state the buyer is in. NO production caller
+  // does: the quote and the product-page check both arrive holding a PIN code and
+  // nothing else, and there is no PIN → district table to derive it from. So for
+  // them a `dist:` / `state:` row can never match — and the seller who saved one
+  // was treated as "has areas, and this is outside them". Harmless while `strict`
+  // is off; with it on, a Kendra that had declared a whole district was refused
+  // to every farmer in the country, the ones next door included (measured: 409
+  // PINCODE_UNSERVICEABLE for a Sangli buyer of a Sangli-district seller).
+  // Saying where you deliver must never be what takes you offline.
+  //
+  // So before refusing anyone, check whether they hold an area of a kind this
+  // lookup was given no means to judge. Decided off `matchKey`, the row's one
+  // authoritative kind — a PIN row may also carry a district as a description,
+  // and must not count. Such a seller is not hard-blocked. Their own days and
+  // charge are still NOT applied: we do not know the buyer is in that district,
+  // and quoting a promise the seller made for somewhere else would be worse.
+  //
+  // Asked ONLY under `strict`, and ONLY for sellers about to be refused — so with
+  // the setting off (its default) this function runs exactly the two queries it
+  // always did, and with it on the extra one is paid on the rare refusal path.
+  let undecidable = new Set();
+  if (cfg.strict) {
+    const aboutToRefuse = ids.filter((id) => !matchBySeller.get(id) && configured.has(id));
+    const unjudgeable = [
+      ...(district ? [] : [{ matchKey: { startsWith: 'dist:' } }]),
+      ...(state ? [] : [{ matchKey: { startsWith: 'state:' } }]),
+    ];
+    if (aboutToRefuse.length && unjudgeable.length) {
+      undecidable = new Set(
+        (await prisma.sellerServiceArea.groupBy({
+          by: ['sellerId'],
+          where: { sellerId: { in: aboutToRefuse }, isActive: true, OR: unjudgeable },
+        })).map((r) => r.sellerId),
+      );
+    }
+  }
+
   for (const id of ids) {
-    const match = pickRow(bySeller.get(id) || [], { pincode: pin, district, state });
+    const match = matchBySeller.get(id);
     if (match) {
       const source = match.pincode === pin ? 'exact' : match.pincodePrefix === prefix ? 'prefix' : 'region';
       out.set(id, {
@@ -182,9 +225,12 @@ export async function resolveServiceability({ sellerIds = [], pincode, district 
       });
     } else if (configured.has(id)) {
       // The seller told us where they deliver, and this is not one of those
-      // places. `strict` decides whether that blocks or merely warns.
+      // places. `strict` decides whether that blocks or merely warns — unless
+      // one of their areas is a district or state we had no way to check this
+      // PIN code against (see `undecidable` above). "Outside their areas" is
+      // then not something we know, and a block needs to be known.
       out.set(id, {
-        serviceable: !cfg.strict,
+        serviceable: !cfg.strict || undecidable.has(id),
         etaMinDays: cfg.etaMinDays,
         etaMaxDays: cfg.etaMaxDays,
         surcharge: '0.00',

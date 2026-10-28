@@ -94,13 +94,13 @@ All numbers below were measured against the working tree while assembling this d
 |---|---|---|---|
 | Express web | Node ≥18, ESM, Express 4.18 | `backend/src/server.js` | HTTP + Socket.IO + all `node-cron` schedules + optional in-process BullMQ workers |
 | Express worker (optional) | same image | `backend/src/worker.js` | BullMQ workers only — no HTTP, no cron |
-| FastAPI web | Python, uvicorn (`--workers ${WEB_CONCURRENCY:-2}`) | `fastapi/main.py` | `/ai/*`, `/agripredict/*`, `/health*` behind HMAC |
-| FastAPI worker | same image, `ROLE=worker` | `celery -A jobs.queue:celery_app` | runs the diagnosis pipeline; **without it every scan stays `queued`** |
-| Admin SPA | static bundle | `admin/dist` | not a service — built into the backend image, served at `/admin` |
+| FastAPI web | Python 3.12, uvicorn (`--workers 1`, `fastapi/Dockerfile` CMD and the `fastapi` Compose service) | `fastapi/main.py` | `/ai/*`, `/agripredict/*`, `/health*` behind HMAC |
+| FastAPI worker | same image, `celery` Compose service | `celery -A jobs.queue:celery_app worker --concurrency=2` | runs the diagnosis pipeline; **without it every scan stays `queued`** |
+| Admin SPA | static bundle | `admin/` | not a service on the VPS — built and hosted on Vercel (`https://krushi-sarva.vercel.app`); `admin/vercel.json` proxies `/api/*` to the VPS |
 | Farmer app | Expo SDK 54 / RN 0.81.5 / React 19.1 | `frontend/App.js` | `com.krushisarva.app` |
 | Seller app | Expo SDK 54 / RN 0.81.5 / React 19.1 | `seller-app/App.js` | `com.cropsetu.seller` |
 
-There is **no clustering** in either service; horizontal scale is instance-level (Railway replicas), which is why nearly every coordination primitive is Redis-backed.
+There is **no clustering** in either service. Production is **one** Hostinger VPS (virtual private server) running `deploy/docker-compose.yml`: `caddy` (TLS, the only reverse proxy) → `backend` (Express :3000) → `fastapi` (:8001, no public URL) + `celery`, with `postgres:16` and `redis:7` in the same stack; only ports 22/80/443 are public. Horizontal scale, if it is ever added, is instance-level (more containers or hosts), which is why nearly every coordination primitive is already Redis-backed.
 
 ### Size
 
@@ -147,7 +147,7 @@ There is **no clustering** in either service; horizontal scale is instance-level
 | Fact | Value |
 |---|---|
 | Runtime settings manifest (`AppSetting`, admin-**writable**) | **53** keys across 7 categories (AI Budget & Limits, AI Models, Broadcast, Compliance, General, Marketplace, Shop) — `SETTINGS_MANIFEST`, `backend/src/services/settings.service.js:62-193` |
-| Env-status manifest (`ENV_MANIFEST`, **read-only** presence panel) | **23** keys across 6 categories (Core, AI / LLM, SMS / OTP, Media, Payments, Market Data) — never persisted as `AppSetting` rows, never writable through `setSetting`; `settings.service.js:194-218` |
+| Env-status manifest (`ENV_MANIFEST`, **read-only** presence panel) | **24** keys across 6 categories (Core, AI / LLM, SMS / OTP, Media, Payments, Market Data) — never persisted as `AppSetting` rows, never writable through `setSetting`; `settings.service.js:194-218` |
 | Feature flags seeded | **17** (10 product + 7 AI kill switches) |
 | Admin RBAC scopes | **7** (`SUPER_ADMIN, KYC_REVIEWER, CONTENT_MODERATOR, FINANCE, SUPPORT, CMS_EDITOR, OPS`) |
 | `CACHE_SCHEMA_VERSION` | **1** |
@@ -163,14 +163,14 @@ There is **no clustering** in either service; horizontal scale is instance-level
 |---|---|---|---|
 | **PostgreSQL** | Express (Prisma), FastAPI (asyncpg) | `DATABASE_URL` | Express `/readyz` 503s; FastAPI `/health` reports `degraded` |
 | **Redis** | Express (cache, rate limits, idempotency, leader lock, BullMQ, Socket.IO adapter, voice cancel, scan holds); FastAPI (6 independent clients) | `REDIS_URL` and friends | mostly fail-open per-instance; AI cost limiters fail **closed** in prod |
-| **Google Gemini** | FastAPI (all 9 features default to `gemini-2.5-flash` in `agents/llm_dispatch.py:89` — but the treatment stage is **always overridden to `gemini-2.5-pro`** in practice: Express resolves the `ai.model.treatment` App Setting, whose manifest default is `gemini-2.5-pro` (`settings.service.js:87`), and forwards it as `params.model_treatment` on every scan, and `model_override` outranks the FastAPI default. Pro is ~4× Flash's output-token price, making this the largest per-scan cost lever); Express directly for planner, scheme Q&A, legacy scan | `GEMINI_API_KEY` (prod-fatal if missing) | 503/504 to the farmer, credit hold released |
+| **Google Gemini** | FastAPI (all 9 features default to `gemini-3.6-flash` in `agents/llm_dispatch.py` `_DEFAULTS`; Express resolves the `ai.model.treatment` App Setting, whose manifest default is also `gemini-3.6-flash` (`settings.service.js`), and forwards it as `params.model_treatment` on every scan, where `model_override` outranks the FastAPI default. Since 2026-10-15 the key is a **free-tier** Google AI Studio key: Gemini 2.5 is closed to new keys and Pro models have no free-tier quota, so the second model everywhere is `gemini-3.5-flash-lite`); Express directly for planner, scheme Q&A, legacy scan | `GEMINI_API_KEY` (prod-fatal if missing) | 503/504 to the farmer, credit hold released |
 | **Sarvam AI** | Express only — STT `saaras:v3`, TTS `bulbul:v3`, translate `mayura:v1` | `SARVAM_API_KEY` (prod-fatal) | voice 503, credit refunded |
 | **Groq** | FastAPI text-chat last-resort fallback | `GROQ_API_KEY` | chat fails hard on a full Gemini outage |
-| **OpenAI** | FastAPI ensemble vision voter only (`gpt-4o`) | `OPENAI_API_KEY` | ensemble degrades to Gemini Pro + Flash |
+| **OpenAI** | FastAPI ensemble vision voter only (`gpt-4o`) | `OPENAI_API_KEY` | ensemble degrades to Gemini Flash + Flash-Lite |
 | **Anthropic** | adapters wired, **no `claude-*` id in any default or chain** | `ANTHROPIC_API_KEY` | unreachable in practice |
 | **Razorpay** | Express checkout + webhook | `RAZORPAY_KEY_ID/_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | no keys ⇒ COD-only; no webhook secret ⇒ every webhook rejected 400 |
 | **Cloudinary** | product/listing/avatar images, private KYC docs, scan photos, voice audio | `CLOUDINARY_*` | public uploads no-op to a placeholder URL; **KYC uploads throw** |
-| **MSG91** | OTP SMS | `MSG91_AUTH_KEY` | OTP returned in the API response (dev fallback) |
+| **Firebase Phone Auth** (Google) | the only production SMS sign-in, for all three clients: Google sends and verifies the SMS, Express verifies the ID token at `/auth/firebase-login` | `FIREBASE_AUTH_ENABLED`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | flag off or service account incomplete ⇒ `/auth/firebase-login` 503s (no production SMS sign-in); `/auth/send-otp` is a dev/test login that never sends SMS |
 | **Open-Meteo** | FastAPI weather; Express weather forecast | none (keyless) | serve stale L2 row, then 503 |
 | **OpenWeatherMap** | Express scan weather snapshot + `/crop-disease/weather` | `OPENWEATHER_API_KEY` | returns `null`, scan proceeds |
 | **IMD** (`city.imd.gov.in`) | Express weather alerts (HTML scraping) | none | `{alerts: [], imdAvailable:false}` |
@@ -188,15 +188,15 @@ flowchart TB
   subgraph Clients
     FA["Farmer app (Expo)<br/>com.krushisarva.app<br/>frontend/"]
     SA["Seller app (Expo)<br/>com.cropsetu.seller<br/>seller-app/"]
-    AD["Admin SPA (React 18 + Vite)<br/>served same-origin at /admin"]
+    AD["Admin SPA (React 18 + Vite)<br/>hosted on Vercel; /api/* proxied to the VPS"]
     RZW["Razorpay webhook<br/>(server-to-server client)"]
   end
 
   subgraph Backends
-    BE["Express API — backend/src/server.js<br/>HTTP + Socket.IO + 12 node-cron jobs<br/>/api/v1/* · /healthz · /readyz · /admin static"]
+    BE["Express API — backend/src/server.js<br/>HTTP + Socket.IO + 12 node-cron jobs<br/>/api/v1/* · /healthz · /readyz"]
     BW["Express worker — backend/src/worker.js<br/>BullMQ 'notifications' only (optional)"]
     AIW["FastAPI web — fastapi/main.py<br/>uvicorn, HMAC-gated /ai/*"]
-    AIK["FastAPI worker — ROLE=worker<br/>celery -A jobs.queue:celery_app"]
+    AIK["FastAPI worker — celery service<br/>celery -A jobs.queue:celery_app"]
   end
 
   subgraph Stores
@@ -211,7 +211,7 @@ flowchart TB
     GRQ["Groq (chat fallback)"]
     OAI["OpenAI (ensemble voter)"]
     ANT["Anthropic (wired, unreachable)"]
-    MSG["MSG91 (OTP SMS)"]
+    FBA["Firebase Phone Auth (SMS sign-in)"]
     RZP["Razorpay (payments)"]
     OMT["Open-Meteo (keyless)"]
     OWM["OpenWeatherMap"]
@@ -223,7 +223,7 @@ flowchart TB
 
   FA -->|"HTTPS Bearer JWT + WSS"| BE
   SA -->|"HTTPS Bearer JWT"| BE
-  AD -->|"same-origin /api/v1<br/>httpOnly rt cookie + CSRF double-submit"| BE
+  AD -->|"same-origin /api/v1 via Vercel rewrite<br/>httpOnly rt cookie + CSRF double-submit"| BE
   RZW -->|"POST /api/v1/shop-webhooks/razorpay<br/>HMAC over raw bytes"| BE
 
   BE -->|Prisma pool| PG
@@ -237,7 +237,7 @@ flowchart TB
   AIW -->|asyncpg| PG
   AIK -->|asyncpg| PG
 
-  BE --> MSG
+  BE -->|"verify ID token"| FBA
   BE --> RZP
   BE --> SRV
   BE --> GEM
@@ -254,7 +254,7 @@ flowchart TB
   AIK --> GEM
 ```
 
-Traffic facts worth carrying: mobile clients send **no** `Origin` header and are exempt from CSRF; the admin SPA is the only browser client and depends on same-origin cookies; Express is the **primary but not the only** caller of FastAPI, and the HMAC gate is **not universal** — the `/ai/*` and `/agripredict/predict` calls are HMAC-signed over `${ts}.${METHOD}.${path-without-query}.${sha256(body)}`, but the mandi `POST /agripredict/sync/trigger` cron and boot-seed traffic (~125 plain unsigned `fetch` POSTs/day, `backend/src/server.js:177-184` — a bare `fetch`, no signing) and the `GET ${API}/crops` fan-out to `GET /agripredict/filters/commodities` (`backend/src/routes/market.routes.js:113-124`, also unsigned) are not; and `frontend/scripts/seedMandiData.js:65-70` is a second, non-Express caller checked into the repo. This document states the same thing correctly in §3.3 and Part 4 — the qualifier belongs here too; Railway private networking is IPv6-only, which is why Redis clients are created with `family: 0`.
+Traffic facts worth carrying: mobile clients send **no** `Origin` header and are exempt from CSRF; the admin SPA is the only browser client and depends on same-origin cookies; Express is the **primary but not the only** caller of FastAPI, and the HMAC gate is **not universal** — the `/ai/*` and `/agripredict/predict` calls are HMAC-signed over `${ts}.${METHOD}.${path-without-query}.${sha256(body)}`, but the mandi `POST /agripredict/sync/trigger` cron and boot-seed traffic (~125 plain unsigned `fetch` POSTs/day, `backend/src/server.js:177-184` — a bare `fetch`, no signing) and the `GET ${API}/crops` fan-out to `GET /agripredict/filters/commodities` (`backend/src/routes/market.routes.js:113-124`, also unsigned) are not; and `frontend/scripts/seedMandiData.js:65-70` is a second, non-Express caller checked into the repo. This document states the same thing correctly in §3.3 and Part 4 — the qualifier belongs here too. In production FastAPI has no public URL at all (Caddy forwards only to Express), but the HMAC check stays required. Redis clients are created with `family: 0` so a Redis host that resolves only to IPv6 still connects (ioredis defaults to IPv4-only).
 
 ---
 
@@ -267,8 +267,8 @@ Traffic facts worth carrying: mobile clients send **no** `Origin` header and are
 | # | Layer | File | What happens |
 |---|---|---|---|
 | 1 | Screen | `frontend/src/screens/AgriStore/ProductDetail.js` | Calls `shopClient` → `api.post('/agristore/cart', …)`. Errors are mapped through `shopUtils.js`'s commerce error taxonomy, not raw server strings. |
-| 2 | Shared axios | `shared/services/api.js:88-179` | `api` instance, 15 s timeout, `baseURL` resolved `EXPO_PUBLIC_API_BASE_URL` → `__DEV__` Metro host `:3001` → hardcoded Railway prod URL. Request interceptors attach `Authorization: Bearer <SecureStore token>`; on web only, add `X-Auth-Transport: cookie`, `withCredentials`, and echo the JS-readable `csrf` cookie as `X-CSRF-Token`. This URL is **not** in the `Idempotency-Key` list (that covers `/farms`, `/cycles`, `/animals`, `/agristore/orders`). |
-| 3 | Edge | Railway LB | Keep-alive; Express sets `keepAliveTimeout 65 s` so it always exceeds the LB's 60 s idle timeout (`backend/src/server.js:56-58`). |
+| 2 | Shared axios | `shared/services/api.js:88-179` | `api` instance, 15 s timeout, `baseURL` resolved `EXPO_PUBLIC_API_BASE_URL` → `__DEV__` Metro host `:3001` → hardcoded production VPS URL `https://srv2061596.hstgr.cloud/api/v1`. Request interceptors attach `Authorization: Bearer <SecureStore token>`; on web only, add `X-Auth-Transport: cookie`, `withCredentials`, and echo the JS-readable `csrf` cookie as `X-CSRF-Token`. This URL is **not** in the `Idempotency-Key` list (that covers `/farms`, `/cycles`, `/animals`, `/agristore/orders`). |
+| 3 | Edge | Caddy (`deploy/Caddyfile`) | TLS termination, then `reverse_proxy 127.0.0.1:3000`. Caddy reuses upstream sockets for 55 s (`keepalive 55s`); Express sets `keepAliveTimeout 65 s` so Node never closes a socket Caddy is about to reuse (`backend/src/server.js`). |
 | 4 | Async safety | `backend/src/app.js:27` | `installAsyncRouteSafety()` has already patched `Layer.prototype.handle_request`, so a rejected promise anywhere below becomes `next(err)` while preserving `fn.length`. |
 | 5 | Pre-router chain | `backend/src/app.js:80-351` | `disable('etag')` → `trust proxy` → request-id (`req.id`) → helmet (CSP `img-src` widened for the admin SPA) → CORS (no Origin ⇒ allow) → compression → morgan → **body parser 100 kb** (this prefix is not one of the raised-limit prefixes) → health probes (already passed) → admin static (not matched) → global per-IP limiter 200/15 min → CSRF (skipped: no `rt` cookie) → maintenance mode (reads `app.maintenanceMode` directly with a 5 s cache; fails open). |
 | 6 | Mount | `backend/src/app.js:367` | `app.use(\`${API}/agristore\`, shopMetricsMiddleware('shop'), agristoreRoutes)` — the metrics wrapper times on `res.finish`, so validation rejections and 404s are timed too, labelled by route **template** only (never ids). |
@@ -368,7 +368,7 @@ differs is *how long the hold is held* and *what the farmer sees*.
 |---|---|---|---|---|
 | **1. Enqueue 5xx / network / timeout** (FastAPI web down, 10 s enqueue timeout) | `fastapiBreaker()` counts it (`httpFailure` counts 5xx/network/missing-status only); the catch path calls `releaseCredits` before answering | 503 with the scan-specific copy | **Released immediately.** No charge, no `CropDiseaseReport`, no `AIUsage` row | Breaker failure count rising; `[ALERT]`-marked `logger.error` |
 | **2. Breaker OPEN** (≥5 calls in the window, ≥50 % failing) | The call is not attempted at all for 30 s; the reserve has already happened, so the same release path runs | 503, same copy, but returned in milliseconds | **Released immediately** | Breaker state OPEN; a burst of instant 503s with no upstream latency |
-| **3. Enqueue OK, but no `ROLE=worker` Celery service exists** | Nothing fails. FastAPI accepted the job and bound `owner:scan:job:` / `exists:scan:job:`; the poll returns `queued` forever | The client polls at 2 s intervals up to its **300 s** ceiling, then abandons with a timeout message. The scan simply never completes | **Held for up to 30 minutes**, then refunded by the leader-locked `scan_ctx:*` sweeper (every 5 min, refunds holds older than 30 min; the Redis key's 45 min TTL exists so the 30-min sweep can still *find* it) | This is the quiet one: **no error is logged anywhere**, because nothing failed. Detect it by `exists:scan:job:*` keys accumulating with no matching completion, by Celery queue depth on Redis db 1 growing monotonically, or by `AIUsage.scanCount` flat while `AICreditTransaction` HOLD rows accumulate. Part 7 states the precondition — "**without it every scan stays `queued`**" — but the consequence chain ends here. |
+| **3. Enqueue OK, but the `celery` worker container is down or not consuming** | Nothing fails. FastAPI accepted the job and bound `owner:scan:job:` / `exists:scan:job:`; the poll returns `queued` forever | The client polls at 2 s intervals up to its **300 s** ceiling, then abandons with a timeout message. The scan simply never completes | **Held for up to 30 minutes**, then refunded by the leader-locked `scan_ctx:*` sweeper (every 5 min, refunds holds older than 30 min; the Redis key's 45 min TTL exists so the 30-min sweep can still *find* it) | This is the quiet one: **no error is logged anywhere**, because nothing failed. Detect it by `exists:scan:job:*` keys accumulating with no matching completion, by Celery queue depth on Redis db 1 growing monotonically, or by `AIUsage.scanCount` flat while `AICreditTransaction` HOLD rows accumulate. Part 7 states the precondition — "**without it every scan stays `queued`**" — but the consequence chain ends here. |
 | **4. FastAPI dies *between* a successful submit and the poll** | Submit returned `200 {status:'queued', jobId}` and the hold is already mirrored into `scan_ctx:<jobId>`. Every subsequent poll gets a 5xx/timeout from the signed `GET /ai/scan/{job_id}` | Poll errors surface as a retryable failure; the client keeps polling until its 300 s ceiling | **Held until the sweeper**, same 30-min path as row 3 — the poll never reaches `_persistDoneScan`, so nothing settles and nothing releases early | Poll-path 5xx rate; breaker may trip on the *poll* calls independently of the enqueue calls |
 | **5. Worker runs but the pipeline reports `service_unavailable`** (Gemini outage — Stage 3 has **no cross-model fallback** by design) | `_persistDoneScan` runs its non-result check **first**: `report_id ∈ {needs_rescan, service_unavailable}` ⇒ release the hold and return | A dedicated "try again shortly" message, not a report | **Released on the poll that observes it.** No charge, **no `CropDiseaseReport` row at all** | `ai_scan_diagnoses` rows with the sentinel; Gemini error rate |
 | **6. Worker hard-kills at the 300 s Celery limit** (soft 270 s, `max_retries=0`) | The job ends `failed`; the poll's failure branch releases the hold | Failure message | **Released on the poll** | Celery hard-limit kills; pipeline durations pressing the 240 s `PipelineBudget` |
@@ -377,9 +377,9 @@ differs is *how long the hold is held* and *what the farmer sees*.
 
 **Why row 3 is the most likely of these in practice.** Rows 1, 2, 5 and 6 are loud — they
 produce errors, breaker state changes and log lines. Row 3 produces none: the platform is
-"up", the API returns 200, and the only symptom is that scans never finish. Verifying that a
-second Railway service with `ROLE=worker` exists is a dashboard fact this repository cannot
-prove (Appendix B.7), so it is the first thing to check when scans queue forever.
+"up", the API returns 200, and the only symptom is that scans never finish. The worker is the
+`celery` service in `deploy/docker-compose.yml`, so `docker compose ps celery` and
+`redis-cli -n 1 llen celery` on the VPS are the first things to check when scans queue forever.
 
 ### D. Online checkout — initiate → pay → confirm, and its two alternate terminators
 
@@ -422,18 +422,18 @@ Runtime: Node ≥18 (`backend/package.json:82-84`), ESM (`"type": "module"`), Ex
 
 | Process | Script | What it boots | Notes |
 |---|---|---|---|
-| Web | `npm start` → `node src/server.js`; prod `npm run start:prod` (`prisma db push --skip-generate` first) | HTTP server, Socket.IO, cron schedules, optional in-process BullMQ workers | `backend/package.json:9-11` |
+| Web | `npm start` → `node src/server.js`; `npm run start:prod` is the same command (no schema push) | HTTP server, Socket.IO, cron schedules, optional in-process BullMQ workers | `backend/package.json:9-11` |
 | Worker | `npm run worker` → `node src/worker.js` | BullMQ workers only — no HTTP listener, no cron | `backend/src/worker.js:17` |
-| Container | `Dockerfile` CMD `sh -c "timeout 60 npx prisma db push --skip-generate; node src/server.js"` | Two-stage image: stage 1 builds `admin/dist` (Vite, `VITE_API_URL=/api/v1`), stage 2 runs the backend and serves the SPA same-origin | `Dockerfile:48`; `ADMIN_DIST_DIR=/app/admin/dist` |
-| Platform | `railway.json` | `healthcheckPath: /healthz`, `healthcheckTimeout: 300`, `restartPolicyType: ON_FAILURE`, max 3 retries | `railway.json:6-12` |
+| Container | root `Dockerfile` CMD `sh -c "node src/server.js"`; the Compose `backend` service overrides it with `command: ["node", "src/server.js"]` + `init: true` so SIGTERM reaches node | Single-stage `node:20-slim` image of `backend/` only; the admin SPA is **not** in it (built on Vercel; `.dockerignore` excludes `admin/`) | `Dockerfile`; `deploy/docker-compose.yml` |
+| Platform | `deploy/docker-compose.yml` on one Hostinger VPS | Healthcheck `fetch('http://127.0.0.1:3000/healthz')` every 30 s (timeout 5 s, 3 retries, 30 s start period); `restart: unless-stopped`; `mem_limit: 700m`; port published on `127.0.0.1:3000` only, behind Caddy | `deploy/docker-compose.yml` |
 
-There is **no clustering** — no `cluster`/PM2 fork logic anywhere in `src/`. Horizontal scale is instance-level (Railway replicas), which is why nearly every coordination primitive is Redis-backed (leader lock, rate limits, idempotency, Socket.IO adapter) and why the in-process fallbacks are all documented as "per-instance".
+There is **no clustering** — no `cluster`/PM2 fork logic anywhere in `src/`. Production runs one `backend` container; horizontal scale, if added, is instance-level (more containers), which is why nearly every coordination primitive is Redis-backed (leader lock, rate limits, idempotency, Socket.IO adapter) and why the in-process fallbacks are all documented as "per-instance".
 
 ##### Web boot sequence (`backend/src/server.js`)
 
 1. `src/config/env.js` is imported transitively and **can throw at import time** (missing `DATABASE_URL`/`JWT_SECRET`/`FIELD_ENCRYPTION_KEY`, or a prod config problem) — the process dies before any listener exists.
-2. Optional-key warnings for `MSG91_AUTH_KEY`, `CLOUDINARY_CLOUD_NAME`, `GEMINI_API_KEY`, `SARVAM_API_KEY`, `DATA_GOV_API_KEY` (`server.js:32-43`).
-3. HTTP server timeouts set **before** listen (`server.js:56-58`): `timeout=30_000`, `keepAliveTimeout=65_000`, `headersTimeout=70_000`. Comment states keepAlive must exceed the Railway 60 s LB idle timeout to avoid 502s on keep-alive races.
+2. Optional-key warnings for `FIREBASE_AUTH_ENABLED`, `CLOUDINARY_CLOUD_NAME`, `GEMINI_API_KEY`, `SARVAM_API_KEY`, `DATA_GOV_API_KEY` (`server.js:32-43`).
+3. HTTP server timeouts set **before** listen (`server.js:56-58`): `timeout=30_000`, `keepAliveTimeout=65_000`, `headersTimeout=70_000`. Comment states keepAlive must exceed the proxy's idle timeout (Caddy reuses upstream sockets for 55 s, `deploy/Caddyfile`) to avoid 502s on keep-alive races.
 4. Socket.IO constructed with a CORS callback and `transports: ['websocket','polling']` (`server.js:64-80`).
 5. **Redis adapter attach is a top-level `await` with a hard 5 s race** (`server.js:96-99`). The comment is explicit that without the race a hanging Redis at boot blocks ESM module evaluation, so `listen` never runs and the deploy healthcheck fails with no logs. On failure both clients are disconnected and the in-memory adapter is used; the fallback is logged at `info` (not `warn`) because `logger.warn` is suppressed in production.
 6. `registerChatSocket(io)`, then `app.set('io', io)` so HTTP handlers can broadcast via `req.app.get('io')`.
@@ -466,12 +466,12 @@ There is **no clustering** — no `cluster`/PM2 fork logic anywhere in `src/`. H
 | 2 | 90 | `app.set('trust proxy', ENV.TRUST_PROXY)` | Default `1` hop in prod, `'loopback'` otherwise. Must precede the rate limiter — it is what makes `req.ip` unspoofable and the per-IP bucket real. |
 | 3 | 93-97 | Request-ID | `req.id = req.headers['x-request-id'] \|\| crypto.randomUUID()`; echoed as `x-request-id` response header. Client-supplied ids are trusted verbatim (no validation). |
 | 4 | 107-114 | `helmet()` | Defaults, with CSP `img-src 'self' data: blob: https:` widened so the admin SPA can render Cloudinary/seed images. `script-src 'self'` untouched. |
-| 5 | 133-167 | `cors()` | No Origin → allow (RN/mobile/curl). Origin in `SELF_ORIGINS` (`https://$RAILWAY_PUBLIC_DOMAIN`, `https://$RAILWAY_STATIC_URL`) → allow. Dev + loopback regex → allow. Else enforce `ENV.ALLOWED_ORIGINS`; empty list → allow in dev, **reject in prod** (rejection surfaces as a 500 from the cors error). `credentials: true`, `maxAge: ENV.CORS_MAX_AGE` (600 s). |
+| 5 | 133-167 | `cors()` | No Origin → allow (RN/mobile/curl). Dev + loopback regex → allow. There is no implicit self-origin allowance: the Vercel-hosted admin panel's proxied requests carry the `https://krushi-sarva.vercel.app` origin, which must be listed in `ALLOWED_ORIGINS`. Else enforce `ENV.ALLOWED_ORIGINS`; empty list → allow in dev, **reject in prod** (rejection surfaces as a 500 from the cors error). `credentials: true`, `maxAge: ENV.CORS_MAX_AGE` (600 s). |
 | 6 | 170 | `compression()` | Defaults. |
 | 7 | 178-179 | `morgan` (`dev` / `tiny`) | Registered **before** body parsers on purpose: body-parser's 413/400 `next(err)` skips every not-yet-run non-error middleware, so a later morgan would never see rejected multipart requests. |
 | 8 | 197-214 | Body parsers (table below) | — |
 | 9 | 226-293 | `/healthz`, `/health`, `/readyz` | Mounted **before** the rate limiter so LB probes are never throttled. |
-| 10 | 306-322 | Admin SPA static | Only when `${ADMIN_DIST_DIR}/index.html` exists. `express.static(dir, {index:false, maxAge:'1y'})` + SPA fallback on `/admin` and `/admin/*` with `Cache-Control: no-cache` on the shell. Mounted before the limiter/CSRF/body parsers so hashed-asset GETs aren't throttled or parsed. `/admin` (SPA) is disjoint from `/api/v1/admin` (API). |
+| 10 | 306-322 | Admin SPA static | Only when `${ADMIN_DIST_DIR}/index.html` exists — never in the production image, which contains no `admin/` (the panel is on Vercel and Caddy redirects `/admin*` there), so this is a local-development convenience. `express.static(dir, {index:false, maxAge:'1y'})` + SPA fallback on `/admin` and `/admin/*` with `Cache-Control: no-cache` on the shell. Mounted before the limiter/CSRF/body parsers so hashed-asset GETs aren't throttled or parsed. `/admin` (SPA) is disjoint from `/api/v1/admin` (API). |
 | 11 | 330-340 | Global per-IP `rateLimiter` | Only when `ENV.RATE_LIMIT_ENABLED`. `prefix: 'global:ip'`, `key: clientIp`, `ENV.RATE_LIMIT_MAX` (200) per `ENV.RATE_LIMIT_WINDOW_MS` (900 000 ms). 429 with `Retry-After`. |
 | 12 | 345 | `csrfProtection` | Double-submit; see §1.4 Authentication & authorization. |
 | 13 | 351 | `maintenanceMode` | 503 `{maintenance:true}` when the `app.maintenanceMode` AppSetting is on. |
@@ -530,14 +530,14 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `SESSION_ABSOLUTE_TIMEOUT_DAYS` | `30` | hard session cap from first login, anchored via `sessionStartedAt` |
 | `MAX_CONCURRENT_SESSIONS` | `5` | `enforceSessionLimit` evicts oldest lineages; `0` = unlimited |
 | `SOCKET_MAX_CONN_PER_USER` | `10` | per-instance Socket.IO cap |
-| `MSG91_AUTH_KEY` / `_TEMPLATE_ID` / `_SENDER_ID` | `''` / `''` / `FRMESY` | no SMS OTP delivery; also a precondition of the dev OTP bypass |
+| `FIREBASE_AUTH_ENABLED` | `false` unless `'true'` | off ⇒ `/auth/firebase-login` 503s. On also needs `FIREBASE_PROJECT_ID` / `_CLIENT_EMAIL` / `_PRIVATE_KEY`. This is the only production SMS sign-in |
 | `OTP_EXPIRE_MINUTES` / `OTP_MAX_ATTEMPTS` | `5` / `5` | OTP code lifetime / per-session attempts |
 | `OTP_LOCK_THRESHOLD` | `5` | failures before a phone lock |
 | `OTP_LOCK_BASE_SECONDS` / `OTP_LOCK_MAX_SECONDS` | `60` / `3600` | lock backoff `base × 2^(cycle-1)`, capped |
 | `OTP_FAIL_WINDOW_SECONDS` | `900` | failure counter TTL |
 | `OTP_LOCK_CYCLE_WINDOW_SECONDS` | `86400` | lock-cycle window driving exponential escalation |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | `''` | public uploads silently no-op (`uploadFiles` returns `[]`); **KYC uploads throw** rather than degrade |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | `''` / `gemini-2.5-flash` | all LLM features. Prod-fatal if empty |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | `''` / `gemini-3.6-flash` | all LLM features. Prod-fatal if empty |
 | `OPENAI_API_KEY`, `OPENWEATHER_API_KEY` | `''` | legacy/optional |
 | `AI_VOICE_STT_MODEL`, `AI_VOICE_STT_API_KEY`, `VOICE_STT_MODEL` | `sarvam:saarika`, falls back to `SARVAM_API_KEY`, `sarvam:saarika` | retained for backwards-compat; comment states the voice route no longer uses them |
 | `AI_BACKEND_URL` | `http://localhost:8001` | FastAPI base for signed calls + the AgriPredict cron triggers |
@@ -562,7 +562,7 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `OTP_VERIFY_RATE_LIMIT_WINDOW_MS` / `_MAX` / `OTP_VERIFY_IP_RATE_LIMIT_MAX` | `60000` / `10` / `30` | verify-attempt rate; kept above the lockout threshold so 423 surfaces before 429 |
 | `OTP_POW_SECRET` | `''` | **opt-in**; empty disables the proof-of-work gate entirely |
 | `OTP_POW_DIFFICULTY` / `_SUSPICION_THRESHOLD` / `_CHALLENGE_TTL_MS` | `18` bits / `3` / `180000` | PoW tuning |
-| `OTP_DEV_BYPASS_ENABLED` | unset | derived `ENV.OTP_DEV_BYPASS` requires **all three**: opt-in `'true'`, `NODE_ENV !== 'production'`, and empty `MSG91_AUTH_KEY`. Prod boot is refused if the opt-in is set |
+| `OTP_DEV_BYPASS_ENABLED` | unset | derived `ENV.OTP_DEV_BYPASS` requires **both**: opt-in `'true'` and `NODE_ENV !== 'production'`. Prod boot is refused if the opt-in is set |
 | `VELOCITY_ENABLED` | `NODE_ENV !== 'test'` | master switch for FRAUD-1 |
 | `VELOCITY_{ORDER,REFUND,LOGIN}_{WINDOW_SEC,FLAG,LIMIT,BLOCK}` | order `3600/6/12/true`, refund `86400/3/6/true`, login `3600/8/0/false` | per-action flag + block tiers |
 | `REFUND_ABUSE_ENABLED` | `NODE_ENV !== 'test'` | master switch for FRAUD-2 |
@@ -572,7 +572,7 @@ Multer limits live in `config/cloudinary.js`, not app.js: `createUploader(maxFil
 | `CONTENT_FRAUD_ENABLED`, `CONTENT_FRAUD_BURST_WINDOW_MIN/REVIEW_BURST_COUNT/LISTING_BURST_COUNT/NEW_ACCOUNT_DAYS/FLAG_SCORE` | on outside test, `60/5/5/3/2` | fake review/listing routing to the moderation queue |
 | `PAYMENT_TAMPER_ALARM_ENABLED` | `NODE_ENV !== 'test'` | audit + deduped incident on a blocked amount/owner mismatch |
 
-**Read directly from `process.env`, bypassing `ENV`:** `RAILWAY_PUBLIC_DOMAIN`, `RAILWAY_STATIC_URL`, `ADMIN_DIST_DIR` (`app.js:128,307`); `DB_CONNECTION_LIMIT`, `DB_POOL_TIMEOUT` (`config/db.js:31,34`); `OTP_DEV_BYPASS_ENABLED`, `FIELD_ENCRYPTION_KEYS`, `FIELD_ENCRYPTION_ACTIVE_KEY_ID`, `TRUST_PROXY` raw (`config/env.js`); `CHECKPOINT_DISABLE`, `PRISMA_HIDE_UPDATE_MESSAGE` (Dockerfile).
+**Read directly from `process.env`, bypassing `ENV`:** `ADMIN_DIST_DIR` (`app.js`); `DB_CONNECTION_LIMIT`, `DB_POOL_TIMEOUT` (`config/db.js:31,34`); `OTP_DEV_BYPASS_ENABLED`, `FIELD_ENCRYPTION_KEYS`, `FIELD_ENCRYPTION_ACTIVE_KEY_ID`, `TRUST_PROXY` raw (`config/env.js`); `CHECKPOINT_DISABLE`, `PRISMA_HIDE_UPDATE_MESSAGE` (Dockerfile).
 
 **Prisma pool sizing (`config/db.js:24-37`)** — appended to the URL as a string (not URL-reparsed, so passwords with special chars survive): `connection_limit = DB_CONNECTION_LIMIT || max(cpus*2+1, 20)`, `pool_timeout = DB_POOL_TIMEOUT || 20`. The in-file warning is the key scaling constraint: **total server-side connections = instances × connection_limit**, against a Postgres default `max_connections` of 100. Real 1000-connection fan-out needs PgBouncer (transaction mode) or Prisma Accelerate behind `DATABASE_URL`. Dev-only slow-query logging fires above 200 ms.
 
@@ -831,7 +831,7 @@ FastAPI's. No key pattern currently collides by name, but nothing enforces that 
 | `exists:scan:job:{job_id}` | FastAPI | **db 1** | 25 h | same | `get_job_status` disambiguation | unknown-job detection off; `job_was_enqueued` returns `True` (cannot disprove existence), plus a 300 s post-reconnect grace |
 | Celery result | FastAPI | **db 1** | 24 h (`result_expires`) | Celery | poll | the report is unreachable; the scan looks stuck |
 | treatment-plan cache | FastAPI | db 0 (`RATE_LIMIT_STORAGE_URI` → `REDIS_URL`) | 24 h | `agents/treatment_agent.py:38-105` | same | per-process LRU (500, 24 h); 30 s bounded re-probe |
-| weather cache | FastAPI | **hardcoded `localhost:6379` db 0** | 30 min | `weather_service.py:30-37` | same | **always** degraded on Railway — this module was never repointed, so the coordinate-bucketed cache is per-process everywhere |
+| weather cache | FastAPI | db 0 (`RATE_LIMIT_STORAGE_URI` → `REDIS_URL`; it used to be a hardcoded `localhost`, so production never shared it) | 30 min | `weather_service.py:31-86` | same | per-process dict (200 entries); 30 s bounded re-probe, not a latch |
 
 Two patterns worth extracting: (a) the only Express keys that **fail closed** are the token
 denylist and the AI cost limiters — everything else keeps serving; (b) three FastAPI clients
@@ -886,7 +886,7 @@ Inserts `f_auto,q_auto:eco,w_<width>,c_limit` after `/upload/` in a Cloudinary U
 | Jobs | `user-notification` → `deliverUserNotification(data)` (lazily referenced to break the push.service ⇄ queue import cycle) | `:19-26` |
 | Default job options | `attempts: 3`, exponential backoff from 2 s (2/4/8 s), `removeOnComplete {count:100, age:3600}`, `removeOnFail {count:500, age:86400}` | `queue/jobQueue.js:24-29` |
 | Worker | one `Worker` per queue, `concurrency: ENV.QUEUE_CONCURRENCY` (5), each on its **own** connection (workers block) | `queue/worker.js:29-40` |
-| Connections | `maxRetriesPerRequest: null` (**required** by BullMQ; the shared app client uses `1` for fail-fast, which BullMQ rejects), `enableReadyCheck:false`, shared `reconnectDelay`, `family: 0` for Railway IPv6 | `queue/connection.js:20-31` |
+| Connections | `maxRetriesPerRequest: null` (**required** by BullMQ; the shared app client uses `1` for fail-fast, which BullMQ rejects), `enableReadyCheck:false`, shared `reconnectDelay`, `family: 0` so IPv6-only Redis hosts resolve | `queue/connection.js:20-31` |
 | Repeatables | **none** — no `repeat:` option anywhere; all recurrence is `node-cron` in `server.js` | — |
 
 `enqueue()` **fails open by running the job inline** through the same processor registry when `!ENV.QUEUE_ENABLED` or `redis.status !== 'ready'` or `queue.add` throws (`jobQueue.js:52-67`). The trade-off is explicit: the inline path reintroduces the latency on that one request, but the side-effect is never dropped, and dev without Redis keeps working. Ops read helpers: `getQueueStats`, `getRecentJobs` (states `failed|completed|active|waiting|delayed`, limit clamped to ≤100), `retryJob` (only a job in `failed` state), `isKnownQueue` — all report `{available:false}` rather than throwing when the queue layer is down.
@@ -1014,7 +1014,7 @@ Redis is intentionally excluded from the ready decision: a Redis outage must not
 
 ##### Redis health tracking — `config/redis.js`
 
-Explicit `_health` state exists because failures used to degrade silently (per-call warnings are suppressed in prod). Transitions: `ready` → `markUp` (clears alert flags, logs a recovery note if it had been down); `error` while `status !== 'ready'`, `close` after having been ready, or `end` → `markDown`. One loud alert per outage (`_alerted` de-dupes the burst ioredis emits while retrying), plus **one escalation** after `ESCALATE_AFTER_MS = 5 min` so a sustained failure resurfaces. `emitAlert` uses `logger.error` in prod and `logger.warn` in dev so a local run without Redis doesn't look like a firing production alert. Reconnect is bounded-delay exponential backoff (100 ms → cap 5 s) that **never gives up** — the previous `times > 2 ? null : 500` strategy told ioredis to stop reconnecting permanently, so any blip over ~1.5 s disabled Redis for the process's life. `maxRetriesPerRequest: 1` makes commands fail fast so the fail-open paths trigger quickly; `family: 0` is required because Railway private networking is IPv6-only and ioredis defaults to IPv4.
+Explicit `_health` state exists because failures used to degrade silently (per-call warnings are suppressed in prod). Transitions: `ready` → `markUp` (clears alert flags, logs a recovery note if it had been down); `error` while `status !== 'ready'`, `close` after having been ready, or `end` → `markDown`. One loud alert per outage (`_alerted` de-dupes the burst ioredis emits while retrying), plus **one escalation** after `ESCALATE_AFTER_MS = 5 min` so a sustained failure resurfaces. `emitAlert` uses `logger.error` in prod and `logger.warn` in dev so a local run without Redis doesn't look like a firing production alert. Reconnect is bounded-delay exponential backoff (100 ms → cap 5 s) that **never gives up** — the previous `times > 2 ? null : 500` strategy told ioredis to stop reconnecting permanently, so any blip over ~1.5 s disabled Redis for the process's life. `maxRetriesPerRequest: 1` makes commands fail fast so the fail-open paths trigger quickly; `family: 0` lets Node use whichever address family DNS returns, because ioredis defaults to IPv4 and a Redis host on an IPv6-only network would otherwise never resolve.
 
 ##### Shop metrics — `services/shopMetrics.service.js`
 
@@ -1152,7 +1152,7 @@ The stated reason for the whole arrangement, verbatim from `admin_v2_additive.sq
 
 Consequences a future change must respect:
 
-1. Adding a model/column to `schema.prisma` is not enough for production — a matching additive `.sql` must be applied by hand (`prisma db execute --file ... --schema prisma/schema.prisma`, `psql`, or the Railway Data tab).
+1. Adding a model/column to `schema.prisma` is not enough for production — a matching additive `.sql` must be applied by hand (`prisma db execute --file ... --schema prisma/schema.prisma`, or `psql` inside the `postgres` container on the VPS).
 2. `prisma migrate deploy` is not run anywhere; the `_prisma_migrations` table is therefore not authoritative for prod state (unverified whether it exists in prod at all).
 3. Anything that removes a column is a two-deploy dance (contract SQL + schema edit together).
 4. `db push` cannot express `ALTER TYPE ... ADD VALUE` ordering or data backfills — hence the separate enum-value migrations.
@@ -2047,8 +2047,9 @@ Every index costs on INSERT/UPDATE, and several tables here are append-heavy. Ve
 > `cron.schedule(...)` call in `backend/src/server.js` is passed exactly **two** arguments — the
 > expression and the handler — with **no `timezone` option**, and there is no `timezone` or `TZ`
 > occurrence anywhere in `server.js` or in the deploy files. node-cron therefore evaluates every
-> expression in the Node process's local timezone. The times read as UTC only because Railway
-> containers default to `TZ=UTC`; nothing in the repo pins it. This applies to `30 2 * * *`
+> expression in the Node process's local timezone. The times read as UTC only because the
+> container images (`node:20-slim`) default to UTC and `deploy/docker-compose.yml` sets no `TZ`;
+> `docs/deploy/VPS_DEPLOY_PLAN.md` §2 says to keep every container on UTC, but no code pins it. This applies to `30 2 * * *`
 > (retention, "02:30"), `30 0 * * *` (mandi daily sync, "00:30"), `10 3 * * *` (batch expiry,
 > "03:10") and `0 1 1 * *` (prediction-cache purge, "01:00 on the 1st"). Interval expressions
 > (`*/2`, `*/5`, `*/10`, `*/25`, hourly) are timezone-independent and unaffected.
@@ -2269,7 +2270,7 @@ claims the path is `/api/v1/health/apis`; that path does not exist.
 | 2 | `app.set('trust proxy', ENV.TRUST_PROXY)` (`app.js:90`) | default `1` in production, `'loopback'` otherwise (`config/env.js:178-191`). Drives `req.ip` and therefore every per-IP rate-limit key |
 | 3 | request id (`app.js:92-96`) | `req.id` = `x-request-id` header or `crypto.randomUUID()`; echoed as `x-request-id` |
 | 4 | `helmet` (`app.js:107`) | default CSP except `img-src 'self' data: blob: https:` (admin SPA loads Cloudinary images) |
-| 5 | `cors` (`app.js:133`) | no `Origin` → allow (mobile); self-origin from `RAILWAY_PUBLIC_DOMAIN`/`RAILWAY_STATIC_URL` → allow; dev loopback → allow; else `ENV.ALLOWED_ORIGINS` allowlist; production without allowlist → blocked. `credentials: true`, `maxAge: ENV.CORS_MAX_AGE` (600 s) |
+| 5 | `cors` (`app.js:133`) | no `Origin` → allow (mobile); dev loopback → allow; else `ENV.ALLOWED_ORIGINS` allowlist; production without allowlist → blocked. `credentials: true`, `maxAge: ENV.CORS_MAX_AGE` (600 s) |
 | 6 | `compression()` | |
 | 7 | `morgan` | registered **before** body parsers so 413/400 body-parser rejections still log |
 | 8 | body parsers (`app.js:197-215`) | per-path JSON limits: `/upload` 10 mb (line 197), `/ai/scan/submit` 50 mb, `/ai/chat` 12 mb, `/ai/soil-card-ocr` 12 mb, `/shop-webhooks` `express.raw` 256 kb; **global default 100 kb** JSON + urlencoded. All wrapped in `skipMultipart()` so multer routes read the raw stream |
@@ -2338,7 +2339,7 @@ and refresh revocation.
 
 | Method | Path | Auth | Rate limit | Key request fields | Response shape | DB models written | Side effects |
 |---|---|---|---|---|---|---|---|
-| POST | `/api/v1/auth/send-otp` | public | `otpPowGate` → `otpIpLimiter` (50 / 3600 s / IP) → `otpPhoneLimiter` (5 / 3600 s / normalized phone) + global | `phone` (normalized to 10 digits by `indianMobileBody`) | 200 `{ sessionId, devOtp? }` | `OtpSession` create; `OtpSession.updateMany` sets prior unverified sessions' `attempts = OTP_MAX_ATTEMPTS` | MSG91 HTTP POST when `MSG91_AUTH_KEY` set; else console-log + `devOtp` in body |
+| POST | `/api/v1/auth/send-otp` | public | `otpPowGate` → `otpIpLimiter` (50 / 3600 s / IP) → `otpPhoneLimiter` (5 / 3600 s / normalized phone) + global | `phone` (normalized to 10 digits by `indianMobileBody`) | 200 `{ sessionId, devOtp }` | `OtpSession` create; `OtpSession.updateMany` sets prior unverified sessions' `attempts = OTP_MAX_ATTEMPTS` | dev/test login only: no SMS is sent, the code is console-logged + returned as `devOtp`; 503 `OTP_DELIVERY_UNAVAILABLE` under `NODE_ENV=production` |
 | POST | `/api/v1/auth/verify-otp` | public | `otpVerifyIpLimiter` (30 / 60 s / IP), `otpVerifyPhoneLimiter` (10 / 60 s / phone) + global | `phone`, `otp` (exactly 6 chars), `name?` (2–80) | 201 `{ accessToken, isNewUser, user, refreshToken \| csrfToken, stepUp? }` | `OtpSession` (attempts++ or `verified=true`), `User` create (new signup), `ConsentRecord` ×3 (signup), `RefreshToken` create + evictions, `AuditLog` (`AUTH_LOGIN`, optional `AUTH_LOGIN_RISKY`, `AUTH_LOGIN_GEO_ANOMALY`, `AUTH_OTP_FAILURE`, `AUTH_OTP_LOCKOUT`), `DeviceAccountLink` upsert, `SecurityIncident`+`IncidentUpdate` (fraud flags) | Redis OTP-lockout counters cleared; Expo push on risky/geo-anomalous login; velocity ZSETs written; sets `rt`+`csrf` cookies in cookie mode |
 | POST | `/api/v1/auth/refresh` | bearer-less; token from body or `rt` cookie | global only | `refreshToken?`, `userId?` (or cookie) | `{ accessToken, refreshToken }` or `{ accessToken, csrfToken }` | `RefreshToken` (claim `rotatedAt`, create successor, `deleteMany` family on reuse/expiry/disabled account), `AuditLog` `AUTH_TOKEN_REFRESH` / `AUTH_TOKEN_REUSE`, `SecurityIncident` on reuse | clears both cookies on any failure path; rotates `csrf` cookie in cookie mode |
 | POST | `/api/v1/auth/change-phone` | user (`authenticate`) | global only | `newPhone`, `otp` | `{ accessToken, phone, refreshToken \| csrfToken }` | `User.phone` + `tokenVersion` increment (one transaction), `RefreshToken` deleteMany + create, `OtpSession` | 409 if number already taken (pre-check **and** `P2002` catch); every other session killed |
@@ -2362,9 +2363,9 @@ and refresh revocation.
 2. `otpPowGate` (`services/proofOfWork.service.js:otpPowGate`). No-op unless `OTP_POW_SECRET` is set. Peeks the per-IP sliding send count (`pow:otp:ip:<ip>`, window `OTP_RATE_LIMIT_WINDOW_MS`). Below `OTP_POW_SUSPICION_THRESHOLD` (3) → record and continue. At/above → require a solved hashcash proof from header `X-OTP-PoW` or `body.proofOfWork`; a failure returns **428 Precondition Required** with `X-PoW-Required: 1` and a freshly issued challenge. The challenge is HMAC-signed (`challenge.difficulty.exp.scope`, scope = `send-otp:<ip>`) so verification is stateless; single use is enforced by `SET pow:used:<challenge> NX PX ttl`. Work = `sha256(challenge.nonce)` with ≥ `OTP_POW_DIFFICULTY` (18) leading zero bits. Placed before the limiters so a 428 does not burn a rate-limit slot. Any error fails open.
 3. `otpIpLimiter` then `otpPhoneLimiter` (sliding-window ZSETs in Redis, in-memory fallback). 429 + `Retry-After` on trip; rejected requests are **not** recorded, so a flood cannot extend its own window.
 4. `indianMobileBody('phone')` (`utils/phone.js`) normalizes `+91`/`0`/spaces via `libphonenumber-js` (digit fallback) and enforces `^[6-9]\d{9}$`; the sanitizer rewrites `req.body.phone` to the canonical 10 digits.
-5. `sendOtp(phone)` (`services/otp.service.js:sendOtp`): 6-digit code from `crypto.randomInt`; bcrypt hash at cost 10; `expiresAt = now + OTP_EXPIRE_MINUTES` (5); all prior unverified sessions for the phone are burned by setting `attempts = OTP_MAX_ATTEMPTS`; one `OtpSession` row created. With `MSG91_AUTH_KEY` → `POST https://control.msg91.com/api/v5/otp` with `mobile: 91<phone>`; without → the OTP is console-logged **and returned as `devOtp`**.
+5. `sendOtp(phone)` (`services/otp.service.js:sendOtp`): 6-digit code from `crypto.randomInt`; bcrypt hash at cost 10; `expiresAt = now + OTP_EXPIRE_MINUTES` (5); all prior unverified sessions for the phone are burned by setting `attempts = OTP_MAX_ATTEMPTS`; one `OtpSession` row created. No SMS is ever sent: the OTP is console-logged **and returned as `devOtp`** so the app auto-fills it. This is a local development/test login only; under `NODE_ENV=production` `send-otp` returns 503 `OTP_DELIVERY_UNAVAILABLE`, and production sign-in goes through Firebase Phone Auth (`POST /api/v1/auth/firebase-login`).
 6. **Client → `POST /api/v1/auth/verify-otp { phone, otp, name? }`.**
-7. `verifyOtp` (`services/otp.service.js:verifyOtp`): (a) `checkOtpLock` — a locked number is refused before the code is even compared; (b) find the newest `OtpSession` where `verified=false`, `expiresAt > now`, `attempts < OTP_MAX_ATTEMPTS` — none → "OTP expired or not found"; (c) dev bypass only when the frozen `ENV.OTP_DEV_BYPASS` flag is true **and** the code is `000000` (flag requires `OTP_DEV_BYPASS_ENABLED==='true'` **and** `NODE_ENV !== 'production'` **and** no `MSG91_AUTH_KEY`; a prod boot with the opt-in set refuses to start, `config/env.js:505-507`); (d) otherwise `bcrypt.compare`.
+7. `verifyOtp` (`services/otp.service.js:verifyOtp`): (a) `checkOtpLock` — a locked number is refused before the code is even compared; (b) find the newest `OtpSession` where `verified=false`, `expiresAt > now`, `attempts < OTP_MAX_ATTEMPTS` — none → "OTP expired or not found"; (c) dev bypass only when the frozen `ENV.OTP_DEV_BYPASS` flag is true **and** the code is `000000` (flag requires `OTP_DEV_BYPASS_ENABLED==='true'` **and** `NODE_ENV !== 'production'`; a prod boot with the opt-in set refuses to start, `config/env.js:505-507`); (d) otherwise `bcrypt.compare`.
 8. On mismatch: `attempts` incremented, `recordOtpFailure(phone)` called. Lockout (`services/otpLockout.service.js`) keys Redis `otp:fail:<phone>` (TTL `OTP_FAIL_WINDOW_SECONDS` = 900), `otp:lock:<phone>`, `otp:lockcycle:<phone>` (TTL `OTP_LOCK_CYCLE_WINDOW_SECONDS` = 86 400). At `OTP_LOCK_THRESHOLD` (5) failures the number locks for `OTP_LOCK_BASE_SECONDS × 2^(cycle−1)` capped at `OTP_LOCK_MAX_SECONDS` (60 s → 3600 s), the fail counter is cleared, and a SECURITY-category push goes to the owner if the number is registered. In-memory fallback mirrors the same state machine when Redis is not `ready`.
 9. On match: `OtpSession.verified = true`; `clearOtpLockout(phone)` deletes all three Redis keys; `User.findUnique({ phone })` decides `isNewUser`.
 10. **New user:** `prisma.user.create({ phone, name })` (`onboardingStep` defaults to `BASIC`), then `captureSignupConsent()` writes three `ConsentRecord` rows (`TERMS_OF_SERVICE`, `PRIVACY_POLICY`, `DATA_PROCESSING`) with `method:'signup'`, policy version, ip and user-agent. Best-effort — a failure is logged, never blocks registration.
@@ -2835,7 +2836,7 @@ is not added here will silently never rotate.
 Typed key/value config editable from the admin panel with no redeploy and no
 `.env` edit. Three invariants stated and enforced in the code:
 
-1. Only keys in `SETTINGS_MANIFEST` (**53 entries** across 7 categories, `settings.service.js:62-193`) are writable — `setSetting` throws `SettingError` (`expose: true`, `statusCode: 400`) on an unknown key. The separate `ENV_MANIFEST` (`:194-218`, 23 entries across 6 categories) is **not** part of this surface: those are read-only env-var *presence* indicators, never persisted as `AppSetting` rows and never accepted by `setSetting`. Summing the two — which yields the "76 keys / 13 categories" figure quoted in earlier drafts — conflates writable settings with read-only env status.
+1. Only keys in `SETTINGS_MANIFEST` (**53 entries** across 7 categories, `settings.service.js:62-193`) are writable — `setSetting` throws `SettingError` (`expose: true`, `statusCode: 400`) on an unknown key. The separate `ENV_MANIFEST` (`:194-218`, 24 entries across 6 categories) is **not** part of this surface: those are read-only env-var *presence* indicators, never persisted as `AppSetting` rows and never accepted by `setSetting`. Summing the two — which yields the "76 keys / 13 categories" figure quoted in earlier drafts — conflates writable settings with read-only env status.
 2. **Secrets are never stored here — but the guard that would enforce it is dead code today.** `setSetting` refuses any key whose manifest entry sets `isSecret` (`settings.service.js:365`) and `listSettings` masks such a key as `'••••'` (`:346`). However **no entry in `SETTINGS_MANIFEST` sets `isSecret`**, so `def.isSecret` is always `undefined` and *both* branches are unreachable. Secrets stay out of the settings table because nobody ever added a secret key to the manifest, not because the guard fires; it is neither exercised nor tested. (The `secret: true` fields visible at `:195-217` belong to `ENV_MANIFEST`, a different array, and are consumed by `getEnvStatus()` — which reports only whether each var is *present*, never its value.) Anyone extending the manifest with a genuine secret is relying on an untested path.
 3. Resolution order per key: DB `AppSetting` row → `envKey` env fallback → manifest `default`, so a fresh DB behaves exactly like the env-driven configuration.
 
@@ -4968,7 +4969,7 @@ carrying `?state=...` would otherwise 401. The body hash is over the exact
 | Config | `AI_SHARED_SECRET`, `AI_AUTH_REQUIRED` (default `true`), `AI_AUTH_SKEW_SEC` (default **30 s**) |
 | Missing secret with auth required | hard 503 `auth_misconfigured` (never fails open) |
 | Missing headers | 401 `missing_signature` |
-| Clock skew | `abs(now - ts) > skew` → 401 `stale_signature`. Widened from 15 s to 30 s because Express and FastAPI are separate Railway services whose clocks drift |
+| Clock skew | `abs(now - ts) > skew` → 401 `stale_signature`. Widened from 15 s to 30 s because Express and FastAPI are separate containers; they share one host clock on the VPS today, but on separate hosts clocks drift |
 | Signature mismatch | 401 `bad_signature` (`hmac.compare_digest`) |
 | Replay | Signature stored in Redis with `SET NX EX skew`; a reuse inside the window → 401 `replayed_signature`. **Only for non-GET/HEAD/OPTIONS** — the mobile client polls `GET /ai/scan/{id}` repeatedly with the same ts→same signature, which is benign |
 | Redis down | replay-nonce cache disabled, fails open; the 30 s skew window still bounds exposure |
@@ -5376,7 +5377,7 @@ the credit hold to a background pipeline.
 
 | Service | Used for | Where | Auth | Timeout | Cache TTL | Failure fallback |
 |---|---|---|---|---|---|---|
-| **Google Gemini** (OpenAI-compatible endpoint `generativelanguage.googleapis.com/v1beta/openai/`) | All LLM inference. Mostly indirect via FastAPI; **direct** in `ai.chat.service.js` (planner), `schemeGemini.service.js` (scheme Q&A) and the deprecated `ai.predict.service.js` (legacy scan) | `GEMINI_API_KEY`, model `ENV.GEMINI_MODEL \|\| 'gemini-2.5-flash'` | API key | 120 s in `ai.predict.service`; SDK default elsewhere | none | Planner: 500 + refund. Schemes: 503 + refund. Legacy scan: `buildRescanFallback()` after 3 retries |
+| **Google Gemini** (OpenAI-compatible endpoint `generativelanguage.googleapis.com/v1beta/openai/`) | All LLM inference. Mostly indirect via FastAPI; **direct** in `ai.chat.service.js` (planner), `schemeGemini.service.js` (scheme Q&A) and the deprecated `ai.predict.service.js` (legacy scan) | `GEMINI_API_KEY`, model `ENV.GEMINI_MODEL \|\| 'gemini-3.6-flash'` | API key | 120 s in `ai.predict.service`; SDK default elsewhere | none | Planner: 500 + refund. Schemes: 503 + refund. Legacy scan: `buildRescanFallback()` after 3 retries |
 | **FastAPI AI service** | chat, chat stream, scan, soil-card OCR, alerts, agripredict | `AI_BACKEND_URL`, HMAC | `AI_SHARED_SECRET` | see §3.3.4 (this sub-part's *Crop disease scan* section), **not** the top-level §3.4 Admin API | FastAPI-side idempotency cache (`done` for ~24 h) | breaker + per-route farmer copy; §3.3.7 |
 | **Sarvam AI** (`api.sarvam.ai`) | STT `saaras:v3` (`/speech-to-text`), TTS `bulbul:v3` (`/text-to-speech`), translate `mayura:v1` (`/translate`) | `SARVAM_API_KEY` header `api-subscription-key` | key | 15 s `AbortSignal.timeout` + `sarvamBreaker` 20 s | none | STT fail → 503 + refund; TTS fail in stream → warn, sentence silently skipped; TTS fail one-shot → reply returned without audio |
 | **Open-Meteo** (`api.open-meteo.com/v1/forecast`) | The main weather product: current, 24 h hourly, 7-day daily, soil temp/moisture, ET₀ | none (free, keyless) | — | 10 s per attempt, **1 retry** after 1.5 s | 1 h L1+L2, 30 min SWR | Serve an expired L2 row with `meta.stale: true`; only then 503 |
@@ -5386,7 +5387,6 @@ the credit hold to a background pipeline.
 | **data.gov.in** (resource `9ef84268-…`, Agmarknet daily mandi prices) | Live mandi prices | `DATA_GOV_API_KEY` | key | 12 s (axios) | 30 min L1 Map (200 entries) + 4 h `expiresAt` on `MandiPrice` rows | DB rows up to 90 days old with `stale: true` and a farmer-visible disclaimer; every attempt writes an `APIHealthLog` row (`success`/`rate_limited`/`timeout`/`failure`) |
 | **OpenWeatherMap** (`api.openweathermap.org/data/2.5/weather?zip=<pin>,IN`) | Weather snapshot attached to a scan report, and `GET /crop-disease/weather` | `OPENWEATHER_API_KEY` | key | **none set** | none | returns `null`; scan proceeds (`Promise.race` with a 2.5 s cap on `/scan/submit`) |
 | **Cloudinary** | Scan photo storage (`farmeasy/scans/<userId>`), compressed to ≤1080 px JPEG `quality auto:eco` | `CLOUDINARY_*` | key/secret | 55 s per upload; `_persistDoneScan` waits at most 10 s for the batch | n/a | Skipped entirely when `CLOUDINARY_CLOUD_NAME` is unset; per-upload failures resolve to `null` and are filtered out; the report is written with `imageUrls: []` |
-| **MSG91** | **Not used by any route in this group** — only `services/otp.service.js` and `settings.service.js` | — | — | — | — | — |
 | **Razorpay** | **Not used by any route in this group** — only the shop/payment routers and services | — | — | — | — | — |
 
 `config/env.js:508-512` makes a missing `AI_SHARED_SECRET` (or <16 chars),
@@ -6532,7 +6532,7 @@ landing call, so every admin page-load fans out 16 queries including
 
 | Lever | Endpoint | Scope | Propagation | Blast radius |
 |---|---|---|---|---|
-| **Maintenance mode** | `PATCH /settings/app.maintenanceMode` (+ `app.maintenanceMessage`) | SUPER_ADMIN | `middleware/maintenance.js` reads the `AppSetting` row **directly**, not via `getSetting` (whose cache is 60 s), throttled by a 5 s in-process cache — "a minute of lag is unacceptable on the one control you reach for during an incident" | **503 to all app traffic.** Exempt: `/healthz`, `/readyz`, `/health`, the `/admin` SPA, `/api/v1/admin/*` and `/api/v1/auth/*` — so an operator can still log in and switch it off, and Railway's healthcheck keeps passing. **Fails open**: a DB read error keeps the last known state rather than assuming maintenance |
+| **Maintenance mode** | `PATCH /settings/app.maintenanceMode` (+ `app.maintenanceMessage`) | SUPER_ADMIN | `middleware/maintenance.js` reads the `AppSetting` row **directly**, not via `getSetting` (whose cache is 60 s), throttled by a 5 s in-process cache — "a minute of lag is unacceptable on the one control you reach for during an incident" | **503 to all app traffic.** Exempt: `/healthz`, `/readyz`, `/health`, the `/admin` SPA, `/api/v1/admin/*` and `/api/v1/auth/*` — so an operator can still log in and switch it off, and the Docker healthcheck (`deploy/docker-compose.yml`) keeps passing. **Fails open**: a DB read error keeps the last known state rather than assuming maintenance |
 | **Feature flags** | `PATCH /flags/:key` | OPS | `invalidateCache(key)` clears the local cache **and publishes on a Redis channel** so every instance drops its copy (`featureFlag.service.js:116-122`) | Whatever `requireFeature`/the flag consumers gate. **`PATCH` is an upsert** — a typo'd key silently creates a brand-new flag rather than 404ing, and `GET /flags` will then show it |
 | **App settings** | `PATCH /settings/:key` | SUPER_ADMIN | 60 s in-process cache, invalidated for that key on write. **Per-instance** — there is no cross-instance publish, so other replicas keep the stale value for up to 60 s | Only `SETTINGS_MANIFEST` keys are writable (unknown → 400), values are type/range/enum-coerced (`settings.service.js:234-278`), and range enforcement exists specifically because "a single correct-looking save could break the product" (`ai.tokensPerCredit = 0` divides by zero in the credit meter; a negative `ai.freeScanDailyLimit` blocks every farmer who already scanned). High-blast keys: `compliance.enabled` (master switch for the whole sale gate — "stops enforcing but keeps recording"), `catalog.requireQcForNewProducts`, `shop.reservation.enabled`, `marketplace.commissionRatePct`, `broadcast.maxRecipients`, the four `buybox.weight.*`, `ai.model.*` (per-service model routing), `ai.monthlyBudgetUsdCap` |
 | **Secrets / key rotation** | *none* | — | — | **There is no key-rotation surface.** `setSetting` refuses any `isSecret` key (`settings.service.js:365`); secrets live only in `process.env`. `GET /settings/env-status` reports PRESENT/ABSENT per `ENV_MANIFEST` entry and **never a value**. Rotating `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, `AI_SHARED_SECRET`, Cloudinary/Razorpay/Gemini keys is a redeploy, not an admin action. Note `JWT_SECRET` also signs the view-as descriptors, so rotating it invalidates those too |
@@ -6583,18 +6583,20 @@ landing call, so every admin page-load fans out 16 queries including
 ### FastAPI AI Service — Topology
 
 The Python service lives entirely under `fastapi/`. It is a single FastAPI app plus a Celery
-worker built from the same image; `fastapi/railway.json:7` selects the role at boot:
+worker built from the same image (`fastapi/Dockerfile`, `python:3.12-slim`). The image's
+default `CMD` is the web process; `deploy/docker-compose.yml` runs it twice and overrides the
+command for the worker:
 
 ```
-if [ "$ROLE" = "worker" ]; then
-  celery -A jobs.queue:celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
-else
-  uvicorn main:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2} --no-access-log
-fi
+fastapi: uvicorn main:app --host 0.0.0.0 --port 8001 --workers 1 --no-access-log
+celery:  celery -A jobs.queue:celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200
 ```
 
-So **web and worker are the same code base, two Railway services differentiated by `$ROLE`**.
-Nixpacks builder, `restartPolicyType: ON_FAILURE`, max 3 retries.
+So **web and worker are the same code base, two Compose services differentiated by their
+command**. Both use `restart: unless-stopped` and `env_file: ./env/fastapi.env`; `fastapi` has
+`mem_limit: 320m` and a healthcheck that reads the `/health` body for `"ok"`, `celery` has
+`mem_limit: 768m` and `stop_grace_period: 310s` so a warm shutdown can finish in-flight scans.
+Neither publishes a port: FastAPI is reachable only on the Compose network.
 
 #### App factory / module-load order (`fastapi/main.py`)
 
@@ -6628,7 +6630,7 @@ Shutdown: `close_http_clients()` then `close_shared_pool()`.
 
 `config.py:130-131`: `API_HOST = CROPGUARD_HOST or "0.0.0.0"`, `API_PORT = int(CROPGUARD_PORT or 8001)`.
 These are **only** used by the `__main__` block (`main.py:325-327`). In production uvicorn is invoked
-by `railway.json` with `--host 0.0.0.0 --port $PORT`.
+by the image `CMD` / the Compose `fastapi` service with `--host 0.0.0.0 --port 8001`.
 **Config trap:** `.env.example:26-27` documents `API_HOST` / `API_PORT`, but `config.py` reads
 `CROPGUARD_HOST` / `CROPGUARD_PORT`. The documented names are dead.
 
@@ -6658,12 +6660,13 @@ rules — this is the most fragmented part of the service:
 | Idempotency cache | `services/idempotency.py:59-64` | `CELERY_RESULT_BACKEND` → `CELERY_BROKER_URL` → `REDIS_URL` → `redis://localhost:6379/0` | 30s bounded re-probe | per-process LRU (500, 60 min) |
 | Celery broker/result + job bindings | `jobs/queue.py:35-36,100-156` | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND`, default `redis://localhost:6379/1` | 30s bounded re-probe + 300s post-recovery grace | dedup / owner-IDOR / existence marker all silently disabled |
 | Treatment plan cache | `agents/treatment_agent.py:38-105` | `RATE_LIMIT_STORAGE_URI` → `REDIS_URL` | 30s bounded re-probe | per-process LRU (500, 24h) |
-| Weather cache | `weather_service.py:30-37` | **hardcoded `localhost:6379` db 0** | none | per-process dict (200 entries, 30 min) |
+| Weather cache | `weather_service.py:43-86` | `RATE_LIMIT_STORAGE_URI` → `REDIS_URL` (no URL ⇒ per-process only) | 30s bounded re-probe | per-process dict (200 entries, 30 min) |
 
 `.env.example:45-53` explicitly warns that a deploy which sets only the `CELERY_*` vars silently
 drops the per-user spend cap and the replay-nonce cache to per-process state. `weather_service.py`
-is the one module nobody fixed — on Railway its Redis is always dead, so the 30-minute
-coordinate-bucketed weather cache is per-process only.
+used to build its client as `Redis(host="localhost")`, so in production its shared cache was
+always dead; it now resolves `RATE_LIMIT_STORAGE_URI` → `REDIS_URL` like the spend cap and
+re-probes every 30 s instead of latching at import.
 
 #### Middleware stack (outermost → innermost)
 
@@ -6758,8 +6761,8 @@ vs `method.upper()`), hex encoding, and empty-body handling.
 
 Skew: `AI_AUTH_SKEW_SEC`, **default 30 s** (`security/auth.py:56-64`). The module's own docstring
 (line 19) says 15 s and `docs/ARCHITECTURE.md:162` says 60 s — both are wrong; the code says 30.
-The comment explains the bump: Express and FastAPI are separate Railway services and NTP drift on a
-15 s window risked 401-ing every request.
+The comment explains the bump: Express and FastAPI are separate containers (one host clock on the
+VPS today, but separate hosts drift), and NTP drift on a 15 s window risked 401-ing every request.
 
 Replay nonce: `SET sig:<signature> NX EX <skew>` (`security/auth.py:83-93`). GET/HEAD/OPTIONS are
 exempted because the mobile client polls `GET /ai/scan/{id}` repeatedly and (same second → same ts →
@@ -6870,9 +6873,9 @@ ENSEMBLE_AMBIGUOUS_DELTA (0.10)` **and** `top_differential_prob > 0.25`.
 Members: `ensemble_agent.select(crop)` (`agents/ensemble_agent.py:51-75`) =
 `resolve_chain("ensemble","best")` (tier ignored) + any crop specialist from `agents/specialists/`
 (the registry is **empty** today — `agents/specialists/__init__.py:22-24`). Configured chain is
-`["gemini-2.5-pro", "gemini-2.5-flash", OPENAI_DIAGNOSE_MODEL]` (`agents/registry.py:102-105`);
+`["gemini-3.6-flash", "gemini-3.5-flash-lite", OPENAI_DIAGNOSE_MODEL]` (`agents/registry.py`);
 `resolve_chain` drops any entry with no API key, so **without `OPENAI_API_KEY` the ensemble is
-Pro + Flash**.
+Flash + Flash-Lite**. (It was Gemini 2.5 Pro + Flash until 2026-10-15; Pro has no free-tier quota.)
 
 Each member runs concurrently through `router.dispatch_one_vision` with a 90 s per-member
 `asyncio.wait_for` (`ensemble_agent.py:48,88-97`), `temperature=0.3`, `max_tokens=8192`
@@ -6881,8 +6884,9 @@ no vote; `token_info` is summed across **all** members (including failures that 
 tokens).
 
 `reconciler.fuse([primary, *ensemble_results], crop, accuracy_weights=_MODEL_ACCURACY_WEIGHTS)`
-(`orchestrator.py:375-377`). Weights are static: `gemini-2.5-pro: 1.25`, `gemini-2.5-flash: 0.90`,
-everything else 1.0 (`orchestrator.py:74-78`). `orchestrator.py:369` stamps `diagnosis["_model"]`
+(`orchestrator.py:375-377`). Weights are static (`_MODEL_ACCURACY_WEIGHTS`, `orchestrator.py`):
+`gemini-3.6-flash: 1.00`, `gemini-3.5-flash-lite: 0.85`, plus the legacy `gemini-2.5-pro: 1.25` /
+`gemini-2.5-flash: 0.90` rows kept for paid projects that still have 2.5; everything else 1.0. `orchestrator.py:369` stamps `diagnosis["_model"]`
 from `tok_diagnosis["model"]` first, otherwise the primary would silently default to weight 1.0.
 
 **Voting rule** (`agents/reconciler.py:169-378`):
@@ -6971,7 +6975,7 @@ Two model-selection systems coexist; only one is live for the primary path.
 1. `model_override` (admin App Setting forwarded per request as `body.model` /
    `params.model_diagnose` / `params.model_treatment`) — silently ignored if its prefix is unknown.
 2. `AI_<FEATURE>_MODEL` env var.
-3. `_DEFAULTS[feature]` — **`gemini-2.5-flash` for all nine features** (`llm_dispatch.py:81-92`).
+3. `_DEFAULTS[feature]` — **`gemini-3.6-flash` for all nine features** (`llm_dispatch.py`).
 
 Provider comes from the model-id prefix (`_detect_provider`, `:115-131`): `gemini-*` → gemini,
 `gpt-*` → openai, `claude-*` → anthropic, `llama-*`/`mixtral-*` → groq; anything else raises
@@ -6986,31 +6990,33 @@ at the **most expensive** known rate (`llm_utils.py:98-113`) so the cap can only
 
 | Feature | Default model | Fallbacks | Used by |
 |---|---|---|---|
-| `TEXT_CHAT` | gemini-2.5-flash | Flash↔Pro capacity, then Groq | legacy single-pass chat |
-| `CHAT_WRITER` | gemini-2.5-flash | Flash↔Pro, then Groq | `_agentic_text_reply`, `_voice_reply`, `stream_voice_reply` |
-| `CHAT_ENHANCER` | gemini-2.5-flash | Flash↔Pro, then Groq | only for `response_length ∈ {long, extra_long}` |
-| `CHAT_VISION` | gemini-2.5-flash | **none** | image-in-chat (not disease scan) |
-| `SOIL_OCR` | gemini-2.5-flash | none | `/ai/soil-card-ocr` |
-| `CROP_DIAGNOSE` | gemini-2.5-flash | **none by design** | Stage 3 |
-| `CROP_TREATMENT` | gemini-2.5-flash (FastAPI `_DEFAULTS`) — **in production always overridden to `gemini-2.5-pro`** | none | Stage 4 |
-| `ALERT` | gemini-2.5-flash | Flash↔Pro | `/ai/alerts` |
-| `PEST` | gemini-2.5-flash | Flash↔Pro | *no caller in the tree* |
+| `TEXT_CHAT` | gemini-3.6-flash | Flash↔Flash-Lite capacity, then Groq | legacy single-pass chat |
+| `CHAT_WRITER` | gemini-3.6-flash | Flash↔Flash-Lite, then Groq | `_agentic_text_reply`, `_voice_reply`, `stream_voice_reply` |
+| `CHAT_ENHANCER` | gemini-3.6-flash | Flash↔Flash-Lite, then Groq | only for `response_length ∈ {long, extra_long}` |
+| `CHAT_VISION` | gemini-3.6-flash | **none** | image-in-chat (not disease scan) |
+| `SOIL_OCR` | gemini-3.6-flash | none | `/ai/soil-card-ocr` |
+| `CROP_DIAGNOSE` | gemini-3.6-flash | **none by design** | Stage 3 |
+| `CROP_TREATMENT` | gemini-3.6-flash (FastAPI `_DEFAULTS`; in production the `ai.model.treatment` App Setting decides, default also `gemini-3.6-flash`) | none | Stage 4 |
+| `ALERT` | gemini-3.6-flash | Flash↔Flash-Lite | `/ai/alerts` |
+| `PEST` | gemini-3.6-flash | Flash↔Flash-Lite | *no caller in the tree* |
 
-> **`CROP_TREATMENT` never actually runs on Flash.** Express resolves the `ai.model.treatment`
+> **`CROP_TREATMENT` runs whatever the admin setting says.** Express resolves the `ai.model.treatment`
 > App Setting on *every* scan and forwards it as `params.model_treatment`
 > (`backend/src/routes/ai.routes.js:1722` on the submit path and `:2160` on the legacy path — both
-> unconditional when the setting resolves). That setting's manifest default is `gemini-2.5-pro`
-> (`backend/src/services/settings.service.js:87`), and `getSetting` returns the manifest default when no
+> unconditional when the setting resolves). That setting's manifest default is `gemini-3.6-flash`
+> (`backend/src/services/settings.service.js`), and `getSetting` returns the manifest default when no
 > `AppSetting` row exists (`settings.service.js:304-319`), so the value is present even on a virgin
 > database. `get_feature_config` gives `model_override` the **highest** precedence
-> (`fastapi/agents/llm_dispatch.py:81-92`), so the `_DEFAULTS` entry above is dead in production.
-> Pro is roughly **4× Flash's output-token price**, which makes the treatment stage the single largest
-> per-scan cost lever on the platform — see *Spend Control* below, which does not otherwise mention it.
-> An operator who wants to cut scan cost changes `ai.model.treatment` in the admin settings page, not
-> anything in `fastapi/`.
+> (`fastapi/agents/llm_dispatch.py`), so the `_DEFAULTS` entry above is never what decides in production.
+> Until 2026-10-15 the manifest default was `gemini-2.5-pro`, roughly **4× Flash's output-token price**
+> at the time, which made treatment the single largest per-scan cost lever; it moved to Flash because
+> Gemini 2.5 closed to new API keys and Pro models have no free-tier quota. An operator who wants a
+> different treatment model changes `ai.model.treatment` in the admin settings page, not anything in
+> `fastapi/`.
 
-Fallback chain for `call_llm_text` with a **Gemini** primary (`llm_dispatch.py:394-432`):
-`Gemini primary → Gemini Flash↔Pro capacity swap (only for _AUTO_FALLBACK_FEATURES) → Groq
+Fallback chain for `call_llm_text` with a **Gemini** primary (`llm_dispatch.py`):
+`Gemini primary → Gemini Flash↔Flash-Lite capacity swap (gemini-3.6-flash ↔ gemini-3.5-flash-lite,
+only for _AUTO_FALLBACK_FEATURES) → Groq
 (only for TEXT_CHAT/CHAT_WRITER/CHAT_ENHANCER and only if GROQ_API_KEY set) → re-raise the original
 Gemini error`. A non-Gemini primary is called **direct with no fallback**.
 `call_llm_vision` has **no fallback for any provider**, and rejects Groq outright (`:515-519`).
@@ -7044,8 +7050,9 @@ shutdown.
 
 #### Gemini-specific behaviours worth knowing
 
-- **Thinking budget** (`llm_utils.py:140-166`): Flash gets `thinkingBudget: 0`; Pro gets
-  `max(128, min(512, max_tokens//4))` because Pro 400s on a budget of 0. Unbudgeted thinking used to
+- **Thinking budget** (`llm_utils.py`): Flash gets `thinkingBudget: 0`; Flash-Lite gets **no**
+  `thinkingConfig` at all (it rejects a budget of 0 with HTTP 400 and does not think by default); Pro
+  gets `max(128, min(512, max_tokens//4))` because Pro 400s on a budget of 0. Unbudgeted thinking used to
   eat `maxOutputTokens` and truncate JSON mid-response.
 - **Billing:** `_gemini_output_tokens` (`:128-138`) sums `candidatesTokenCount + thoughtsTokenCount`
   — thinking tokens bill at the output rate and were previously recorded as $0.
@@ -7059,12 +7066,18 @@ shutdown.
   real role-tagged turns and drop leading non-user turns (the scan follow-up conversation is seeded
   with a lone assistant message).
 
-#### Pricing table (`agents/llm_utils.py:47-63`, USD per 1K tokens)
+#### Pricing table (`agents/llm_utils.py`, USD per 1K tokens)
+
+Paid-tier rates, used only for the spend-cap estimates — the live key is free tier, so Gemini calls
+are actually free of charge.
 
 | Model | in | out |
 |---|---|---|
-| gemini-2.5-flash | 0.00030 | 0.00250 |
-| gemini-2.5-pro | 0.00125 | 0.01000 |
+| gemini-3.6-flash | 0.00075 | 0.00375 (through 2026-12-31; then 0.0015 / 0.0075) |
+| gemini-3.5-flash-lite | 0.00030 | 0.00250 |
+| gemini-2.5-flash (legacy, closed to new keys) | 0.00030 | 0.00250 |
+| gemini-2.5-pro (legacy, closed to new keys) | 0.00125 | 0.01000 |
+| openai/gpt-oss-120b | 0.00015 | 0.00060 |
 | llama-3.3-70b-versatile | 0.00059 | 0.00079 |
 | gpt-4o | 0.0025 | 0.01 |
 | gpt-4o-mini | 0.00015 | 0.0006 |
@@ -7388,7 +7401,7 @@ Timeout ladder (documented in `backend/src/services/ai.scan.fastapi.js:29-34`):
 
 #### The worker process (required)
 
-`ROLE=worker` → `celery -A jobs.queue:celery_app worker --concurrency=${CELERY_CONCURRENCY:-2}`.
+The `celery` service in `deploy/docker-compose.yml` → `celery -A jobs.queue:celery_app worker --concurrency=2 --max-tasks-per-child=200`.
 **Without a running worker, every scan sits at `status:"queued"` forever** and the Express poller
 gives up after 300 s. `jobs/tasks.py:26-50` re-asserts `fastapi/` on `sys.path` **at task runtime**,
 not just at import, because Celery's `import_from_cwd` inserts the CWD only for the duration of the
@@ -7662,7 +7675,7 @@ It needs `DATABASE_URL` (queries `ai_scan_diagnoses` through `db_pool.get_shared
 
 **`run_book_dataset`** scores multi-truth labels (`"A | B"` alternates, `"Scab/Verucosis"` slashes)
 and writes the full AI response per image to `eval/reports/book_dataset/responses/<id>.json` plus a
-per-batch markdown table. The committed `scorecard.json` (2026-06-05, gemini-2.5-pro + v2 prompt +
+per-batch markdown table. The committed `scorecard.json` (2026-06-05, gemini-2.5-pro at the time + v2 prompt +
 whitelist) records **top-1 31.7% and top-3 48.8% over 82 images**, with 8 excluded as
 `service_unavailable` and 36 flagged `likely_not_crop_photo` (textbook plates, not field photos).
 Read those numbers as a dataset-quality signal as much as a model one.
@@ -7689,17 +7702,17 @@ Minor drift only:
 | "~90 centrally banned actives" (§9.4) | `BANNED_ACTIVES` has **52** entries; `REGISTERED_ACTIVES` has 31 |
 | quality gate "score < 0.4 → short-circuit" (§4) | only exactly true under `STRICT_IMAGE_GATE`; the shipped default also requires `not usable` **and** empty `enhancement_notes` (`orchestrator.py:236-241`) |
 | treatment cache keyed on "disease + crop + severity + tier + registry_version" (§9.3) | key also includes soil, irrigation, growth stage, **state**, bucketed acreage, **model id**, state-bans version and the grounding signature (`treatment_agent.py:161-207`) |
-| ensemble = "Gemini Pro + Flash" (§7) | plus `gpt-4o` when `OPENAI_API_KEY` is set |
+| ensemble = "Gemini 3.6 Flash + 3.5 Flash-Lite" (§7) | plus `gpt-4o` when `OPENAI_API_KEY` is set |
 
 `docs/ARCHITECTURE.md` (1282 lines) describes an **earlier, Anthropic-first architecture** and is
 wrong in ways that would mislead a change. Do not trust it without re-reading the code:
 
 | ARCHITECTURE.md | Reality |
 |---|---|
-| `:44,72,92,614,689,1252` ensemble = "Gemini Pro + **Claude Sonnet**"; external deps include "Anthropic APIs" | `STAGE_TIER_CHAINS["ensemble"]` = `gemini-2.5-pro, gemini-2.5-flash, gpt-4o`; no `claude-*` id appears in any chain or default |
+| `:44` external deps include "Claude Sonnet/Haiku" and "Anthropic APIs" (the ensemble lines `:72,92,614,689,1252` used to say "Gemini Pro + **Claude Sonnet**"; corrected 2026-10-15) | `STAGE_TIER_CHAINS["ensemble"]` = `gemini-3.6-flash, gemini-3.5-flash-lite, gpt-4o`; no `claude-*` id appears in any chain or default |
 | `:618` "GPT-4o is a documented TODO — needs an OpenAI provider wired into llm_utils/router" | `call_openai_vision` exists (`llm_utils.py:797`) and `router._call_one_vision` dispatches it (`router.py:143-150`) |
 | `:641` "Anthropic models get max_tokens=8192 … while Gemini uses 4096" | `_VISION_MAX_TOKENS = 8192` for **every** ensemble voter (`router.py:115`); the 4096 divergence was the bug that silently truncated voters |
-| `:1057` "text features default to `llama-3.3-70b-versatile` (Groq)" | every one of the nine features defaults to `gemini-2.5-flash` (`llm_dispatch.py:81-92`) |
+| `:1057` "text features default to `llama-3.3-70b-versatile` (Groq)" | every one of the nine features defaults to `gemini-3.6-flash` (`llm_dispatch.py` `_DEFAULTS`) |
 | `:1077-1092` provider selection via `base_url` escape hatch + `_PREFIX_TO_BASE_URL` (deepseek/grok/o1/o3) | `_detect_provider` accepts **only** `gemini-*`/`gpt-*`/`claude-*`/`llama-*`/`mixtral-*` and raises `ConfigError` otherwise; `base_url` is vestigial and always `None` |
 | `:1099` "any model missing from `_PRICING` silently costs $0.00" | inverted: selection now **raises** (`is_priced` guard) and `_calc_cost` bills at the most expensive known rate |
 | `:1102,1117` `get_anthropic()` singleton whose baked-in key ignores `AI_<F>_API_KEY` | no such singleton; `call_anthropic_*` construct `AsyncAnthropic(api_key=…)` per call from the resolved feature key |
@@ -7713,7 +7726,7 @@ wrong in ways that would mislead a change. Do not trust it without re-reading th
 | `:161` "`verify_signed_request` … on both `/ai/scan` and `/ai/scan/{job_id}`" (implying that is the whole surface) | it is now on chat, chat/stream, alerts, soil-OCR, feedback, agripredict and `/health/details` too |
 | `:270,373` sizing rationale quotes "Claude Haiku vision diagnose" / "Claude Haiku fallback" | those comments survive verbatim in `orchestrator.py:63-68,437-441`, but no Claude model is reachable on either path — the comments are stale in the code as well |
 | `:1126` `ENABLE_ENSEMBLE` "soft kill-switch, **default on**" | `config.py:100` default is **off** (`ENABLE_ENSEMBLE=false` in `.env.example:152`) |
-| `:3` "Python 3.14" | unverified — no runtime pin in the repo (`railway.json` uses Nixpacks defaults) |
+| `:3` "Python 3.14" | wrong — `fastapi/Dockerfile` pins `python:3.12-slim`, and CI tests on 3.12 |
 
 The doc's own §"Redis topology" operational warning (multi-replica without Redis ⇒ per-process
 dedup/spend) is still correct and still the sharpest operational note in the file.
@@ -7722,8 +7735,8 @@ dedup/spend) is still correct and still the sharpest operational note in the fil
 
 ### Scalability & Change Hazards (summary for a future editor)
 
-1. **Worker is mandatory.** No `ROLE=worker` service ⇒ every scan sits at `queued` and Express times
-   out at 300 s. Scan throughput is `CELERY_CONCURRENCY × replicas`, with each job holding a
+1. **Worker is mandatory.** No running `celery` container ⇒ every scan sits at `queued` and Express times
+   out at 300 s. Scan throughput is `--concurrency` (2) × worker containers, with each job holding a
    Postgres connection and 1-4 concurrent LLM sockets.
 2. **Redis is the single point of correctness** for spend cap, idempotency, job dedup, job ownership
    (IDOR), replay-nonce, treatment cache and rate limits — and each subsystem resolves its URL
@@ -7844,8 +7857,8 @@ explains it deliberately does *not* use `Linking.canOpenURL` for the
 **EAS profiles** (`frontend/eas.json`): `development` (dev client, internal, debug),
 `preview` (internal, Android APK, iOS simulator), `production` (autoIncrement, Android
 app-bundle). `preview` and `production` both inject
-`EXPO_PUBLIC_API_BASE_URL=https://cropsetu2-production.up.railway.app/api/v1` and
-`EXPO_PUBLIC_SOCKET_URL=wss://cropsetu2-production.up.railway.app`.
+`EXPO_PUBLIC_API_BASE_URL=https://srv2061596.hstgr.cloud/api/v1` and
+`EXPO_PUBLIC_SOCKET_URL=wss://srv2061596.hstgr.cloud` (the production VPS).
 `appVersionSource: remote`. Submit target: Play internal track via
 `./play-store-credentials.json`.
 
@@ -7857,8 +7870,8 @@ CI (`frontend/.github/workflows/ci.yml`): Node 20, `npm ci`, `npx expo export --
 android` as a bundle smoke test (failure is downgraded to a warning), plus a
 grep-based secret scan for `sk-…`, `ghp_…`, `AIza…` that *fails* the build.
 `eas-build.yml` is a manual `workflow_dispatch` with profile/platform inputs.
-`frontend/railway.toml` is stale/wrong for this directory — it contains a Node backend
-start command (`prisma db push && node src/server.js`).
+The leftover hosting TOML that once sat in this directory (a Node backend start command,
+`prisma db push && node src/server.js`) has been deleted.
 
 **Metro** (`frontend/metro.config.js`): `watchFolders = [../shared]` and
 `resolver.extraNodeModules['@krushisarva/shared'] = ../shared`, with
@@ -8090,7 +8103,7 @@ on web `withCredentials: true` + `X-Auth-Transport: cookie`.
    from the Metro host (`Constants.expoConfig.hostUri` → `expoGoConfig.debuggerHost` →
    `manifest2.extra.expoGo.debuggerHost` → `manifest.debuggerHost`), falling back to
    `10.0.2.2` on Android and `localhost` on iOS/web. No LAN IP is ever hardcoded.
-3. Otherwise the Railway production URL `https://cropsetu2-production.up.railway.app/api/v1`.
+3. Otherwise the production VPS URL `https://srv2061596.hstgr.cloud/api/v1`.
 
 `SOCKET_URL` follows the same three-step ladder (`:49-50`).
 
@@ -8164,12 +8177,13 @@ flood guard: 10 reports per 60 s window (`:43-54`). Payload fields are truncated
 (message 1 KB, stacks 10 KB) and tagged with `Platform.OS`, `expoConfig.version`,
 `expoConfig.slug`.
 
-**SSL pinning** — `src/config/sslPinning.js` holds three SPKI pins (leaf `*.up.railway.app`
-exp 2026-08-02, Let's Encrypt E7 exp 2027-03-12, ISRG Root X1 exp 2035-06-04) for host
-`cropsetu-backend-production.up.railway.app`. The header states plainly that **enforcement
-is not wired into the native networking layer, so the pins are inert** (`:50-53`), and
-`getSSLConfig()` returns `null` in `__DEV__`. Note the pinned host does not match the
-`API_BASE_URL` default host (`cropsetu2-production.up.railway.app`).
+**SSL pinning** — `src/config/sslPinning.js` holds four SPKI pins for host
+`srv2061596.hstgr.cloud`, all at CA level so Caddy's leaf-key rotation on every renewal does
+not invalidate them (Let's Encrypt YE1 intermediate exp 2028-09-02, ISRG Root YE exp
+2032-09-02, ISRG Root X2 exp 2040-09-17, backup ISRG Root X1 exp 2035-06-04). The pinned
+host matches the `API_BASE_URL` default host. The header states plainly that **enforcement
+is not wired into the native networking layer, so the pins are inert**, and nothing imports
+the file; `getSSLConfig()` returns `null` in `__DEV__`.
 
 ##### Service clients
 
@@ -8822,7 +8836,7 @@ A standalone Expo app for sellers (Krushi Seva Kendras). It was split out of `fr
 | Native permissions | CAMERA, READ_MEDIA_IMAGES (Android); NSCamera/NSPhotoLibrary (iOS) | `app.json:19-22,30-33` |
 | Config plugins | `expo-image-picker`, `expo-secure-store` | `app.json:39-48` |
 | Env | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_SOCKET_URL` baked at build time | `.env.example:17-18` |
-| EAS envs (preview + production) | `https://cropsetu2-production.up.railway.app/api/v1`, `wss://…` | `eas.json:27-30,37-41` |
+| EAS envs (preview + production) | `https://srv2061596.hstgr.cloud/api/v1`, `wss://…` | `eas.json:27-30,37-41` |
 | Native dirs | `/android/`, `/ios/` gitignored — regenerated by `expo prebuild` | `.gitignore:18-19` |
 
 ###### How it differs from `frontend/`
@@ -9296,7 +9310,17 @@ entry bundle. `index.html` carries `<meta name="robots" content="noindex, nofoll
 
 **Serving.** `admin/vite.config.ts:14` sets `base: '/admin/'` and
 `admin/src/main.tsx:16` sets `<BrowserRouter basename="/admin">`, so the app is
-path-mounted, not host-mounted. `backend/src/app.js:306-322`:
+path-mounted, not host-mounted. **Production hosting is Vercel only**
+(`https://krushi-sarva.vercel.app`, Vercel root directory `admin`). `admin/vercel.json`
+builds into `out/admin` (`npm run build -- --outDir out/admin`), redirects `/` to
+`/admin/`, rewrites `/admin/:path*` to `/admin/index.html` (SPA fallback), proxies
+`/api/:path*` to `https://srv2061596.hstgr.cloud/api/:path*`, and adds
+`X-Frame-Options: DENY`, `nosniff` and `strict-origin-when-cross-origin` headers.
+The VPS does not serve a copy: the backend image contains no `admin/`, and
+`deploy/Caddyfile` answers `/admin*` with a 302 to the Vercel panel. Socket.IO is not
+proxied; the panel does not use it. The backend still carries an optional static mount
+(`backend/src/app.js:306-322`), which only activates where an `admin/dist` build exists
+next to it (a local `npm run build`):
 
 ```js
 const ADMIN_DIST_DIR = process.env.ADMIN_DIST_DIR
@@ -9309,7 +9333,8 @@ if (fs.existsSync(path.join(ADMIN_DIST_DIR, 'index.html'))) {
 }
 ```
 
-Properties that matter for reasoning about this:
+Properties that matter for reasoning about this (the static-mount bullets apply only
+where that mount is active):
 
 - The static mount is **before** the global rate limiter, body parser and CSRF
   guard (`app.js:301-303` comment; limiter starts at `app.js:324`). Asset loads are
@@ -9320,16 +9345,20 @@ Properties that matter for reasoning about this:
 - The whole block is skipped when `admin/dist` is absent — that is the local-dev
   path, where Vite serves the SPA on `:5180` and proxies `/api` to
   `VITE_API_PROXY` (`vite.config.ts:18-20`).
-- `/admin` (SPA) and `/api/v1/admin` (API) are disjoint paths on the same origin.
+- `/admin` (SPA) and `/api/v1/admin` (API) are disjoint paths on the same origin
+  (on Vercel, `/admin/*` is static and `/api/*` is the proxy).
 - `helmet`'s CSP is loosened to `img-src 'self' data: blob: https:`
   (`app.js:103-113`) **because of this SPA** — product photos, KYC documents and
   avatars are Cloudinary URLs and the default `img-src 'self' data:` blanked them.
   `script-src 'self'` is untouched (the Vite build emits no inline script).
-- CORS: `SELF_ORIGINS` derived from `RAILWAY_PUBLIC_DOMAIN` / `RAILWAY_STATIC_URL`
-  is always allowed (`app.js:126-131`) because Vite marks bundles `crossorigin`, so
-  even same-origin asset requests send an `Origin` header; without this the
-  allowlist would 500 and the panel would white-screen. In dev, any loopback origin
-  is allowed (`app.js:139-145`).
+- CORS: there is no implicit self-origin allowance. The proxied API calls from the
+  Vercel panel reach Express carrying `Origin: https://krushi-sarva.vercel.app`, so the
+  backend must list that origin in `ALLOWED_ORIGINS`; without it the allowlist would 500
+  and the panel would white-screen. In dev, any loopback origin is allowed
+  (`app.js:139-145`).
+- Rate limits: through the proxy the backend sees Vercel's servers, not the admin's own
+  IP, so every admin shares the global per-IP bucket (200 / 15 min) — acceptable for a
+  few admins (`admin/README.md`, "Hosting on Vercel").
 - Maintenance mode exempts `/admin`, `/api/v1/admin/*` and `/api/v1/auth/*`
   (`backend/src/middleware/maintenance.js:27-37`) so an operator can always log in
   and switch it back off.
@@ -9342,20 +9371,22 @@ Properties that matter for reasoning about this:
 | `VITE_API_PROXY` | `http://localhost:3001` (`vite.config.ts:9`) | Dev-only Vite proxy target for `/api`. |
 | `VITE_ENV_NAME` | `local` (`AppShell.tsx:13`) | Top-bar badge; `production` → red, `staging` → amber, else slate. |
 
-The repo-root `Dockerfile` hard-sets `VITE_API_URL=/api/v1` and
-`VITE_ENV_NAME=production` in the admin-build stage and copies `/admin/dist` into
-the backend image at `/app/admin/dist` with `ADMIN_DIST_DIR` pointing at it.
-`admin/.gitignore` ignores `dist`, so the build artifact is never committed.
+On Vercel, `VITE_API_URL` is left **unset** (the default `/api/v1` goes through the
+proxy) and the four `VITE_FIREBASE_*` values are set in the Vercel project
+(`admin/README.md`, "Hosting on Vercel"). The repo-root `Dockerfile` no longer has an
+admin-build stage. `admin/.gitignore` ignores `dist`, so the build artifact is never
+committed.
 
 **Auth/cookie consequences of same-origin.** The whole auth design depends on it:
 the refresh token is an httpOnly cookie and the CSRF token a JS-readable cookie,
-both `SameSite=Lax`. Serving the SPA from the API origin keeps them first-party,
-so no `SameSite=None`, no `Access-Control-Allow-Credentials` juggling, and no
-third-party-cookie blocking. Split the origins and you must (a) list the admin
-origin in `ALLOWED_ORIGINS`, (b) weaken the cookies to `SameSite=None; Secure`,
+both `SameSite=Lax`. The Vercel `/api/*` rewrite makes the API look same-origin to the browser, which keeps
+them first-party for the Vercel domain, so no `SameSite=None`, no
+`Access-Control-Allow-Credentials` juggling, and no third-party-cookie blocking. Call
+the API origin directly instead (an absolute `VITE_API_URL`) and you must (a) list the
+admin origin in `ALLOWED_ORIGINS`, (b) weaken the cookies to `SameSite=None; Secure`,
 and (c) accept that browsers partitioning third-party cookies will break silent
-refresh. `docs/ADMIN_DEPLOY_RAILWAY.md` calls the ~15-minute-logout symptom out
-explicitly as the cross-site failure mode.
+refresh — the symptom is an admin logged out every ~15 minutes, when the access token
+expires and the cookie-based refresh silently fails.
 
 ##### 5.3.2 Authentication and session lifecycle
 
@@ -9846,11 +9877,13 @@ build and §10 bolts on the v2 changes without correcting the earlier text.
 | Trust & Safety routers described as part of the admin surface | `docs/ADMIN_PANEL.md` §5 | Accurate that they are mounted separately, but the doc does not say that `moderation.routes.js`, `fraud.routes.js` and `incident.routes.js` each define their **own** local `requireAdmin` and carry **no `requireScope`** — so Moderation, Fraud and Incidents are open to any ADMIN regardless of scopes, unlike every other domain. Also unlike the rest, they never run `loadAdminContext`. |
 | §9 "Known follow-ups" lists only sub-roles (done) and the mandi worker | `docs/ADMIN_PANEL.md` §9 | Does not mention that the whole `shopCompliance` domain (recalls, sale-blocks, licences, batches, payment reconciliation) has no UI. |
 
-`docs/ADMIN_DEPLOY_RAILWAY.md` matches the code exactly: the repo-root `Dockerfile`
-does build the SPA in stage 1, hard-set `VITE_API_URL=/api/v1`, copy `dist` to
-`/app/admin/dist` and set `ADMIN_DIST_DIR`; `railway.json` does point at the
-Dockerfile with `healthcheckPath: /healthz`; `admin/.gitignore` does ignore `dist`.
-No disagreements found in that file.
+Admin hosting is documented in `admin/README.md` ("Hosting on Vercel") and
+`docs/deploy/VPS_DEPLOY_PLAN.md` §10, and both match the code: `admin/vercel.json`
+builds into `out/admin`, proxies `/api/*` to the VPS and falls back to `index.html`;
+the repo-root `Dockerfile` has no admin stage and `.dockerignore` excludes `admin/`;
+`deploy/Caddyfile` redirects `/admin*` to Vercel; `admin/.gitignore` does ignore `dist`.
+The earlier same-origin deploy guide (SPA built into the backend image) has been
+deleted together with that build stage.
 
 ---
 
@@ -9970,8 +10003,8 @@ The single most important file in the package. It creates **two** axios instance
 
 | Export | Resolution order |
 | --- | --- |
-| `API_BASE_URL` (L47) | `process.env.EXPO_PUBLIC_API_BASE_URL` → (`__DEV__` ? `http://${DEV_HOST}:3001/api/v1`) → `https://cropsetu2-production.up.railway.app/api/v1` |
-| `SOCKET_URL` (L49) | `process.env.EXPO_PUBLIC_SOCKET_URL` → (`__DEV__` ? `http://${DEV_HOST}:3001`) → `wss://cropsetu2-production.up.railway.app` |
+| `API_BASE_URL` (L47) | `process.env.EXPO_PUBLIC_API_BASE_URL` → (`__DEV__` ? `http://${DEV_HOST}:3001/api/v1`) → `https://srv2061596.hstgr.cloud/api/v1` |
+| `SOCKET_URL` (L49) | `process.env.EXPO_PUBLIC_SOCKET_URL` → (`__DEV__` ? `http://${DEV_HOST}:3001`) → `wss://srv2061596.hstgr.cloud` |
 
 `DEV_HOST=10.0.2.2` works only in the Android **emulator**; a physical device or Expo Go needs `EXPO_PUBLIC_API_BASE_URL` set (comment L44-45). The file opens with a hard rule: **no third-party API keys here** — anything in the bundle is extractable from the APK/IPA.
 
@@ -10672,10 +10705,10 @@ consolidated authorization index a reader consults instead of those.
 ### 6.3 Transport security, CORS, CSRF
 
 - **helmet** defaults with `img-src 'self' data: blob: https:` widened solely so the admin SPA can render Cloudinary product photos and KYC documents; `script-src 'self'` is untouched.
-- **CORS**: no `Origin` ⇒ allow (mobile/curl); `SELF_ORIGINS` from `RAILWAY_PUBLIC_DOMAIN`/`RAILWAY_STATIC_URL` always allowed (Vite marks bundles `crossorigin`, so even same-origin asset loads send an Origin); dev loopback allowed; otherwise `ENV.ALLOWED_ORIGINS`, and an empty list **rejects in production**.
+- **CORS**: no `Origin` ⇒ allow (mobile/curl); dev loopback allowed; otherwise `ENV.ALLOWED_ORIGINS`, and an empty list **rejects in production**. There is no implicit self-origin allowance, so the Vercel admin origin `https://krushi-sarva.vercel.app` (whose proxied calls carry that `Origin`) must be in the list.
 - **CSRF**: double-submit with `crypto.timingSafeEqual`, applied app-wide but skipped for safe methods, `/auth/send-otp`, `/auth/verify-otp`, and **any request with no `rt` cookie** — so all Bearer/mobile traffic is exempt by construction, and only the admin SPA is actually protected by it.
-- **`trust proxy`** must stay at `1` behind Railway: over-trusting lets a client forge `X-Forwarded-For` and mint a fresh rate-limit bucket per request, silently disabling the global limiter.
-- **SSL pinning** exists in `frontend/src/config/sslPinning.js` but has **no importer** and is inert by its own admission; the pinned host does not even match the configured API host.
+- **`trust proxy`** must stay at `1` behind Caddy, the single reverse proxy in front of Express on the VPS: over-trusting lets a client forge `X-Forwarded-For` and mint a fresh rate-limit bucket per request, silently disabling the global limiter.
+- **SSL pinning** exists in `frontend/src/config/sslPinning.js` (CA-level pins keyed on `srv2061596.hstgr.cloud`, the configured API host) but has **no importer** and is inert by its own admission.
 
 ### 6.4 PII, encryption and data protection
 
@@ -10690,7 +10723,7 @@ consolidated authorization index a reader consults instead of those.
 | Metrics | Shop metrics label by route **template** only — a per-product-id label would be an itemised browsing history, and for crop-protection products a sensitive one. | §1.11 |
 | Consent | Append-only `ConsentRecord` across 8 purposes, policy version `2026-06-01`; effective state = newest row per purpose computed in JS; `MARKETING` is permanently prohibited for minors under DPDP §9(3). | Part 3.1 |
 | Erasure | `DELETE /users/me` requires OTP re-verification, then one 30 s transaction: hard-delete ~30 personal models, deactivate and scrub listings/orders/bookings, anonymise the `User` row (`deleted_<id>` phone sentinel, `tokenVersion++`), then purge Cloudinary assets best-effort. Keeping the `User` row is deliberate — ~25 `Restrict` relations would block a hard delete. | Part 3.1 |
-| Retention | Leader-locked daily sweep at 02:30 **container-local** (no `timezone` passed to `cron.schedule`; UTC only because Railway containers default to it) over 7 categories: otpSessions 1 d, refreshTokens 7 d, notifications 90 d, voiceSessions 90 d, aiUsage 180 d, auditLogs 365 d, mspRates 1095 d. | Part 2 |
+| Retention | Leader-locked daily sweep at 02:30 **container-local** (no `timezone` passed to `cron.schedule`; UTC only because the container images default to it and `deploy/docker-compose.yml` sets no `TZ`) over 7 categories: otpSessions 1 d, refreshTokens 7 d, notifications 90 d, voiceSessions 90 d, aiUsage 180 d, auditLogs 365 d, mspRates 1095 d. | Part 2 |
 | Known PII gaps | `Farm.latitude/longitude` are plaintext Float while `User.lat/lng` are encrypted; `VoiceMessage`/`AIMessage` transcripts have no retention entry; `Order.deliveryAddress` and `pricingSnapshot` are plaintext JSONB; two admin endpoints return a raw `User.phone` on non-SUPPORT scopes. | Part 2, Part 3.4 |
 
 ### 6.5 Caching
@@ -10746,11 +10779,11 @@ Two further translation layers sit outside `t()`: `frontend/src/data/contentI18n
 | Logs | `utils/logger.js`, plain console with key-based PII redaction | **`logger.warn` and `logger.debug` print only outside production.** Most degradation notices (rate-limit fallback, uncoordinated leader run, inline queue fallback, circuit state changes, idempotency read failure) leave **no production trace**. All real alerting therefore goes through `logger.error` with greppable `[ALERT]` markers. |
 | Request correlation | `req.id` (client `x-request-id` or a fresh UUID) echoed as a header, embedded in error bodies, logged, persisted into `ErrorLog.context`, forwarded to FastAPI, carried in audit rows | client-supplied ids are trusted verbatim |
 | Error persistence | `utils/errorLog.js` — the single writer for the admin Ops error viewer; **only status ≥ 500** is persisted | client crashes go to `POST /telemetry/client-error`, which only logs and persists nothing |
-| Liveness | `GET /healthz`, `/health` — dependency-free, always 200 | Railway's configured target |
+| Liveness | `GET /healthz`, `/health` — dependency-free, always 200 | the `backend` Compose healthcheck target; public through Caddy, whereas Caddy answers `/readyz` with 404 so readiness is checked from the host (`curl 127.0.0.1:3000/readyz`) |
 | Readiness | `GET /readyz` — DB `SELECT 1` required (503 on failure); **Redis reported but excluded** so a cache outage cannot pull the fleet out of the LB. Publicly exposes cache hit rate, Redis memory and shop metrics (route templates only). | breaker states are **not** on `/readyz` despite `breakerStates()` existing |
 | Shop metrics | per-process 500-sample ring buffers, nearest-rank percentiles, enumerated `SHOP_EVENTS` counters and four derived rates | per-process, so the two alert crons are deliberately **not** leader-locked |
 | Admin ops | `GET /admin/ops/status` runs 7 probes in parallel with a 4 s timeout each; `down` if DB or Redis fails, else `healthy` only when the AI service and queues are both ok | the only "is it up right now" surface; everything else is historical |
-| FastAPI | `/health` (liveness + DB + CRITICAL invariants), `/health/details` (signed) | **no healthcheck configured** in `fastapi/railway.json` |
+| FastAPI | `/health` (liveness + DB + CRITICAL invariants), `/health/details` (signed) | the `fastapi` Compose healthcheck reads the `/health` body for `"ok"` every 60 s, but Docker only marks the container unhealthy — `restart: unless-stopped` restarts on exit, not on a failed check |
 
 ### 6.10 Failure-mode posture, in one table
 
@@ -10776,7 +10809,7 @@ Two further translation layers sit outside `t()`: `frontend/src/data/contentI18n
 
 ## 7. Infrastructure & Operations
 
-> **Canonical home for**: the three Railway config files, the Dockerfile, the full environment-variable matrix across all five surfaces, the `db push` schema policy and manual SQL escape hatch, the test inventory, CI reality, mobile release/EAS/OTA, the local runbook, the documentation inventory with accuracy assessments, repo conventions, the cron register, and the operational risk register.
+> **Canonical home for**: the VPS deploy files (`deploy/docker-compose.yml`, `deploy/Caddyfile`), the two Dockerfiles, the full environment-variable matrix across all five surfaces, the `db push` schema policy and manual SQL escape hatch, the test inventory, CI reality, mobile release/EAS/OTA, the local runbook, the documentation inventory with accuracy assessments, repo conventions, the cron register, and the operational risk register.
 > **Note**: this part's cron table lists 12 `node-cron` jobs; Part 1 quotes "13 schedules" because it counts the boot-time mandi seed, which is a one-shot leader-locked call rather than a cron registration. **VERIFIED: `backend/src/server.js` contains exactly 12 `cron.schedule(...)` calls plus one startup seed.**
 
 ### Build, Deploy, Operations and Cross-Repo Conventions
@@ -10788,52 +10821,47 @@ Everything below was read from the files cited. Repo root is
 `.tsx`, 19 `.sql`, 4 `.yml`). No secret or log file is tracked; the only
 tracked env files are the five `.env.example` templates.
 
-#### 7.1 Deployment topology on Railway
+#### 7.1 Deployment topology on the VPS
 
-Deployment is Railway + EAS. There is **no root `.github/`**, no Terraform, no
-Helm, no docker-compose — the entire runtime definition is three files plus
-Railway dashboard settings.
+Production since 2026-10-14 is **one Hostinger VPS** (virtual private server) at
+`https://srv2061596.hstgr.cloud`, running Docker Compose; mobile builds go
+through EAS. There is no Terraform, no Helm and no orchestrator — the entire
+server runtime definition is `deploy/docker-compose.yml` plus `deploy/Caddyfile`
+(both copied to `/opt/krushisarva/` on the server, next to the `app/` git clone
+and the `env/` secrets). Design and reasoning: `docs/deploy/VPS_DEPLOY_PLAN.md`.
 
-| Config file | Governs | Builder | Start command | Healthcheck |
+| Container | Image / build | Start command | Public? | Healthcheck |
 | --- | --- | --- | --- | --- |
-| `railway.json` (repo root) | the **backend** service, Root Directory `/` | `DOCKERFILE`, `dockerfilePath: Dockerfile` | none set here → image `CMD` (`Dockerfile:54`) | `/healthz`, timeout 300 s, restart `ON_FAILURE` ×3 |
-| `fastapi/railway.json` | the **AI service** (web *and* worker roles) | `NIXPACKS` | role-switched shell, see below | **none configured** — restart `ON_FAILURE` ×3 only |
-| `frontend/railway.toml` | a **frontend** Railway service | `NIXPACKS` | `npx prisma generate && npx prisma db push --accept-data-loss && node src/server.js` | `/health`, timeout 60 s, restart ×5 |
+| `caddy` | `caddy:2-alpine` | Caddyfile: Let's Encrypt TLS, `reverse_proxy 127.0.0.1:3000` | **yes** — `network_mode: host`, binds 80 and 443 | none |
+| `backend` | root `Dockerfile` | `node src/server.js` (compose `command:` replaces the `sh -c` `CMD` so SIGTERM reaches node; no `db push` on boot) | no — `127.0.0.1:3000` only | `fetch('http://127.0.0.1:3000/healthz')` every 30 s |
+| `fastapi` | `fastapi/Dockerfile` | `uvicorn main:app --host 0.0.0.0 --port 8001 --workers 1 --no-access-log` | no | body of `GET /health` must contain `"ok"`, every 60 s |
+| `celery` | same image as `fastapi` | `celery -A jobs.queue:celery_app worker --concurrency=2 --max-tasks-per-child=200` | no | none (`stop_grace_period: 310s` for in-flight scans) |
+| `postgres` | `postgres:16` | `max_connections=60`, tuned for 4 GB RAM | no | `pg_isready` every 10 s |
+| `redis` | `redis:7-alpine` | `--maxmemory 256mb --maxmemory-policy noeviction --appendonly yes` | no | `redis-cli ping` every 10 s |
 
-`fastapi/railway.json:7` is a single command that branches on `$ROLE`:
+Only ports 22, 80 and 443 are reachable from the internet. Caddy is the only
+reverse proxy, so `TRUST_PROXY=1`. Caddy forwards only to the backend; FastAPI
+has no public URL and is reached by Express through `AI_BACKEND_URL` with
+HMAC-signed calls. Backend and FastAPI share the one Postgres instance on the
+VPS. Server env files are `/opt/krushisarva/env/{backend,fastapi,postgres}.env`;
+an update is `/root/update.sh` (pull, build, `docker compose up -d`, see
+`VPS_DEPLOY_PLAN.md` §8).
 
-```sh
-if [ "$ROLE" = "worker" ]; then
-  celery -A jobs.queue:celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
-else
-  uvicorn main:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2} --no-access-log
-fi
-```
+The Celery worker is now a container of its own in the compose file, so the old
+question of whether a `ROLE=worker` service exists is settled: `POST /ai/scan`
+jobs are executed by the `celery` container (`fastapi/jobs/queue.py`,
+`fastapi/jobs/tasks.py`).
 
-So one Railway service definition covers both the FastAPI web tier and the
-Celery worker tier; a second Railway service pointing at the same root with
-`ROLE=worker` is what turns it into a worker. **Whether that second service
-actually exists is a Railway-dashboard fact this repo cannot prove** — the code
-merely supports it. If it does not exist, `POST /ai/scan` enqueues Celery jobs
-that nothing ever executes (`fastapi/jobs/queue.py`, `fastapi/jobs/tasks.py`).
-
-`docs/ADMIN_DEPLOY_RAILWAY.md:27` names three application services —
-"backend", "fastapi" and "frontend" — plus the Postgres plugin
-(`DATABASE_URL`) and Redis plugin (`REDIS_URL`) referenced throughout
-`backend/.env.example:13-28`.
-
-##### `frontend/railway.toml` is broken and dangerous (verified)
-
-`frontend/package.json` contains **zero** occurrences of `prisma` and no
-`express`; `frontend/src/server.js` and `frontend/prisma/` do not exist. Its
-start command therefore cannot succeed. Worse, it is the *only* place in the
-repo that passes `--accept-data-loss` to `prisma db push` — the exact flag that
-every manual migration header (e.g.
-`backend/prisma/manual/admin_v2_additive.sql:8`,
-`seller_licence_additive.sql:8`) says in capitals must **NEVER** be added,
-because it would let Prisma drop the **FastAPI-owned tables — `ai_scan_diagnoses`
-and `ai_scan_feedback`, and only those two**. If a "frontend" Railway service is
-attached to the shared `DATABASE_URL`, that line is a live data-loss hazard.
+> **Removed 2026-10-15.** The earlier hosting company's config files (one at the
+> repo root, one in `fastapi/`, one in `frontend/`, plus its ignore file) and its
+> admin deploy guide are deleted. That also removed the only in-repo use of
+> `prisma db push --accept-data-loss` (the `frontend/` start command, a fossil
+> from when `frontend/` held backend code — `frontend/.easignore:18-33`). The
+> flag is still the one every manual migration header (e.g.
+> `backend/prisma/manual/admin_v2_additive.sql:8`, `seller_licence_additive.sql:8`)
+> says in capitals must **NEVER** be used, because it would let Prisma drop the
+> **FastAPI-owned tables — `ai_scan_diagnoses` and `ai_scan_feedback`, and only
+> those two**.
 
 > **Correction to the blast radius.** `admin_v2_additive.sql:6` lists `mandi_prices`
 > alongside those two, and earlier revisions of this document repeated it. That is a
@@ -10844,39 +10872,41 @@ attached to the shared `DATABASE_URL`, that line is a live data-loss hazard.
 > exposure smaller than the SQL comment implies, but no less fatal for scan audit history.
 > See Part 2 (§"Manual SQL") and [Appendix A.1](#a1-reconciled-while-assembling-this-document) #3.
 
-The file appears to be a fossil from when `frontend/` still contained backend code — see
-`frontend/.easignore:18-33`, which excludes `src/app.js`, `src/server.js`,
-`prisma/` as "Backend code accidentally bundled in this RN repo".
-
 ##### Health endpoints
 
 | Path | Service | File | Semantics |
 | --- | --- | --- | --- |
-| `GET /healthz` | Express | `backend/src/app.js:226` | Liveness. `{status:'ok'}`, touches nothing. Railway's configured target. |
-| `GET /health` | Express | `backend/src/app.js:227` | Byte-identical alias, kept for backward compat (comment at `app.js:223`). |
-| `GET /readyz` | Express | `backend/src/app.js:229-292` | Readiness + a metrics payload. Postgres via `SELECT 1` is **required** (503 on failure); Redis is reported but deliberately **not** readiness-gating so a cache outage does not pull every instance out of the LB. Also returns `redis_*`, `cache_hits/misses/hit_rate` and flattened shop-latency metrics — this is the scrape target. It is public (mounted before auth). |
+| `GET /healthz` | Express | `backend/src/app.js:318` | Liveness. `{status:'ok'}`, touches nothing. The Docker Compose healthcheck target (`deploy/docker-compose.yml`). |
+| `GET /health` | Express | `backend/src/app.js:319` | Byte-identical alias, kept for backward compat (comment at `app.js:316`). |
+| `GET /readyz` | Express | `backend/src/app.js:321-392` | Readiness + a metrics payload. Postgres via `SELECT 1` is **required** (503 on failure); Redis is reported but deliberately **not** readiness-gating so a cache outage does not pull every instance out of the LB. Also returns `redis_*`, `cache_hits/misses/hit_rate` and flattened shop-latency metrics — this is the scrape target. Mounted before auth, but `deploy/Caddyfile` answers 404 to it from the internet; read it on the host with `curl -s 127.0.0.1:3000/readyz`. |
 | `GET /health` | FastAPI | `fastapi/main.py:266-276` | Liveness + DB probe + CRITICAL-invariant check → `ok` or `degraded`. Deliberately leaks no version info (AISVC-8). |
 | `GET /health/details` | FastAPI | `fastapi/main.py:278+` | Full diagnostics (prompt registry, model chains, local-classifier status, registry versions) behind `Depends(verify_signed_request)` — only Express can read it. |
 
 Health probes are mounted **before** the global rate limiter
-(`backend/src/app.js:323` comment) so LB checks are never throttled.
+(`backend/src/app.js:433` comment) so LB checks are never throttled.
 
 ##### Admin SPA shipping
 
-The admin panel is **not a service**. `Dockerfile` stage 1 builds
-`admin/dist`; stage 2 copies it to `/app/admin/dist` and sets
-`ADMIN_DIST_DIR=/app/admin/dist`. `backend/src/app.js:307-321` resolves
-`process.env.ADMIN_DIST_DIR` (falling back to `../../admin/dist`), and **only
-if `index.html` exists** mounts `express.static(dir, {index:false, maxAge:'1y'})`
-at `/admin` plus a SPA fallback (`GET /admin`, `GET /admin/*` → `index.html`
-with `Cache-Control: no-cache`). Absent dist ⇒ the mount is silently skipped and
-the API boots normally (that is local dev, where the SPA runs on its own Vite
-server at port 5180, `admin/vite.config.ts:17`).
+The admin panel is **not a service on the VPS**. It is built and hosted on
+Vercel at `https://krushi-sarva.vercel.app` (Vercel root directory `admin`), and
+`admin/vercel.json` rewrites `/api/*` to `https://srv2061596.hstgr.cloud/api/*`.
+The root `Dockerfile` no longer builds `admin/dist`, and `deploy/Caddyfile`
+redirects any old `/admin` link on the VPS host to the Vercel panel (302). See
+`admin/README.md` ("Hosting on Vercel").
 
-Same-origin is the load-bearing choice: `Dockerfile:14` hard-sets
-`VITE_API_URL=/api/v1` at build time, and `admin/vite.config.ts:14` sets
-`base:'/admin/'`. That keeps the httpOnly refresh cookie + CSRF cookie
-first-party `SameSite=Lax` with no CORS.
+`backend/src/app.js:404-420` still resolves `process.env.ADMIN_DIST_DIR`
+(falling back to `../../admin/dist`) and **only if `index.html` exists** mounts
+`express.static(dir, {index:false, maxAge:'1y'})` at `/admin` plus a SPA
+fallback. In the VPS image the folder is absent, so the mount is skipped and
+the API boots normally (local dev runs the SPA on its own Vite server at port
+5180, `admin/vite.config.ts:17`).
+
+Same-origin is still the load-bearing choice, now provided by the Vercel
+rewrite: `VITE_API_URL` defaults to `/api/v1` (`admin/src/lib/api.ts:17`) and
+`admin/vite.config.ts:14` sets `base:'/admin/'`. The browser only ever talks to
+the Vercel origin, so the httpOnly refresh cookie + CSRF cookie stay
+first-party `SameSite=Lax` with no CORS. Known limit (`admin/README.md`): the
+backend sees Vercel's servers, not the admin's own IP.
 
 ##### Runtime topology
 
@@ -10885,16 +10915,17 @@ flowchart TB
   subgraph Clients
     FA["Farmer app (Expo)<br/>com.krushisarva.app"]
     SA["Seller app (Expo)<br/>com.cropsetu.seller"]
-    AD["Admin SPA (React/Vite)<br/>served at /admin"]
+    AD["Admin SPA (React/Vite)<br/>hosted on Vercel<br/>krushi-sarva.vercel.app/admin"]
   end
 
-  subgraph Railway["Railway project"]
-    BE["backend service<br/>Dockerfile · node src/server.js<br/>/healthz · /readyz · /api/v1/*<br/>+ static /admin"]
-    AIW["fastapi service (ROLE unset)<br/>uvicorn main:app --workers 2<br/>/ai/* /agripredict/* /health"]
-    AIWK["fastapi service (ROLE=worker)<br/>celery -A jobs.queue:celery_app<br/>(existence unverified)"]
-    PG[("PostgreSQL<br/>Railway plugin")]
-    RD[("Redis<br/>Railway plugin")]
-    FEX["frontend service<br/>railway.toml start cmd is broken"]
+  subgraph VPS["Hostinger VPS · docker compose (deploy/docker-compose.yml)"]
+    CAD["caddy<br/>Let's Encrypt TLS · :80/:443<br/>the only public entry"]
+    BE["backend container<br/>Dockerfile · node src/server.js<br/>/healthz · /readyz · /api/v1/*"]
+    AIW["fastapi container<br/>uvicorn main:app --workers 1 · :8001<br/>/ai/* /agripredict/* /health"]
+    AIWK["celery container (same image)<br/>celery -A jobs.queue:celery_app"]
+    PG[("postgres:16<br/>shared by backend + FastAPI")]
+    RD[("redis:7<br/>noeviction")]
+  end
   end
 
   subgraph ThirdParty["Third parties"]
@@ -10903,7 +10934,7 @@ flowchart TB
     GRQ["Groq (optional chat fallback)"]
     OAI["OpenAI (optional voter)"]
     ANT["Anthropic (optional, WI-11)"]
-    MSG["MSG91 (OTP SMS)"]
+    FBA["Firebase Phone Auth (SMS sign-in)"]
     CLD["Cloudinary (images)"]
     RZP["Razorpay (payments)"]
     OWM["OpenWeatherMap"]
@@ -10912,14 +10943,15 @@ flowchart TB
     EXP["Expo Push"]
   end
 
-  FA -->|"HTTPS + WSS<br/>Bearer JWT"| BE
-  SA -->|"HTTPS + WSS"| BE
-  AD -->|"same-origin /api/v1/*<br/>cookie refresh + CSRF"| BE
+  FA -->|"HTTPS + WSS<br/>Bearer JWT"| CAD
+  SA -->|"HTTPS + WSS"| CAD
+  AD -->|"same-origin /api/v1/*<br/>(Vercel rewrite)<br/>cookie refresh + CSRF"| CAD
+  CAD -->|"reverse_proxy 127.0.0.1:3000"| BE
 
   BE -->|"Prisma (pool)"| PG
   BE -->|"cache · rate limit · BullMQ · Socket.IO adapter"| RD
   BE -->|"HMAC-SHA256 signed<br/>x-sig-timestamp / x-sig-signature"| AIW
-  BE --> MSG
+  BE -->|"verify ID token"| FBA
   BE --> CLD
   BE --> RZP
   BE --> EXP
@@ -10939,8 +10971,7 @@ flowchart TB
   AIW --> OMT
   AIWK --> GEM
 
-  RZP -.->|"webhook POST<br/>/api/v1/shop-webhooks/razorpay"| BE
-  FEX -.->|"start command cannot run"| PG
+  RZP -.->|"webhook POST<br/>/api/v1/shop-webhooks/razorpay"| CAD
 ```
 
 Notable traffic facts verified in code:
@@ -10962,8 +10993,11 @@ Notable traffic facts verified in code:
   `mandi_prices` on the read path), so the feature works and the cron is pure
   dead traffic. `frontend/scripts/seedMandiData.js:66` targets the same dead
   endpoint.
-- Railway private networking is IPv6-only, so the Socket.IO Redis clients are
-  created with `family: 0` (`backend/src/server.js:85`).
+- Every backend Redis client (cache, BullMQ, Socket.IO adapter) is created with
+  `family: 0` so ioredis resolves both A and AAAA records and an IPv6-only Redis
+  host still works (`backend/src/config/redis.js:33`,
+  `backend/src/queue/connection.js:25`, `backend/src/server.js:98`). On the VPS
+  the compose network is IPv4, so this is harmless headroom rather than a need.
 - Weather has two different providers: Express uses OpenWeatherMap
   (`backend/src/services/weather.service.js`, keyed by `OPENWEATHER_API_KEY`),
   while FastAPI uses **Open-Meteo, which needs no key at all**
@@ -10971,48 +11005,59 @@ Notable traffic facts verified in code:
   `DATA_GOV_API_KEY` appear in `fastapi/.env.example` and are read into
   `config.py`/`main.py:79`, but no FastAPI code calls either service — mandi
   ingest lives entirely in Express.
-- `Dockerfile` deliberately has **no `EXPOSE`** (`Dockerfile:46-48`): an exposed
-  port would become Railway's proxy target and mismatch the injected `$PORT`.
+- `Dockerfile` deliberately has **no `EXPOSE`** (`Dockerfile:30-31`):
+  `deploy/docker-compose.yml` decides which port is published
+  (`127.0.0.1:3000` only), and the server binds to `$PORT`.
 
-#### 7.2 The Dockerfile, stage by stage
+#### 7.2 The Dockerfiles
 
-One Dockerfile at the repo root (54 lines), two stages, used **only** by the
-backend Railway service with Root Directory `/`. `fastapi/` and the two Expo
-apps are built by Nixpacks / EAS and never enter this image (`.dockerignore:14-19`
-excludes `fastapi/`, `frontend/`, `docs/`, `Bugs/`, `scripts/`).
+Two Dockerfiles, both built **on the VPS** by `docker compose build` (no image
+registry). The two Expo apps are built by EAS and never enter either image.
 
-| Stage | Base | Lines | What it does | Output |
-| --- | --- | --- | --- | --- |
-| `admin-build` | `node:20-slim` | 8-16 | `WORKDIR /admin`; copy `admin/package.json` + `admin/package-lock.json`; `npm ci`; copy the rest of `admin/`; set `VITE_API_URL=/api/v1` and `VITE_ENV_NAME=production` as **build-time** env (Vite inlines them); `npm run build` (= `tsc && vite build`, `admin/package.json:9`) | `/admin/dist` |
-| `backend` | `node:20-slim` | 19-54 | `apt-get install openssl ca-certificates` (Prisma query engine needs OpenSSL); `WORKDIR /app/backend`; copy `backend/package.json` + lockfile **and `backend/prisma/`** *before* `npm ci`, because backend's `postinstall` runs `prisma generate` (`backend/package.json:13`) and would fail without the schema; `npm ci`; copy the rest of `backend/`; `COPY --from=admin-build /admin/dist /app/admin/dist` | runnable image |
+**Root `Dockerfile`** (55 lines, one stage `backend`, base `node:20-slim`) builds
+the `backend` container. `apt-get install openssl ca-certificates` (Prisma query
+engine needs OpenSSL); `WORKDIR /app/backend`; copy `backend/package.json` +
+lockfile **and `backend/prisma/`** *before* `npm ci`, because backend's
+`postinstall` runs `prisma generate` (`backend/package.json:13`) and would fail
+without the schema; `npm ci`; copy the rest of `backend/`. The admin panel is
+**not** built here any more (it is built on Vercel, §7.1 "Admin SPA shipping");
+`.dockerignore` excludes `admin/`, `fastapi/`, `frontend/`, `docs/`, `Bugs/` and
+`scripts/`.
 
-Runtime env baked into the image (`Dockerfile:39-45`):
+Runtime env baked into the image (`Dockerfile:24-29`):
 
 | Var | Value | Why |
 | --- | --- | --- |
-| `NODE_ENV` | `production` | triggers the fail-fast secret validation in `backend/src/config/env.js:498-516` |
-| `ADMIN_DIST_DIR` | `/app/admin/dist` | tells `app.js:307` where the SPA is (the default `../../admin/dist` happens to resolve to the same place from `/app/backend/src`) |
-| `CHECKPOINT_DISABLE` | `1` | Prisma's update checker opens a socket to `checkpoint.prisma.io` and can keep the CLI process alive in a slim container, so `db push && node …` would never reach `node` |
+| `NODE_ENV` | `production` | triggers the fail-fast secret validation in `backend/src/config/env.js:607+` |
+| `CHECKPOINT_DISABLE` | `1` | Prisma's update checker opens a socket to `checkpoint.prisma.io` and can keep the CLI process alive in a slim container |
 | `PRISMA_HIDE_UPDATE_MESSAGE` | `1` | same family of noise suppression |
 
-No `EXPOSE` (comment at `Dockerfile:46-48`): Railway treats an exposed port as
-the proxy/healthcheck target, which would mismatch the `$PORT` the app binds
-(`ENV.PORT`, default `3000`, `backend/src/config/env.js:193`; the app listens on
-`0.0.0.0`, `server.js:120`).
+No `EXPOSE` (comment at `Dockerfile:30-31`): the compose file publishes the port
+and the app binds `ENV.PORT` (default `3000`, `backend/src/config/env.js:192`) on
+`0.0.0.0` (`server.js:215`).
 
 ```dockerfile
-CMD ["sh", "-c", "timeout 60 npx prisma db push --skip-generate; node src/server.js"]
+CMD ["sh", "-c", "node src/server.js"]
 ```
 
-Three deliberate details in that one line (`Dockerfile:50-54`): the schema push
-runs **every boot**; it is capped at 60 s by `timeout`; and it is joined with
-`;` not `&&` so `node` starts even when the push stalls or fails — because a
-listening process is what the `/healthz` probe needs. A Railway `startCommand`,
-if set in the dashboard, overrides this entirely.
+Start only — **no `prisma db push` on boot** (the long comment at
+`Dockerfile:33-54`, DB-06, explains why the old
+`timeout 60 npx prisma db push --skip-generate; node src/server.js` was removed:
+it was a no-op that refused to drop the two FastAPI-owned tables, and it
+serialised replica restarts on the migrate engine's advisory lock). On the VPS
+the compose `command: ["node", "src/server.js"]` replaces this `CMD` so SIGTERM
+reaches node directly (`init: true`, `stop_grace_period: 20s`).
 
-`.dockerignore` excludes `**/node_modules`, `**/dist`, `**/.env` and `**/.env.*`
-(re-including `**/.env.example`), `**/.git`, `**/*.log`, `**/coverage`, editor
-dirs, and the four sibling directories above.
+**`fastapi/Dockerfile`** (`python:3.12-slim`) builds one image for both the
+`fastapi` and `celery` containers: `pip install -r requirements.txt`, copy the
+code, run as an unprivileged `app` user, `EXPOSE 8001`, `CMD uvicorn main:app
+--host 0.0.0.0 --port 8001 --workers 1 --no-access-log`. The `celery` container
+overrides the command. `fastapi/.dockerignore` keeps `tests/`, `eval/`, `docs/`,
+virtualenvs and `.env*` (except `.env.example`) out of the image.
+
+Root `.dockerignore` excludes `**/node_modules`, `**/dist`, `**/.env` and `**/.env.*`
+(re-including `**/.env.example`), credential JSON files, `**/.git`, `**/*.log`,
+`**/coverage`, editor dirs, and the six sibling directories above.
 
 #### 7.3 Environment variable matrix
 
@@ -11026,7 +11071,7 @@ was read in code, not inferred.
 | Variable | Req? | Purpose | Failure if missing |
 | --- | --- | --- | --- |
 | `NODE_ENV` | SOFT | selects prod validation + `IS_DEV` | defaults non-production ⇒ prod guards never run |
-| `PORT` | SOFT | listen port; Railway injects it | falls back to `3000` (`env.js:193`) while Railway routes to its own `$PORT` ⇒ healthcheck fails |
+| `PORT` | SOFT | listen port | falls back to `3000` (`env.js:192`), which is what `deploy/docker-compose.yml` publishes (`127.0.0.1:3000`) and Caddy proxies to; any other value without changing the compose `ports:` and the Caddyfile ⇒ healthcheck and proxy both fail |
 | `API_PREFIX` | — | route mount prefix | defaults `/api/v1` (`env.js:194`) |
 | `DATABASE_URL` | HARD | Postgres for Prisma | `required('DATABASE_URL')` throws at import (`env.js:5,196`) ⇒ process never starts |
 | `DB_CONNECTION_LIMIT` / `DB_POOL_TIMEOUT` | — | Prisma pool size / wait seconds | default `max(cpus*2+1, 20)`. `instances × limit` must stay under Postgres `max_connections` |
@@ -11042,11 +11087,11 @@ was read in code, not inferred.
 | `FIELD_ENCRYPTION_KEYS`, `FIELD_ENCRYPTION_ACTIVE_KEY_ID` | — | zero-downtime key rotation | id `0` reserved; malformed entries throw (`env.js:53-59`) |
 | `ALLOWED_ORIGINS` | SOFT | browser CORS allowlist (mobile sends no Origin) | empty ⇒ browser clients blocked; Socket.IO refuses all browser origins in prod (`server.js:73-75`) |
 | `CORS_MAX_AGE` | — | preflight cache seconds | default 600 |
-| `TRUST_PROXY` | SOFT | proxy hop count for real client IP | too high ⇒ clients can **spoof IPs and bypass the per-IP limiter**; Railway edge = `1` |
+| `TRUST_PROXY` | SOFT | proxy hop count for real client IP | too high ⇒ clients can **spoof IPs and bypass the per-IP limiter**; production default is `1` (Caddy is the only proxy, `env.js:177-181`) |
 | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` | — | global per-IP limiter | defaults on in dev/prod, auto-off under tests |
 | `RATE_LIMIT_FAIL_CLOSED` | — | AI cost limiters on Redis outage | default ON in prod: reject 503 rather than allow unlimited AI spend fleet-wide |
 | `CACHE_WARMING_ENABLED`, `CACHE_HIT_RATE_ALERT_THRESHOLD`, `REDIS_MEMORY_ALERT_PCT` | — | cache warmer + `[ALERT]` thresholds | warmer on by default (`server.js:165-171`) |
-| `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID`, `MSG91_SENDER_ID` | SOFT | OTP SMS | **no SMS is sent**; the OTP is returned in the API response (dev fallback). Logged as a startup warning (`server.js:33-42`) |
+| `FIREBASE_AUTH_ENABLED`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | SOFT | Firebase phone sign-in, the only production SMS login | flag off or any key empty ⇒ `/auth/firebase-login` 503s, so production has no SMS sign-in (`/auth/send-otp` is a dev/test login and 503s in production) |
 | `OTP_EXPIRE_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_*_RATE_LIMIT_*`, `OTP_LOCK_*`, `OTP_FAIL_WINDOW_SECONDS` | — | OTP lifetime, throttling, lockout backoff | code defaults |
 | `OTP_DEV_BYPASS_ENABLED` | PROD-forbidden | accepts the fixed OTP `000000` | set `true` under `NODE_ENV=production` ⇒ **boot refused** (`env.js:503-505`) |
 | `VELOCITY_*` (12 vars) | — | FRAUD-1 order/refund/login velocity | read dynamically as `process.env['VELOCITY_'+prefix+'_'+suffix]` (`env.js:93-96`); generous defaults; auto-off under tests |
@@ -11057,7 +11102,7 @@ was read in code, not inferred.
 | `PAYMENT_TAMPER_ALARM_ENABLED` | — | FRAUD-6 alarm on a blocked tamper | blocking is unaffected by this flag |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | SOFT | listing/product/animal photos | image upload disabled; startup warning |
 | `GEMINI_API_KEY` | PROD (HARD) | sole LLM provider for chat/planner/alerts/pest/scan | missing in production ⇒ `FATAL` throw (`env.js:511`) |
-| `GEMINI_MODEL` | — | default model id | default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | — | default model id | default `gemini-3.6-flash` |
 | `AI_TOKENS_PER_CREDIT`, `AI_FREE_MONTHLY_CREDITS`, `AI_MIN_CREDITS_PER_CALL` | — | credit pricing (no code change needed to reprice) | 1000 / 100 / 1 |
 | `OPENAI_API_KEY` | SOFT | optional | listed as optional in the template |
 | `OPENWEATHER_API_KEY` | SOFT | weather advisories | weather features degrade |
@@ -11075,7 +11120,6 @@ against the template):
 | `OTP_POW_SECRET`, `OTP_POW_DIFFICULTY`, `OTP_POW_SUSPICION_THRESHOLD`, `OTP_POW_CHALLENGE_TTL_MS` | `env.js:382-404` | Proof-of-work OTP gate is **opt-in and off by default**; enabling it without a client-side worker would 428 admin logins |
 | `AI_VOICE_STT_MODEL`, `AI_VOICE_STT_API_KEY`, `VOICE_STT_MODEL` | `env.js:271-275` | back-compat aliases; default `sarvam:saarika`, key falls back to `SARVAM_API_KEY` |
 | `SEED_SELLER_PHONE` | seed scripts | seeding only |
-| `RAILWAY_PUBLIC_DOMAIN`, `RAILWAY_STATIC_URL` | platform-injected | read for self-URL construction |
 | `JWT_ACCESS_SECRET` | `env.js:390` (comment) | a **removed** fallback; mentioned only to record that it no longer works |
 
 ##### 7.3.2 FastAPI AI service (`fastapi/.env.example`, 176 lines; `fastapi/config.py`)
@@ -11083,7 +11127,7 @@ against the template):
 | Variable | Req? | Purpose | Failure if missing |
 | --- | --- | --- | --- |
 | `NODE_ENV` (or `ENV`) | SOFT | `IS_PROD` gate (`main.py:132`) | non-prod ⇒ `/docs` is exposed and a bad CORS entry only warns instead of failing boot |
-| `API_HOST` / `API_PORT` | — | **documented but never read.** `config.py:130-131` reads `CROPGUARD_HOST` / `CROPGUARD_PORT` | setting `API_PORT` locally does nothing; on Railway the start command passes `--host 0.0.0.0 --port $PORT` anyway |
+| `API_HOST` / `API_PORT` | — | **documented but never read.** `config.py:130-131` reads `CROPGUARD_HOST` / `CROPGUARD_PORT` | setting `API_PORT` locally does nothing; in production the image `CMD` / compose command passes `--host 0.0.0.0 --port 8001` anyway |
 | `DATABASE_URL` | PROD (HARD) | asyncpg pool (shared with Express) | in production, `main.py:92-100` raises `RuntimeError: [Config] FATAL: missing required production config` at lifespan startup. Outside production, `_db_ok()` returns false ⇒ `/health` reports `degraded` and diagnosis persistence is off |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | HARD for scans | Celery broker + result store | default `redis://localhost:6379/1`; wrong in prod ⇒ enqueued scans are never run or never read back |
 | `REDIS_URL` | **effectively HARD in multi-replica** | idempotency cache, replay-nonce cache, per-user daily spend cap | `security/spend.py` and `security/auth.py` read **only** `RATE_LIMIT_STORAGE_URI` / `REDIS_URL`, never the `CELERY_*` vars. A deploy that sets only the Celery URLs silently degrades the spend cap and nonce cache to per-process memory: every replica grants the full `DAILY_SPEND_CAP_USD` and the cap resets on restart. It fails **open**, because `SPEND_CAP_REQUIRE_REDIS` only takes effect once a URL is configured (`.env.example:45-53`) |
@@ -11106,7 +11150,7 @@ against the template):
 | `DATA_GOV_API_KEY`, `OPENWEATHER_API_KEY` | — | **read but never used.** `config.py:115` / `main.py:79` load them and warn when unset; no FastAPI code calls either API (weather goes to key-less Open-Meteo, `weather_service.py:19`) | nothing — the startup warning is misleading |
 | `LOCAL_CLASSIFIER_MODEL_PATH` / `_LABELS_PATH` / `_INPUT_SIZE` | — undocumented | ONNX local-classifier prior | unset ⇒ seam inert |
 | `AI_DIAGNOSE_VERSION`, `GEMINI_CHAT_MODEL`, `STRICT_IMAGE_GATE`, `PII_REDACTION_ENABLED`, `LOG_LEVEL`, `LOG_FORMAT` | — undocumented | prompt pinning, image gating, PII filter, logging | code defaults |
-| `ROLE`, `CELERY_CONCURRENCY`, `WEB_CONCURRENCY` | — | read by `fastapi/railway.json:7` only | `ROLE` unset ⇒ web role; concurrency defaults 2/2 |
+| `CELERY_CONCURRENCY`, `WEB_CONCURRENCY`, `ROLE` | — | **no longer read anywhere.** The web/worker split is two compose services with fixed commands (`--workers 1` for uvicorn, `--concurrency=2` for Celery, `deploy/docker-compose.yml`) | nothing — change the compose `command:` instead |
 
 ##### 7.3.3 Admin SPA (`admin/.env.example`, 17 lines — all `VITE_*`, all baked into the bundle)
 
@@ -11124,8 +11168,8 @@ put a real secret here.
 
 | Variable | Apps | Purpose | Failure if missing |
 | --- | --- | --- | --- |
-| `EXPO_PUBLIC_API_BASE_URL` | both | overrides the resolution ladder in `shared/constants/config.js:47` | falls back to `http://<DEV_HOST>:3001/api/v1` under `__DEV__`, else the hardcoded `https://cropsetu2-production.up.railway.app/api/v1` (`config.js:34-35`) |
-| `EXPO_PUBLIC_SOCKET_URL` | both | Socket.IO endpoint | same ladder, prod default `wss://cropsetu2-production.up.railway.app` |
+| `EXPO_PUBLIC_API_BASE_URL` | both | overrides the resolution ladder in `shared/constants/config.js:47` | falls back to `http://<DEV_HOST>:3001/api/v1` under `__DEV__`, else the hardcoded `https://srv2061596.hstgr.cloud/api/v1` (`config.js:34-35`) |
+| `EXPO_PUBLIC_SOCKET_URL` | both | Socket.IO endpoint | same ladder, prod default `wss://srv2061596.hstgr.cloud` (`config.js:36-37`) |
 | `EXPO_PUBLIC_SENTRY_DSN` | frontend | crash reporting | optional; **no `@sentry/*` package is in `frontend/package.json`**, so this is currently inert |
 | `EAS_PROJECT_ID` | frontend | documented as `9681090a-1af6-4835-8a2f-7b0ea7681b9a` "from app.json → expo.extra.eas.projectId" | **contradicts `frontend/app.json:62`, which says `f1df1b28-f453-4395-8134-e389cadb394a`** |
 | `ANDROID_SERVICE_ACCOUNT_JSON` | frontend | Play Store service account path | `eas.json:47` actually reads `./play-store-credentials.json`; this variable name is not referenced anywhere |
@@ -11142,8 +11186,9 @@ migration folder does **not** describe what runs in production.
 
 | Path | Command | Source |
 | --- | --- | --- |
-| Container boot | `timeout 60 npx prisma db push --skip-generate; node src/server.js` | `Dockerfile:54` |
-| `npm run start:prod` | `npx prisma db push --skip-generate && node src/server.js` | `backend/package.json:10` |
+| Container boot | `node src/server.js` only — **no schema command** (DB-06) | `Dockerfile:55`; compose `command:` in `deploy/docker-compose.yml` |
+| `npm run start:prod` | `node src/server.js` | `backend/package.json:10` |
+| VPS bootstrap (once, 2026-10-14) | `docker compose run --rm backend npx prisma db push --skip-generate` on the empty database | `docs/deploy/VPS_DEPLOY_PLAN.md` §7 step 1 |
 | Image build | `prisma generate` via `postinstall` | `backend/package.json:13` |
 | Local | `npm run db:push` (= `prisma db push`) | `backend/package.json:16` |
 | Local (present but effectively unused) | `npm run db:migrate` (= `prisma migrate dev`) | `backend/package.json:15` |
@@ -11198,31 +11243,29 @@ consequence is recorded in the headers of every manual script:
 > `admin_v2_additive.sql:3-10`, `user_email_additive.sql:3-10`,
 > `seller_licence_additive.sql:3-8`
 
-###### Before trusting this hazard: verify the shared-Postgres premise (30 seconds)
+###### The shared-Postgres premise is now settled: shared
 
-**The entire hazard is conditional on Express and FastAPI pointing at the same
-Postgres database, and this repository cannot prove that they do.** In the
-checked-in local env they are **different** databases: `fastapi/.env` → `…/krushisarva`,
-`backend/.env` → `…/farmeasy_db`. If production mirrors that split, `db push` from
-Express can never touch `ai_scan_diagnoses` because that table is not in the database
-Express connects to, and risk-register item #1 and invariant 51 do not apply at all.
+**The hazard is conditional on Express and FastAPI pointing at the same Postgres
+database — and on the VPS they do.** `backend.env` and `fastapi.env` both carry
+`DATABASE_URL=postgresql://ks_app:…@postgres:5432/krushisarva`
+(`docs/deploy/VPS_DEPLOY_PLAN.md` §6), one `postgres:16` container. (The
+checked-in local env files still use **different** databases — `fastapi/.env` →
+`…/krushisarva`, `backend/.env` → `…/farmeasy_db` — so on a laptop the hazard
+does not apply.) The VPS database was built fresh with `prisma db push` on
+2026-10-14, *before* FastAPI created its two tables, which is the only moment a
+push is safe (`VPS_DEPLOY_PLAN.md` §7). From the first scan onwards, a push against
+production wants to drop `ai_scan_diagnoses` and `ai_scan_feedback`.
 
-Settle it before acting:
+To re-check on the server (Postgres has no public port, so over SSH):
 
 ```sh
-# 1. Run against the BACKEND service's DATABASE_URL (not FastAPI's).
-psql "$DATABASE_URL" -c '\dt ai_scan_*'
-#    rows returned  → shared database → the hazard is LIVE
-#    "Did not find any relation" → separate databases → the hazard does not apply
-# 2. Confirm structurally: compare the DATABASE_URL variable reference on the
-#    Railway `backend` service against the one on the `fastapi` service.
-#    Same shared-variable reference ⇒ shared instance.
+cd /opt/krushisarva && docker compose exec -T postgres sh -c \
+  'psql -U ks_app -d "$POSTGRES_DB" -c "\dt ai_scan_*"'
+#    rows returned → the tables exist in the shared database → never run db push again
 ```
 
 Every restatement of this hazard elsewhere in the document (Part 4's Postgres-pool
-note, risk register #1, invariant 51) is **conditional — verify first with the recipe
-above**. The conditionality travels with the claim; do not act on any of them without
-running step 1.
+note, risk register #1, invariant 51) applies to production as-is.
 
 ##### The escape hatch: `prisma/manual/*.sql`
 
@@ -11237,25 +11280,38 @@ Six hand-maintained, drop-free SQL scripts applied out-of-band:
 | `catalog_split_2_backfill.sql` | 23.0 KB | BACKFILL — synthesises a grouping key `categoryId \| norm(brand) \| norm(manufacturer) \| norm(name)` (all four must match exactly; NULL brand/manufacturer collapse to a `~` sentinel), remaps `cart_items` / `order_items` / `reviews` / `return_requests`, emits a near-miss report. Re-runnable | no |
 | `catalog_split_3_contract.sql` | 6.1 KB | CONTRACT — **"THIS FILE DESTROYS DATA. IT IS THE ONLY ONE THAT DOES."** Drops the old offer columns from `products`. Carries a 5-item pre-flight checklist and **requires deleting the matching fields from `schema.prisma` in the SAME deploy**, or the next `db push` re-adds them as empty columns | **yes** |
 
-Apply mechanism (all three forms documented in each header):
+Since this table was written, more scripts joined the folder
+(`booking_payment_fields_additive.sql`, `order_item_batch_quantity_additive.sql`,
+`payment_intent_purpose_additive.sql`, `seller_delivery_additive.sql`,
+`mandi_prices_dedup*.sql`, `read_path_indexes.sql`). On the VPS database, which
+was built fresh with `prisma db push` on 2026-10-14, every `*_additive.sql` change
+is already present; the `catalog_split_*` helper tables and functions are
+**intentionally absent** (`docs/deploy/VPS_DEPLOY_PLAN.md` §7 step 4), so do not
+run the catalog-split scripts there.
+
+Apply mechanism (documented in each header). Production Postgres has no public
+port, so run it over SSH on the VPS:
 
 ```bash
-cd backend && DATABASE_URL=<prod> npx prisma db execute \
+cd /opt/krushisarva && docker compose exec -T postgres \
+  sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+  < app/backend/prisma/manual/<name>.sql
+# local / any reachable DB:
+cd backend && DATABASE_URL=<url> npx prisma db execute \
   --file prisma/manual/<name>.sql --schema prisma/schema.prisma
 # or: psql "$DATABASE_URL" -f backend/prisma/manual/<name>.sql
-# or: Railway → Postgres service → Data/Query tab → paste + run
 ```
 
 ##### Operational risk assessment of push-based schema on a live DB
 
 | Risk | Mechanism | Blast radius |
 | --- | --- | --- |
-| **Silent total no-op** | `db push` is all-or-nothing. One un-modelled FastAPI table with rows ⇒ the push aborts and *every* pending change is skipped, including unrelated ones. The container still starts (the `;` in `Dockerfile:54`) | Already happened once: missing `users.adminScopes` ⇒ P2022 ⇒ **100 % of logins 500'd** |
-| **60-second cap** | `timeout 60` kills a push that is mid-`CREATE INDEX` on a large table. Postgres DDL is transactional so it rolls back, but the deploy reports success | Schema silently one deploy behind |
-| **Push runs on every boot and every replica** | N replicas restarting concurrently each run `db push` against the same database | Lock contention / duplicated DDL attempts on scale-up |
+| **Silent total no-op** | `db push` is all-or-nothing. One un-modelled FastAPI table with rows ⇒ the push aborts and *every* pending change is skipped, including unrelated ones. **No longer on the boot path**: the container now starts with `node src/server.js` only (DB-06), so a push happens only when a human runs one | Already happened once (previous host): missing `users.adminScopes` ⇒ P2022 ⇒ **100 % of logins 500'd** |
+| **60-second cap** | Resolved (2026-10-15): the `timeout 60 … db push` boot step is gone from the `Dockerfile` | — |
+| **Push runs on every boot and every replica** | Resolved (2026-10-15): same — no schema command runs on container start | — |
 | **No history, no down-migration** | Nothing records what shape prod is in. Rollback is `git revert` of the schema + a hand-written SQL | `docs/ACCOUNT_HARDENING.md:200-207` is explicit that rollback relies on the change being one nullable column |
-| **`--accept-data-loss` exists in-tree** | `frontend/railway.toml:5` | If that service is attached to the shared DB, it would drop the FastAPI tables. See §7.1 |
-| **Manual scripts are the real source of truth** | An additive change that never had its manual script applied is invisible until a query 500s | Requires a human to remember; there is no drift check anywhere |
+| **`--accept-data-loss`** | Resolved (2026-10-15): its only in-tree use, a dead start command in the old `frontend/` hosting config, was deleted with that file. The rule stands: never pass it against the shared VPS database | — |
+| **Manual scripts are the real source of truth** | An additive change that never had its manual script applied is invisible until a query 500s | Requires a human to remember; there is no drift check anywhere. `VPS_DEPLOY_PLAN.md` §7 step 10 replaces new hand-written scripts with a reviewed `prisma migrate diff --from-url` against the live DB |
 
 `README.md:57-58` states "The schema is push-based (**no migration files in
 `prisma/migrations/`**)" — that is **false**; there are 13. And
@@ -11344,9 +11400,14 @@ logic, Account-tab i18n key-leak guard, Rent distance-filter preferences,
 
 #### 7.6 CI — what runs on which trigger
 
-**Effectively: nothing.** GitHub Actions only reads workflows from
-`.github/workflows/` at the **repository root**. This repo has no root
-`.github/`; `git ls-files | grep github` returns only:
+GitHub Actions only reads workflows from `.github/workflows/` at the
+**repository root**. There is now one: `.github/workflows/ci.yml` (on `push` to
+`main` and on every `pull_request`) with five jobs — **backend (jest)** against a
+real `postgres:16` + `redis:7` service pair (`npx prisma db push --skip-generate`
+into a throwaway `krushisarva_test` database, then `npm test -- --runInBand`), **fastapi (pytest)**, **mobile + shared
+(jest)**, **admin (typecheck + build)** and **prisma schema** (`npx prisma
+validate`). It never deploys (its own header: "nothing here is a deploy").
+`git ls-files | grep github` also returns four nested workflows:
 
 ```
 backend/.github/workflows/build-android.yml
@@ -11363,15 +11424,16 @@ why each would fail today:
 
 | Workflow | Trigger | Jobs | Would it work if moved to the root? |
 | --- | --- | --- | --- |
-| `backend/.github/workflows/ci.yml` | `push`/`pull_request` on `main` | **node-backend**: `npm ci`, `npx prisma generate`, `node --check` over `src/routes,services,middleware,utils/*.js`, and a `console.log` grep that only emits `::warning::`. **fastapi**: `pip install -r requirements.txt`, `python -c "import main"`,  `python -c "from routes import chat, scan, alerts, agripredict, pest_prediction"` (a module list that includes `pest_prediction`, which does not exist in `fastapi/routes/`) | **No.** The node job runs at the repo root, where there is no `package.json`; the fastapi job sets `working-directory: AI_CROP_DISESE_DETECTION`, a directory that **does not exist** (it is `fastapi/` now). Neither job runs any test. A commented-out `deploy` job would `railway up --service krushisarva-backend --detach` |
-| `backend/.github/workflows/build-android.yml` | `push` on `main`, `workflow_dispatch` | checkout → Node 20 → Java 17 → `npm ci` → rewrite `src/constants/config.js` to point at `https://resilient-vision-production-e784.up.railway.app` → `npx expo prebuild --platform android --clean --no-install` → `./gradlew assembleDebug -x lint` → upload `farmeasy-debug-apk` (7-day retention) | **No.** `src/constants/config.js` no longer exists (config moved to `shared/constants/config.js`), so the regex patch is a silent no-op, and the hardcoded `resilient-vision-production-e784` domain is a **third** production URL that matches neither `krushisarva2-production` (used by `eas.json` and `shared/constants/config.js`) nor `krushisarva-backend-production` (pinned in `frontend/src/config/sslPinning.js`) |
+| `backend/.github/workflows/ci.yml` | `push`/`pull_request` on `main` | **node-backend**: `npm ci`, `npx prisma generate`, `node --check` over `src/routes,services,middleware,utils/*.js`, and a `console.log` grep that only emits `::warning::`. **fastapi**: `pip install -r requirements.txt`, `python -c "import main"`,  `python -c "from routes import chat, scan, alerts, agripredict, pest_prediction"` (a module list that includes `pest_prediction`, which does not exist in `fastapi/routes/`) | **No.** The node job runs at the repo root, where there is no `package.json`; the fastapi job sets `working-directory: AI_CROP_DISESE_DETECTION`, a directory that **does not exist** (it is `fastapi/` now). Neither job runs any test. (Its commented-out deploy job for the old hosting company was deleted on 2026-10-15.) |
+| `backend/.github/workflows/build-android.yml` | `push` on `main`, `workflow_dispatch` | checkout → Node 20 → Java 17 → `npm ci` → `npx expo prebuild --platform android --clean --no-install` → `./gradlew assembleDebug -x lint` → upload `farmeasy-debug-apk` (7-day retention) | **No.** It runs at the repo root, which has no `package.json` or `app.json`. (The step that patched a third, mismatched production URL into a config file that no longer exists was deleted on 2026-10-15; the apps now take their URL from `shared/constants/config.js`.) Real Android builds go through EAS (§7.7) |
 | `frontend/.github/workflows/ci.yml` | `push`/`pull_request` on `main` | `npm ci`; `npx expo export --platform android` as a bundle smoke test (failure only emits `::warning::`, never fails the job); a **hard-failing** grep for leaked `sk-…` / `ghp_…` / `AIza…` keys in `src/` and `App.js` | Partially — would need `working-directory: frontend`. The secret grep is the only step that can fail a build |
 | `frontend/.github/workflows/eas-build.yml` | `workflow_dispatch` only (inputs: profile `preview\|production`, platform `android\|ios\|all`) | `npm ci` → `expo/expo-github-action@v8` with `secrets.EXPO_TOKEN` → `eas build --non-interactive --no-wait` | Partially — would need `working-directory: frontend`, and would hit the `../shared` upload problem described in §7.7 |
 
-Consequences worth stating plainly: **no test suite, no lint, no typecheck and
-no build gate runs on any push or PR to this repository.** Railway auto-deploys
-from `main` (per the commented-out block in `backend/.github/workflows/ci.yml:61-62`),
-so `main` reaches production without any automated verification.
+Consequences worth stating plainly: the root workflow is a **test gate, not a
+deploy pipeline**. Nothing auto-deploys: production changes only when someone
+runs `/root/update.sh` on the VPS (`git pull` + `docker compose build` + `up -d`,
+`docs/deploy/VPS_DEPLOY_PLAN.md` §8). Whether `main` was green at that moment is
+a human check — the script does not ask GitHub.
 
 The only executable check-style scripts in the repo are run by hand:
 
@@ -11405,13 +11467,13 @@ Two separate Expo apps sharing one backend and one `../shared` folder.
 | Android permissions | CAMERA, READ_MEDIA_IMAGES, RECORD_AUDIO, ACCESS_COARSE/FINE_LOCATION | CAMERA, READ_MEDIA_IMAGES |
 | `.easignore` | present, 48 lines | **absent** |
 
-Both `eas.json` files are byte-identical apart from being in different
-directories:
+Both `eas.json` files are identical except that `frontend/eas.json` also sets
+`EXPO_PUBLIC_FIREBASE_AUTH=true` on the `development` profile:
 
 | Profile | `distribution` | Android artifact | iOS | `channel` | env |
 | --- | --- | --- | --- | --- | --- |
 | `development` | internal | `:app:assembleDebug` | Debug config | `development` | — |
-| `preview` | internal | `apk` | simulator | `preview` | `EXPO_PUBLIC_API_BASE_URL=https://cropsetu2-production.up.railway.app/api/v1`, `EXPO_PUBLIC_SOCKET_URL=wss://…` |
+| `preview` | internal | `apk` | simulator | `preview` | `EXPO_PUBLIC_API_BASE_URL=https://srv2061596.hstgr.cloud/api/v1`, `EXPO_PUBLIC_SOCKET_URL=wss://srv2061596.hstgr.cloud` |
 | `production` | (store) | `app-bundle` (AAB) | — | `production` | same two URLs |
 
 `cli.appVersionSource = "remote"` and `production.autoIncrement = true`, so the
@@ -11456,19 +11518,23 @@ entries). **The README frames this as seller-app-only, but the mechanism is
 identical for `frontend/`,** which imports shared just as heavily; nothing in
 `frontend/.easignore` addresses it.
 
-##### Production URL disagreement (three different hosts)
+##### Production URL (one host)
+
+Resolved (2026-10-15): the three disagreeing production hostnames from the old
+hosting company are gone. Every place that names a production host now agrees:
 
 | Host | Where | Status |
 | --- | --- | --- |
-| `cropsetu2-production.up.railway.app` | `frontend/eas.json:28,39`, `seller-app/eas.json:28,39`, `shared/constants/config.js:35,37` | what the apps actually call |
-| `cropsetu-backend-production.up.railway.app` | `frontend/src/config/sslPinning.js:58` | the host the SPKI pins are keyed on |
-| `resilient-vision-production-e784.up.railway.app` | `backend/.github/workflows/build-android.yml:40,44` | what the (dead) APK workflow would patch in |
+| `srv2061596.hstgr.cloud` | `frontend/eas.json:31-32,43-44`, `seller-app/eas.json:28-29,40-41`, `shared/constants/config.js:35,37` | what the apps call (`/api/v1` over HTTPS, Socket.IO over `wss://`) |
+| `srv2061596.hstgr.cloud` | `frontend/src/config/sslPinning.js:63` | the host the SPKI pins are keyed on |
+| `srv2061596.hstgr.cloud` | `admin/vercel.json` (`/api/*` rewrite), `deploy/Caddyfile` | the admin panel's API target and the TLS site |
 
-`sslPinning.js` is doubly inert: the file's own header says "Enforcement (FE-1)
-must wire `getSSLConfig()` into the native networking layer — until that lands,
-these pins are inert", and grepping `sslPinning` across `frontend/src` and
-`shared` finds **no importer**. The leaf pin expires 2026-08-02 and the
-intermediate 2027-03-12.
+`sslPinning.js` is still doubly inert: the file's own header says "Enforcement
+(FE-1) must wire `getSSLConfig()` into the native networking layer — until that
+lands, these pins are inert", and grepping `sslPinning` across `frontend/src` and
+`shared` finds **no importer**. The pins are the CA levels, not the leaf (Caddy
+makes a new key at every renewal): Let's Encrypt YE1 (expires 2028-09-02), Root
+YE (2032-09-02), and ISRG Root X2 / X1 as backups.
 
 #### 7.8 Runbook — running every part locally
 
@@ -11553,12 +11619,20 @@ npm run dev                     # http://localhost:5180/admin/
 
 `npm run build` = `tsc && vite build` → `admin/dist`. `npm run typecheck` =
 `tsc --noEmit`. In dev the SPA proxies `/api` to the backend so cookies stay
-same-origin; in prod the backend serves the built bundle.
+same-origin; in prod Vercel hosts the built bundle and rewrites `/api/*` to the
+VPS (`admin/vercel.json`), which keeps them same-origin there too.
 
-Create an admin login (works locally and, via `railway run`, in production):
+Create an admin login. Locally:
 
 ```bash
-railway run --service <backend-service-name> npm run db:seed:admin -- 9876543210
+cd backend && npm run db:seed:admin -- 9876543210
+```
+
+In production, over SSH on the VPS (same env guard as the app, so
+`backend.env` must be complete; `VPS_DEPLOY_PLAN.md` §7 step 6):
+
+```bash
+cd /opt/krushisarva && docker compose run --rm backend node prisma/seed-admin.js 9876543210
 ```
 
 Then hit the API surface read-only:
@@ -11628,7 +11702,7 @@ server regardless of the result.
 
 | Doc | Size | Covers | Still accurate? (claims verified against code) |
 | --- | --- | --- | --- |
-| `docs/ADMIN_DEPLOY_RAILWAY.md` | 4.0 KB | Same-origin admin deploy: Root Directory `/`, Dockerfile stages, required Railway vars, `db:seed:admin`, troubleshooting | **Accurate on the essentials.** Verified: `base:'/admin/'` (`admin/vite.config.ts:14`); `admin/dist` served at `/admin` (`app.js:307-321`); healthcheck `/healthz` (`railway.json:8`). **Stale detail:** line 32 says the start command is `npx prisma db push --skip-generate && node src/server.js`; `Dockerfile:54` now uses `timeout 60 … ; node …` (semicolon + timeout), a behavioural difference that matters when the push fails |
+| `docs/deploy/VPS_DEPLOY_PLAN.md` | 64.6 KB | The single-VPS production deploy: container layout, RAM budget, server hardening, compose file + Caddyfile, env files, fresh-DB bootstrap, update/rollback, backups, app cutover, risks | **Accurate on the essentials.** Verified: the compose services, Postgres flags and Caddy routing match `deploy/docker-compose.yml` and `deploy/Caddyfile`; both apps share one `krushisarva` database. **Stale detail:** §1, §2 and the §8 first-start check still describe the backend image building and serving the admin SPA at `/admin`; the admin panel now lives only on Vercel and the Caddyfile redirects `/admin*` there (§10 step 5 of the same file already says so). The old hosting company's admin deploy guide was deleted on 2026-10-15; `admin/README.md` ("Hosting on Vercel") replaces it |
 | `docs/ADMIN_PANEL.md` | 30.9 KB | Full admin architecture: SPA + `/api/v1/admin/*`, the `router.use(authenticate, requireAdmin)` gate, PII masking with `?reveal=true&reason=`, audit logging, keyset pagination | **Accurate.** Verified: dev port 5180 (`vite.config.ts:17`); React 18 + Vite 5 + TS 5 + Tailwind 3 + TanStack Query 5 (`admin/package.json:13-34`); `settings.routes.js` exposes `/`, `/env-status`, `/budget`, `PATCH /:key` exactly as described |
 | `docs/AI_CHAT_ARCHITECTURE.md` | 28.5 KB | Text + voice chat end to end: RN → Express (auth, credits, Sarvam STT/TTS, Prisma) → stateless HMAC-signed FastAPI (Writer → Enhancer) | **Topology accurate, §9 env table is stale.** Three defects: it lists `GROQ_API_KEY` as the Express "Whisper STT fallback" — `grep GROQ backend/src` finds only a comment at `env.js:358`, no usage; it gives `AI_VOICE_STT_MODEL` default `whisper-large-v3-turbo` — `env.js:273` defaults to `sarvam:saarika`; it links `frontend/src/services/config.js`, which does not exist (config is `shared/constants/config.js`) |
 | `docs/AI_SERVICES_INHOUSE_LLM_BRIEF.md` | 59.5 KB | Design-input brief for replacing hosted LLMs: per-service flows, every external call site, abstraction seams, proprietary data assets, and a §12.4 "honesty ledger" of its own stale-doc findings | **The most self-aware doc here, and mostly right.** Verified: Celery `task_time_limit=300 / soft=270` (`jobs/queue.py:66-67`); Express credit ledger authoritative; ensemble off by default. **One contradiction:** it asserts "Anthropic was fully removed", but `fastapi/config.py:47` reads `ANTHROPIC_API_KEY`, `llm_dispatch.py:124-125,378,505` routes `claude-*` to it, `requirements.txt:3` pins `anthropic>=0.49`, and `settings.service.js:32-33` offers two Claude models in the admin dropdown |
@@ -11706,9 +11780,9 @@ locked ones stay singleton; (b) a leader lock is Redis-backed
 duplicate a run.
 
 Separately, `startWorkers()` (`server.js:155`) starts the in-process BullMQ
-workers unless `QUEUE_INPROCESS_WORKER=false`, and the HTTP server is tuned for
-Railway's 60 s LB idle timeout: `timeout 30 s`, `keepAliveTimeout 65 s`,
-`headersTimeout 70 s` (`server.js:56-58`). Shutdown is graceful with a 10 s
+workers unless `QUEUE_INPROCESS_WORKER=false`, and the HTTP server's keep-alive
+is set above Caddy's 55 s upstream keepalive (`deploy/Caddyfile`): `timeout 30 s`,
+`keepAliveTimeout 65 s`, `headersTimeout 70 s` (`server.js:66-68`). Shutdown is graceful with a 10 s
 force-exit (`server.js:406-420`): drain BullMQ workers → close queues → close the
 producer connection → suppress the intentional Redis outage alert.
 
@@ -11718,15 +11792,15 @@ Ordered by expected damage, each traceable to a line above.
 
 | # | Risk | Evidence | Why it matters |
 | --- | --- | --- | --- |
-| 1 | **`--accept-data-loss` in `frontend/railway.toml:5`** | frontend has no `prisma`, no `src/server.js` | If that Railway service is attached to the shared `DATABASE_URL`, it would drop the FastAPI-owned tables that every manual SQL header forbids dropping |
-| 2 | **No CI runs on this repo at all** | workflows live in `backend/.github` and `frontend/.github`, never at the root | `main` auto-deploys to Railway with no test, lint, typecheck or build gate |
-| 3 | **Push-based schema on a live DB, all-or-nothing** | `Dockerfile:54`; `prisma/manual/*.sql` headers | One un-modelled table with rows silently skips the entire schema update; this already caused a 100 %-login outage |
+| 1 | Resolved (2026-10-15): the only in-tree `--accept-data-loss` (a dead `frontend/` start command in the old hosting config) was deleted with that file | — | The rule stands: backend and FastAPI share one database on the VPS, so a push with that flag would drop `ai_scan_diagnoses` / `ai_scan_feedback` |
+| 2 | **Deploys do not check CI** | root `.github/workflows/ci.yml` now tests backend, FastAPI, mobile + shared, admin and the Prisma schema; `/root/update.sh` pulls and builds whatever is on `main` | Resolved (2026-10-15) as "no CI at all". What remains: nothing stops a red `main` reaching the VPS except a human looking first |
+| 3 | **Schema changes are manual, with no drift check** | `Dockerfile:33-54` (no push on boot any more, DB-06); `prisma/manual/*.sql` headers; `VPS_DEPLOY_PLAN.md` §7 step 10 | A change whose SQL is never applied is invisible until a query 500s; a stray `db push` on the shared DB is all-or-nothing. The old boot-time push already caused a 100 %-login outage once |
 | 4 | **`RAZORPAY_WEBHOOK_SECRET` is undocumented and unmonitored** | `env.js:324`; absent from `.env.example` and from `ENV_MANIFEST` (`settings.service.js:194-218`) | Unset ⇒ every payment webhook is rejected 400; the admin env-status panel cannot reveal it |
 | 5 | **FastAPI `REDIS_URL` fails OPEN for the spend cap** | `fastapi/.env.example:45-53`; `SPEND_CAP_REQUIRE_REDIS` only binds once a URL exists | A deploy that sets only `CELERY_*` gives every replica the full `DAILY_SPEND_CAP_USD`, resetting on restart |
 | 6 | **~125 dead cron requests/day to a route that does not exist** | `server.js:188-247` vs `fastapi/routes/agripredict.py` | Not harmful, but it means the daily "mandi sync" job everyone believes is running is not, and nothing logs it |
-| 7 | **Celery worker may not exist as a Railway service** | `fastapi/railway.json:7` supports `ROLE=worker`; nothing in-repo proves one is deployed | If absent, every `POST /ai/scan` enqueues a job that is never executed |
-| 8 | **No FastAPI healthcheck configured** | `fastapi/railway.json` has no `healthcheckPath` | A wedged AI service keeps receiving traffic |
-| 9 | **SSL pinning is inert and keyed on the wrong host** | `sslPinning.js:58` vs `shared/constants/config.js:35`; no importer | The security control is documentation, not enforcement; the leaf pin also expires 2026-08-02 |
+| 7 | Resolved (2026-10-15): the Celery worker is its own `celery` container in `deploy/docker-compose.yml` | — | — |
+| 8 | **AI health is only reported, not acted on** | `deploy/docker-compose.yml`: `fastapi` has a healthcheck (body of `/health` must contain `"ok"`), `celery` has none; `restart: unless-stopped` only fires when a process exits | Plain Docker Compose marks a wedged `fastapi` unhealthy but never restarts it, and a stuck Celery worker is not detected at all, so scans queue in Redis db 1 unnoticed |
+| 9 | **SSL pinning is inert** | `sslPinning.js:63` now pins `srv2061596.hstgr.cloud` (the host `shared/constants/config.js:35` calls), but nothing imports the file | The security control is documentation, not enforcement. The wrong-host and expiring-leaf parts were resolved on 2026-10-15 (CA-level pins: Let's Encrypt YE1, Root YE, ISRG Root X2 / X1) |
 | 10 | **`eas build` cannot see `../shared`** | `seller-app/README.md:72-92`; `frontend/App.js:29-36` imports it | Cloud builds of either app fail to resolve `@krushisarva/shared/*` until the repo becomes an npm workspace |
 | 11 | **OTA declared but unconfigured** | `expo-updates` installed, channels named, no `updates`/`runtimeVersion` block, no code usage | Any JS-only hotfix needs a full store release |
 | 12 | **37 known-failing tests, and 4 backend test files silently excluded** | `docs/ACCOUNT_HARDENING.md:219-221`; `--testPathPattern='tests/'` vs `src/__tests__/` | The suite has no clean baseline, and the Express→FastAPI scan test never runs |
@@ -11750,7 +11824,7 @@ Synthesised from every part above. "Evidence" is a code fact, not an estimate; "
 | **Redis** | One shared ioredis client in Express (plus BullMQ and Socket.IO adapter connections); **six independent clients** in FastAPI with three different URL-resolution rules. | **Correctness, not throughput.** Redis is the single point of truth for cross-instance rate limiting, idempotency, leader election, the token denylist, scan holds, voice cancellation, buy-box cache versioning, Socket.IO fan-out, Celery, FastAPI spend cap, job ownership (IDOR) and the replay nonce. Almost every one fails open — silently, because `logger.warn` is suppressed in production. | §1.7 key inventory; Part 4 §"Redis usage"; `utils/logger.js:84-86`. | First: make the degradation visible — promote the fail-open notices to `logger.error` with `[ALERT]` markers, and surface `breakerStates()` plus a `redis_degraded` boolean on `/readyz`. Second: consolidate FastAPI onto one client factory with one URL rule and a 30 s re-probe (three of the six already re-probe; `security/auth.py` and `security/spend.py` latch at import, and `weather_service.py` hardcodes `localhost`). |
 | **Socket.IO** | Single default namespace, rooms `user:<id>` / `<chatId>` / `group:<id>`, Redis adapter, per-connection token-bucket rate limits, per-user connection cap (10, per-instance). | **Presence fan-out.** `io.emit('user_online'/'user_offline')` broadcasts to **every connected socket across the whole fleet** on every connect and disconnect — O(connections) per event, amplified by the Redis adapter. Secondary: socket handshake auth is weaker than HTTP auth (no denylist, no `tokenVersion`, no `isActive`). | `socket/chat.socket.js:83,263`; handshake at `:43-53`. | Scope presence to rooms the viewer actually cares about (the user's chat counterparts and group members) instead of `io.emit`. Then align handshake auth with `authenticate` — at minimum check the `jti` denylist and `tokenVersion` — and consider a Redis-synced fleet-wide connection cap. |
 | **FastAPI web** | uvicorn with `--workers ${WEB_CONCURRENCY:-2}`; every feature route is synchronous except scan enqueue. | Chat and soil-OCR hold a worker for the whole LLM round-trip (`asyncio.wait_for` 100 s on chat). Two `Limiter` instances mean the app default 60/min **and** the scan decorator's `10/minute;60/hour` both apply to `/ai/scan`. | `fastapi/routes/chat.py:23`; `main.py:69` vs `routes/scan.py:108`. | Scale `WEB_CONCURRENCY` with CPU, but first move chat to the streaming endpoint everywhere (it already exists and Express already has an SSE client) so a worker is not pinned for the full generation. Unify the two limiters so the effective limit is intentional. |
-| **FastAPI worker (Celery)** | `ROLE=worker`, `--concurrency=${CELERY_CONCURRENCY:-2}`, `acks_late`, `prefetch_multiplier=1`, `max_retries=0`, hard limit 300 s. | Scan throughput is exactly `CELERY_CONCURRENCY × worker_replicas`, and each job holds a Postgres connection plus 1-4 concurrent LLM sockets for up to 240 s. **If no `ROLE=worker` service is deployed, every scan sits at `queued` forever** and Express gives up at 300 s. | `fastapi/railway.json:7`; `jobs/queue.py:60-67`; the repo cannot prove the worker service exists. | Verify a worker service exists and alert on queue depth. Then size: at 240 s worst-case per scan, one worker replica at concurrency 2 sustains ~30 scans/hour. Scale worker replicas on scan volume independently of the web tier — that is the whole point of the `$ROLE` split. |
+| **FastAPI worker (Celery)** | One `celery` container on the VPS: `--concurrency=2`, `--max-tasks-per-child=200`, `acks_late`, `prefetch_multiplier=1`, `max_retries=0`, hard limit 300 s. | Scan throughput is exactly `concurrency × worker containers` (today 2 × 1), and each job holds a Postgres connection plus 1-4 concurrent LLM sockets for up to 240 s. The container has **no healthcheck**, so a stuck worker leaves every scan at `queued` until Express gives up at 300 s. | `deploy/docker-compose.yml` (`celery` service, `mem_limit: 768m`); `jobs/queue.py:60-67`. | Alert on queue depth (`redis-cli -n 1 llen celery`) and worker heartbeat. Then size: at 240 s worst-case per scan, one worker at concurrency 2 sustains ~30 scans/hour. Scale the worker on scan volume independently of the web tier — on one 4 GB VPS, RAM (about 750 MB per two concurrent decodes) is the limit before CPU. |
 | **AI cost / third-party quotas** | Express credit ledger is authoritative (atomic reserve→settle→release). FastAPI adds a secondary daily USD cap. | **The USD cap only sees `/ai/scan`.** `/ai/chat`, `/ai/chat/stream`, `/ai/alerts` and `/ai/soil-card-ocr` neither check nor record spend. Worse, `check_under_cap` runs at *enqueue* while `record_spend` runs at *completion*, so a burst of N concurrent scans all pass the same under-cap read. And `_REDIS_OK` in `spend.py` is latched at import while `check_under_cap` reads Redis directly — if Redis was down at import, the cap reads a counter nothing increments. | `fastapi/security/spend.py:22-24,58-71,83-84`; `jobs/tasks.py:176-182`. | Call `record_spend` from the chat/alerts/OCR paths too, and move the cap check to a reserve-style `INCRBYFLOAT`-then-compare so concurrent bursts cannot all pass. Re-probe `_REDIS_OK`. Independently: Gemini and Sarvam rate limits are the real external ceiling — surface `breakerStates()` and per-provider 429 counts as metrics before they matter. |
 | **Cloudinary / media** | Uploads compressed client-side (1024 px q0.6) and again server-side (incoming transformation, so only the compressed asset is stored). Downloads sized by `thumbUrl()` (`f_auto,q_auto,c_limit,w_N`). | **The upload router has no per-user or per-route rate limit** — an authenticated user can push 8 MB images or 100 MB videos bounded only by the global 200 requests / 15 min / IP, and uploaded URLs are unattributed to any row, so orphans are unreclaimable except through erasure. | Part 3.1 §`/api/v1/upload`. | Add a per-user limiter on `/upload/*` (e.g. 30 images / 5 videos per hour) and record an `Upload` row (userId, publicId, createdAt) so orphan sweeps and quota accounting become possible. |
 | **Client fleet** | No push notifications at all (`expo-notifications` is not a dependency); ChatScreen falls back to a 10 s HTTP poll per open thread whenever the socket is down. | With many concurrent farmers on unreliable links, chat polling is the app's steadiest background load, and it is the *only* delivery mechanism when the app is backgrounded (there is none). | Part 5.1 §Realtime; `ChatScreen.js` `POLL_MS`. | Add `expo-notifications` and wire the existing `POST /users/me/push-token` + `push.service.js` path (the server half already exists and the queue already delivers). That removes both the poll and the "no background delivery" gap in one change. |
@@ -11803,9 +11877,9 @@ Recipes for the changes this codebase actually receives. Each lists the exact fi
 
 2. If the column holds PII that must be encrypted, add it to `ENCRYPTED_COLUMNS` in `backend/src/services/keyRotation.service.js` — the inventory is hand-maintained, and a column missing from it is **never rotated**.
 3. If the table accumulates rows, add a `RETENTION_POLICY` entry in `backend/src/constants/retention.js`; the daily sweep is data-driven and needs no other change.
-4. **Write a matching additive SQL script** in `backend/prisma/manual/`, drop-free and idempotent (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`). This is not optional: production runs `prisma db push`, and `db push` is **all-or-nothing** — it tries to DROP the two FastAPI-owned tables (`ai_scan_diagnoses`, `ai_scan_feedback`), aborts on data loss, and then applies **nothing**. That is exactly how `users.adminScopes` went missing in production and every login 500'd with P2022.
-5. **Never add `--accept-data-loss`.** Every manual script header says so in capitals. Note `frontend/railway.toml:5` already contains that flag against a start command that cannot run — if that Railway service is ever attached to the shared `DATABASE_URL`, it is a live data-loss hazard.
-6. Apply the script out-of-band before or with the deploy: `cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/<name>.sql --schema prisma/schema.prisma` (or `psql`, or the Railway Data tab).
+4. **Write a matching additive SQL script** in `backend/prisma/manual/`, drop-free and idempotent (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`). This is not optional: no schema command runs on deploy (the boot-time `db push` was removed, DB-06), and `db push` is in any case **all-or-nothing** — it tries to DROP the two FastAPI-owned tables (`ai_scan_diagnoses`, `ai_scan_feedback`), aborts on data loss, and then applies **nothing**. That is exactly how `users.adminScopes` went missing in production and every login 500'd with P2022.
+5. **Never add `--accept-data-loss`.** Every manual script header says so in capitals. Backend and FastAPI share one database on the VPS, so that flag would drop the FastAPI-owned tables. (Its one in-tree use, a dead start command in the old `frontend/` hosting config, was deleted on 2026-10-15.)
+6. Apply the script out-of-band **before** the deploy. Production Postgres has no public port, so over SSH on the VPS: `cd /opt/krushisarva && docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' < app/backend/prisma/manual/<name>.sql`. Locally: `cd backend && DATABASE_URL=<url> npx prisma db execute --file prisma/manual/<name>.sql --schema prisma/schema.prisma` (or `psql`).
 7. Removing a column is a **two-deploy dance**: apply the contract SQL and delete the field from `schema.prisma` in the *same* deploy, or the next `db push` re-adds it empty.
 8. Regenerate the client locally (`npx prisma generate`, also run by `postinstall`), and update any `select`/`include` projections and the admin PII shaping (`utils/adminPii.js`, `utils/mask.js`) if the column is sensitive.
 9. **Consult the blast-radius table for the model you touched** (Part 2, *Blast radius by model*). For the ten hottest models it enumerates every read projection, write path, seed script, CSV column set, cached payload, manual SQL file and client screen that a schema change reaches. Adding a required column to `Product` alone touches a card projection, two CSV column sets, a 10k-row import resolver, a key function that must stay byte-identical to a SQL function, six seed scripts and `CACHE_SCHEMA_VERSION`.
@@ -11955,7 +12029,7 @@ Each row names an invariant a change must not break, the file that enforces it, 
 | 17 | The Express↔FastAPI signature covers `${ts}.${METHOD}.${path-without-query}.${sha256(body)}` and both sides must change together | `backend/src/utils/fastapi-signed.js:25-38`, `fastapi/security/auth.py:96-98` | A signed GET carrying a query string would 401 forever. |
 | 18 | The FastAPI idempotent-replay envelope must carry `job_id` | `fastapi/routes/scan.py:111-124` | Express keys `scan_settled:${jobId}` on it; without it the farmer is debited 3 credits twice. |
 | 19 | `httpServer.listen` runs **first**; every dependency attaches non-blocking after it, and the Socket.IO Redis-adapter connect is a top-level `await` guarded by a hard 5 s `Promise.race` | `backend/src/server.js:96-126` | A hanging Redis blocks ESM evaluation, `listen` never runs, and the deploy healthcheck fails with no logs. |
-| 20 | `keepAliveTimeout` (65 s) must exceed Railway's 60 s LB idle timeout, and `headersTimeout` must exceed `keepAliveTimeout` | `backend/src/server.js:56-58` | Keep-alive races surface as 502s. |
+| 20 | `keepAliveTimeout` (65 s) must exceed Caddy's 55 s upstream keepalive (`deploy/Caddyfile`), and `headersTimeout` must exceed `keepAliveTimeout` | `backend/src/server.js:56-68` | Keep-alive races surface as 502s. |
 | 21 | Body-parser limits are per prefix, and multipart bypasses body-parser entirely | `backend/src/app.js:189-214` | Without `skipMultipart`, body-parser 413s an upload before multer, the route or morgan ever sees it. |
 | 22 | `DATABASE_URL`, `JWT_SECRET` (≥32 chars) and `FIELD_ENCRYPTION_KEY` (64-hex) abort the process at import in **every** environment | `backend/src/config/env.js` | Booting without the encryption key silently writes Aadhaar, PAN and bank details in plaintext. |
 | 23 | Production additionally refuses to boot without `AI_SHARED_SECRET` (≥16), `GEMINI_API_KEY`, `SARVAM_API_KEY`, or with `OTP_DEV_BYPASS_ENABLED=true` | `backend/src/config/env.js:498-516` | An empty shared secret means FastAPI is effectively unauthenticated. |
@@ -12013,13 +12087,13 @@ bug and this appendix is the fix list.
 | 2 | *Withdrawn.* An earlier draft of Part 1 was believed to quote "13 schedules" against Part 7's 12. | **The claim does not exist in the document.** Part 1, the At-a-glance table and Part 7 all say **12** `cron.schedule(...)` registrations **+ one boot-time mandi seed that is not a cron**, consistently. There is no disagreement left to reconcile. | **No body change needed.** Row retained (rather than deleted) so a reader comparing against an older copy of this document can see the discrepancy was chased down. | `grep -c "cron.schedule" backend/src/server.js` = 12, with the boot seed at `server.js:188-221`; `grep -n "13 schedules" ARCHITECTURE.md` returns nothing |
 | 3 | `admin_v2_additive.sql:6` lists `mandi_prices` among FastAPI-owned tables that `db push` must not drop, and Part 7 repeated it. | **`mandi_prices` is Prisma-owned** (`model MandiPrice` at `schema.prisma:1575`, written by `backend/src/services/mandiPrice.service.js`) and is referenced **nowhere** under `fastapi/`. Only `ai_scan_diagnoses` and `ai_scan_feedback` are genuinely Prisma-invisible. The SQL comment is wrong; the hazard is real for exactly those two tables. | **Corrected in the body** at both Part 7 sites (the `--accept-data-loss` hazard section and the schema-ownership policy section), each now naming two tables and flagging the SQL comment as the error. Recorded here because **the underlying source — the SQL file comment — still says otherwise** and will keep re-seeding the mistake. | `grep -rn "mandi_prices" fastapi/` returns nothing; `grep "^model" schema.prisma` finds `MandiPrice` |
 | 4 | Part 2 counts "25 composite `@@unique`"; a raw grep finds 28. | **25.** Three of the 28 occurrences are inside comments. Field-level `@unique` is 22 (50 total `@unique` matches minus the 28 `@@unique` lines). | **Body is correct as written** (Part 2 states 25). Recorded because the naive grep disagrees. | `grep -n '@@unique'` = 28, of which 3 match `^\s*//` |
-| 5 | Part 1 and Part 7 both describe the container `CMD`; Part 7 additionally notes `docs/ADMIN_DEPLOY_RAILWAY.md` documents it with `&&`. | The image uses `sh -c "timeout 60 npx prisma db push --skip-generate; node src/server.js"` — a **semicolon**, so node starts even when the push fails or is killed. `npm run start:prod` uses `&&`. Both are true of different entry points. | **Body is correct as written.** Recorded because `docs/ADMIN_DEPLOY_RAILWAY.md` in the repo still shows `&&` for the image. | `Dockerfile:54`, `backend/package.json:10` |
+| 5 | Part 1 and Part 7 both describe the container `CMD`; an older admin deploy guide documented it with `&&`. | Resolved (2026-10-15): the image now runs `sh -c "node src/server.js"` with no `db push` at all (DB-06), and `npm run start:prod` is the same `node src/server.js`. The old guide was deleted. | **Body updated** at both sites (Part 1 platform table, Part 7 §7.2 and §7.4). | `Dockerfile:55`, `backend/package.json:10` |
 | 6 | Skew for the Express↔FastAPI signature is stated as 15 s (the `auth.py` docstring), 60 s (`fastapi/docs/ARCHITECTURE.md:162`) and 30 s (Parts 3.3 and 4). | **30 s** (`AI_AUTH_SKEW_SEC` default). Both docs are stale; the code is the answer. | **Body is correct as written** (30 s everywhere). Recorded because **two in-repo sources still say otherwise** — the `auth.py` docstring and `fastapi/docs/ARCHITECTURE.md`. | `fastapi/security/auth.py:56-64` |
 | 7 | The admin endpoint count was given as "~115 endpoints across 23 route modules" (Part 3.4) while the At-a-glance table said 138 declarations across 24 files. | **24 files, of which 22 are route modules** (`index.js` composes; `_helpers.js` declares nothing); **140** `<router>.<verb>(` declarations; **142** distinct endpoints after mount composition, because `listings.routes.js`'s `ownerListingRouter` factory (2 declarations) is mounted twice. 142 is exactly the row count of §3.4's complete endpoint table, and the two sets diff to zero. The old `≈115` was stale by 27 endpoints. | **Corrected in the body** at both sites — the At-a-glance API-surface row and §3.4's opening line. | `ls backend/src/routes/admin/*.js` = 24; `grep -cE '^\s*[A-Za-z_$][\w$]*\.(get\|post\|put\|patch\|delete)\(' backend/src/routes/admin/*.js` sums to 140; §3.4 table row count = 142 |
 | 8 | Part 1 lists the AI feature-flag set as "AI_FEATURE_FLAGS" without a count; Part 3.3 lists 7 AI kill switches. | **17 flags total**: 10 product + 7 AI (`ai_chat, ai_scan, ai_voice, ai_soil_ocr, ai_alerts, ai_planner, ai_schemes`). | **Body is correct as written** (At-a-glance says 17 = 10 + 7). | `backend/src/services/featureFlag.service.js:25-33` |
 | 9 | Express's default port is described as 3001 in the runbook and 3000 in the env table. | **`ENV.PORT` defaults to 3000**; `backend/.env.example` sets 3001 and the admin Vite proxy assumes 3001. Running without `PORT` set breaks the admin dev proxy. | **Body is correct as written.** Recorded because **the repo itself disagrees with itself** — `.env.example` and the Vite proxy both assume 3001 while the code defaults to 3000. | `backend/src/config/env.js:193` |
 | 10 | The `SETTINGS_MANIFEST` size was given as "76 keys across 13 categories". | **53 keys across 7 categories.** The 76/13 figure was a silent sum of `SETTINGS_MANIFEST` (53 keys, 7 categories — writable `AppSetting` rows) and `ENV_MANIFEST` (23 keys, 6 categories — read-only env-presence indicators that `setSetting` never accepts). They are different things and must not be added. | **Corrected in the body** — At-a-glance now carries two separate rows, and §3.4's writable-keys rule says 53. | `settings.service.js:62-193` (53 `key:` entries) and `:194-218` (23) |
-| 11 | The `CROP_TREATMENT` model was presented as `gemini-2.5-flash`. | **`gemini-2.5-pro` in production.** Flash is only the FastAPI `_DEFAULTS` value; Express forwards the `ai.model.treatment` App Setting (manifest default `gemini-2.5-pro`) as `params.model_treatment` on every scan, and `model_override` outranks the default. | **Corrected in the body** — the §4 model-routing row and the At-a-glance Gemini row both carry the override, with the ~4× cost consequence. | `settings.service.js:87`, `:304-319`; `ai.routes.js:1722`, `:2160`; `llm_dispatch.py:81-92`, `:89` |
+| 11 | The `CROP_TREATMENT` model was presented as `gemini-2.5-flash`. | **`gemini-2.5-pro` in production at the time.** Flash was only the FastAPI `_DEFAULTS` value; Express forwards the `ai.model.treatment` App Setting (manifest default then `gemini-2.5-pro`) as `params.model_treatment` on every scan, and `model_override` outranks the default. **Superseded 2026-10-15:** the manifest default and `_DEFAULTS` are both `gemini-3.6-flash` now (Gemini 2.5 closed to new API keys; Pro has no free-tier quota), so the ~4× treatment cost lever is gone. | **Corrected in the body** — the §4 model-routing row and the At-a-glance Gemini row both describe the override and the 2026-10-15 move to Flash. | `settings.service.js` (`ai.model.treatment`), `:304-319`; `ai.routes.js:1722`, `:2160`; `llm_dispatch.py` `_DEFAULTS` |
 
 ### A.2 Inconsistencies that live in the codebase
 
@@ -12091,11 +12165,11 @@ Multi-site items, with every place the body describes them:
 31. **`A2-31`** — `RAZORPAY_WEBHOOK_SECRET` fails closed but is absent from `backend/.env.example` **and** from the admin `ENV_MANIFEST`, so ops cannot see that it is missing.
 32. **`A2-32`** — FastAPI's `.env.example` documents `API_HOST`/`API_PORT` while `config.py:130-131` reads `CROPGUARD_HOST`/`CROPGUARD_PORT`; the documented names are dead.
 33. **`A2-33`** — FastAPI's spend cap and replay nonce read only `RATE_LIMIT_STORAGE_URI`/`REDIS_URL`; a deploy setting only `CELERY_*` silently degrades both to per-process memory and grants each replica the full daily cap.
-34. **`A2-34`** — `fastapi/weather_service.py:32` hardcodes `localhost:6379`, so on Railway its 30-minute weather cache is always per-process.
+34. **`A2-34`** — Resolved (verified 2026-10-15): `fastapi/weather_service.py:44-45` now reads `RATE_LIMIT_STORAGE_URI` / `REDIS_URL` like the other FastAPI clients, with a 30 s re-probe, so the 30-minute weather cache is shared through the VPS Redis instead of being per-process.
 35. **`A2-35`** — `fastapi/.env.example` claims Anthropic was removed while `config.py:47`, `llm_dispatch.py` and `requirements.txt` all wire it, and the admin dropdown offers two Claude models. Conversely, **no `claude-*` id appears in any default or chain**, so Claude is unreachable in practice.
 36. **`A2-36`** — `frontend/.env.example:12` names a different EAS project id than `frontend/app.json:62`.
-37. **`A2-37`** — Three different production hostnames appear in the repo: `krushisarva2-production` (what the apps call), `krushisarva-backend-production` (what `sslPinning.js` pins), `resilient-vision-production-e784` (what the dead APK workflow patches in).
-38. **`A2-38`** — `frontend/railway.toml` runs `npx prisma db push --accept-data-loss && node src/server.js` against a directory with no prisma, no `prisma/` and no `src/server.js` — the command cannot run, and the flag is the one every manual SQL header forbids.
+37. **`A2-37`** — Resolved (2026-10-15): one production hostname, `srv2061596.hstgr.cloud`, is now used by the apps (`shared/constants/config.js`, both `eas.json`), by `sslPinning.js` and by `admin/vercel.json`; the APK workflow's URL-patch step was deleted (§7.7 "Production URL").
+38. **`A2-38`** — Resolved (2026-10-15): the `frontend/` hosting config that ran `npx prisma db push --accept-data-loss` against a directory with no Prisma was deleted with the rest of the old hosting company's files.
 
 **Documentation drift** (beyond the admin-panel items above)
 
@@ -12113,14 +12187,14 @@ Multi-site items, with every place the body describes them:
 47. **`A2-47`** — `pytest` is not in `fastapi/requirements.txt`; the suite runs only from a committed local `.venv`.
 48. **`A2-48`** — All mobile UI tests are placeholders (`test.todo` lists and Detox scripts with no Detox dependency). **Zero React components are rendered by any test.**
 49. **`A2-49`** — `docs/ACCOUNT_HARDENING.md:219` records **37 pre-existing test failures** across 7 suites as the accepted baseline.
-50. **`A2-50`** — **No CI runs on this repository**: the four GitHub Actions workflows live in `backend/.github/` and `frontend/.github/`, never at the repo root, so GitHub never schedules them. `main` auto-deploys to Railway with no test, lint, typecheck or build gate.
+50. **`A2-50`** — Resolved (2026-10-15): root `.github/workflows/ci.yml` now runs the backend, FastAPI, mobile + shared and admin suites plus `prisma validate` on every push to `main` and every PR, and nothing auto-deploys (the VPS updates only via `/root/update.sh`). The four nested workflows are still fossils GitHub never schedules (§7.6).
 
 
 **Dead code and unreachable branches**
 
 51. **`A2-51`** — `fastapi/agents/weather_analysis_agent.py` is a **dead delegating shim**. It is imported at `orchestrator.py:29` (`from agents.weather_analysis_agent import run_weather_analysis_agent`) but **never invoked**: its own module docstring states that "the orchestrator now uses the rule-based `weather_rules.py` instead of this LLM-based agent ($0 cost, deterministic)" and that the file is kept for backward compatibility, and its body simply delegates to `services.weather_rules.analyze_weather_risk_rules`. Pipeline stage 2 calls `services/weather_rules.py` directly, which is what the *Exact stage order* table correctly documents — so the document is not wrong, but a reader grepping `fastapi/agents/` finds an agent the architecture never accounts for. The import at `orchestrator.py:29` can be dropped with no behaviour change.
 52. **`A2-52`** — `SETTINGS_MANIFEST`'s `isSecret` guard is unreachable. `setSetting` refuses any key whose manifest entry sets `isSecret` (`settings.service.js:365`) and `listSettings` masks it (`:346`), but **no entry in `SETTINGS_MANIFEST` sets `isSecret`**, so `def.isSecret` is always `undefined` and both branches are dead. Secrets stay out of the settings table because none was ever added, not because the guard fires — and the guard has therefore never been exercised or tested. The `secret: true` fields at `:195-217` belong to the separate `ENV_MANIFEST`.
-53. **`A2-53`** — No `cron.schedule(...)` call in `backend/src/server.js` passes a `timezone` option, and nothing in the repo pins `TZ`. Every daily cron therefore fires at container-local time, which is UTC only because Railway containers default to it. Any change of base image or explicit `TZ` silently moves the retention sweep, the mandi sync, the batch-expiry sweep and the prediction-cache purge.
+53. **`A2-53`** — No `cron.schedule(...)` call in `backend/src/server.js` passes a `timezone` option, and nothing in the repo pins `TZ`. Every daily cron therefore fires at container-local time, which is UTC only because the `node:20-slim` image defaults to it and `docs/deploy/VPS_DEPLOY_PLAN.md` §2 rule 2 says never to set `TZ=Asia/Kolkata`. Any change of base image or explicit `TZ` silently moves the retention sweep, the mandi sync, the batch-expiry sweep and the prediction-cache purge.
 54. **`A2-54`** — `frontend/src/services/aiApi.js`'s `scanCropImage` sends **no `Idempotency-Key`** on `POST /ai/scan/submit`, and the shared interceptor's `needsIdem` allowlist (`shared/services/api.js:159-176`) does not match that URL, so FastAPI always keys idempotency on the canonical body hash instead of a header key. Consequence in both directions: two deliberate scans of a byte-identical image collapse into one job, while a genuine retry with a re-compressed image does not dedup at all. `newIdemKey()` *is* used elsewhere in the same file (`:49`, `:346`, `:418`), so this reads as an omission rather than a decision.
 
 ---
@@ -12131,7 +12205,7 @@ What the reading that produced this document did **not** cover. Treat every stat
 
 ### B.1 Method-level caveats that apply document-wide
 
-- **Nothing here was verified by running the system.** No test suite was executed, no query plan was measured with `EXPLAIN`, no production database or Railway dashboard was inspected. All behaviour is read from source.
+- **Nothing here was verified by running the system.** No test suite was executed, no query plan was measured with `EXPLAIN`, no production database or server was inspected. All behaviour is read from source.
 - **Latency figures** in the FastAPI endpoint table are inferred from timeout ladders, stage caps and provider read timeouts — not from production telemetry. The only measured numbers are in `fastapi/eval/reports/book_dataset/scorecard.json`.
 - **"Index-served" vs "not index-served"** claims match index definitions against query shapes read in route code; they are not planner output.
 - **Table sizes, row counts and index bloat** could not be measured, so the growth ranking is by write-path reasoning, not observed cardinality.
@@ -12173,7 +12247,7 @@ What the reading that produced this document did **not** cover. Treat every stat
 - `agents/prompts/diagnose.v2.md` and `treatment.v1.md` were read by grep/outline rather than line by line; prompt-behaviour claims come from quoted lines plus the consuming agent code.
 - `agents/report_generator_agent.py` (1,211 lines) was read in full only for the entry point, `_attach_local_blocks`, `_generate_template_report` and the section-3/4 headers; per-field report layout is not exhaustively documented.
 - `fastapi/docs/ARCHITECTURE.md` is 1,282 lines; §1-§7 were read in full and the remainder grepped for provider/config/eval claims, so the divergence table is not a guaranteed-exhaustive diff.
-- The Python runtime version is unverified — there is no pin in `fastapi/` (Nixpacks defaults), so the docs' "Python 3.14" could not be confirmed or refuted.
+- The Python runtime is now pinned by `fastapi/Dockerfile` (`python:3.12-slim`, the same 3.12 the root CI uses), so the docs' "Python 3.14" is wrong for production.
 - The ONNX local classifier (`models/local_classifier.py`) is off in every visible deployment (no `onnxruntime`/`numpy` in `requirements.txt`, no `LOCAL_CLASSIFIER_MODEL_PATH` in `.env.example`), so it is documented as code-present/runtime-absent rather than measured.
 - The claim that the Express credit ledger is authoritative rests on FastAPI-side statements (`security/spend.py:22-24`, `.env.example:160-166`) and the `scan_settled`/`job_id` coupling, not on a full read of the ledger implementation from the Python side.
 - Whether `GROQ_API_KEY` / `OPENAI_API_KEY` / `ENABLE_ENSEMBLE` / `ANTHROPIC_API_KEY` are set in production is unknowable from the repo, so which fallback and ensemble paths are actually live cannot be stated.
@@ -12191,6 +12265,6 @@ What the reading that produced this document did **not** cover. Treat every stat
 
 ### B.7 Infrastructure
 
-- Railway dashboard state is not in the repo. How many services exist, their names, whether a `ROLE=worker` Celery service is deployed, whether a `frontend` service is attached to the shared `DATABASE_URL`, and what env vars are actually set could **not** be verified. Part 7 states what the config files support and flags the rest.
+- Live VPS state is not in the repo. `deploy/docker-compose.yml` and `deploy/Caddyfile` are, but whether the copies in `/opt/krushisarva/` still match them, and what `/opt/krushisarva/env/{backend,fastapi,postgres}.env` actually set, could **not** be verified. Part 7 states what the checked-in files define.
 - No test suite was executed. Counts are grep-based (`it(`/`test(`/`def test_` occurrences), and the "37 pre-existing failures" figure is quoted from `docs/ACCOUNT_HARDENING.md`, not re-measured.
 - The 60 per-screen documents under `docs/screens/**` were not individually verified against code — only the two index files were read and spot-checked. `shared/README.md` and `admin/README.md` were listed in the doc inventory but not read in full.

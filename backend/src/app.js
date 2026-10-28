@@ -20,6 +20,7 @@ import { getCacheMetrics } from './utils/cacheMetrics.js';
 import { getShopMetricsFlat, getShopMetrics, shopMetricsMiddleware } from './services/shopMetrics.service.js';
 import { rateLimiter, clientIp } from './middleware/rateLimit.js';
 import { csrfProtection } from './middleware/csrf.js';
+import { withFirebasePhoneAuthCsp } from './utils/csp.js';
 import { installAsyncRouteSafety } from './middleware/asyncRoutes.js';
 
 // An async handler that rejects must produce a response, not a request that
@@ -58,6 +59,7 @@ import consentRoutes       from './routes/consent.routes.js';
 import incidentRoutes      from './routes/incident.routes.js';
 import fraudRoutes         from './routes/fraud.routes.js';
 import moderationRoutes    from './routes/moderation.routes.js';
+import reportsRoutes       from './routes/reports.routes.js';
 // Admin panel API (users, KYC, catalog, orders, listings, community, AI, CMS,
 // broadcast, ops, compliance) — ADMIN-gated + audited (routes/admin/index.js).
 import adminRoutes         from './routes/admin/index.js';
@@ -87,7 +89,7 @@ const app = express();
 app.disable('etag');
 
 // ── Trust the reverse proxy ───────────────────────────────────────────────────
-// Railway (and any LB) terminate TLS and forward the client via X-Forwarded-For.
+// Caddy (and any LB) terminates TLS and forwards the client via X-Forwarded-For.
 // Without this, req.ip is the proxy's address and every client behind it shares
 // one rate-limit bucket. With it, Express resolves req.ip from the right-most
 // untrusted XFF hop — an address the client CANNOT spoof — so the global per-IP
@@ -111,14 +113,22 @@ app.use((req, res, _next) => {
 // not restricted to one CDN host; for an internal, ADMIN-gated panel that trade is
 // worth the working UI. Everything else stays at helmet's defaults — the Vite build
 // emits no inline script, so `script-src 'self'` needs no loosening.
+const cspDirectives = {
+  ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+  'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+};
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      'img-src': ["'self'", 'data:', 'blob:', 'https:'],
-    },
-  },
+  contentSecurityPolicy: { directives: cspDirectives },
 }));
+
+// With FIREBASE_AUTH_ENABLED the admin login can use Firebase phone auth, which
+// needs Google's reCAPTCHA scripts/frames and the identitytoolkit API — see
+// utils/csp.js for the exact sources. Only /admin (the one page that loads
+// reCAPTCHA) gets them: this header replaces the global one there, and every
+// other response keeps the CSP above. With the flag off nothing changes.
+if (ENV.FIREBASE_AUTH_ENABLED) {
+  app.use('/admin', helmet.contentSecurityPolicy({ directives: withFirebasePhoneAuthCsp(cspDirectives) }));
+}
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // [H1] Never reflect arbitrary origins in production.
@@ -126,24 +136,14 @@ app.use(helmet({
 // Browser-based clients (admin panel, web) must be listed in ALLOWED_ORIGINS.
 // In development with no list set, all origins are allowed for convenience.
 //
-// The admin SPA is served SAME-ORIGIN from this backend. Its asset requests (Vite
-// marks bundles `crossorigin`, so they send an Origin header) and its API calls
-// carry THIS service's own origin — which must always be allowed, or the allowlist
-// below rejects them with a 500 and the panel white-screens. Railway exposes the
-// public host via RAILWAY_PUBLIC_DOMAIN / RAILWAY_STATIC_URL.
-const SELF_ORIGINS = new Set(
-  [process.env.RAILWAY_PUBLIC_DOMAIN, process.env.RAILWAY_STATIC_URL]
-    .filter(Boolean)
-    .map((d) => `https://${d}`),
-);
+// The production admin panel is hosted on Vercel, which proxies /api/* here, so
+// its requests carry the Vercel origin: that origin must be in ALLOWED_ORIGINS,
+// or the allowlist below rejects them with a 500 and the panel white-screens.
 
 app.use(cors({
   origin: (incomingOrigin, callback) => {
     // No Origin header → mobile app / curl / Postman → always allow
     if (!incomingOrigin) return callback(null, true);
-
-    // Same-origin (this service's own public origin) → always allow.
-    if (SELF_ORIGINS.has(incomingOrigin)) return callback(null, true);
 
     // Dev convenience: always allow loopback origins (localhost / 127.0.0.1, any
     // port) so the admin SPA (:5180), Expo web (:8081/:19006) and other local
@@ -308,14 +308,13 @@ app.use(skipMultipart(express.urlencoded({ extended: true, limit: '100kb' })));
 
 // ── Health probes ─────────────────────────────────────────────────────────────
 // /healthz — liveness. Returns 200 as long as the process is alive.
-//            Does NOT touch any dependency. Configure as Kubernetes
-//            livenessProbe / Railway healthcheck-restart-on-fail target.
+//            Does NOT touch any dependency. The Docker Compose healthcheck
+//            (deploy/docker-compose.yml) targets this path.
 // /readyz  — readiness. Checks DB (required) and Redis (optional). Returns
 //            503 when degraded so the LB can stop routing traffic to this
 //            instance until it recovers.
-// /health  — kept as an alias of /healthz for backward compatibility with the
-//            existing Railway healthcheck path; remove once the Railway
-//            config has been migrated.
+// /health  — kept as an alias of /healthz for backward compatibility with
+//            older monitors and tests that still probe this path.
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
 app.get('/health',  (_req, res) => res.json({ status: 'ok' }));
 
@@ -498,6 +497,7 @@ app.use(`${API}/legal`,        legalApiRouter);
 app.use(`${API}/admin/incidents`, incidentRoutes);
 app.use(`${API}/admin/fraud`,  fraudRoutes);
 app.use(`${API}/admin/moderation`, moderationRoutes);
+app.use(`${API}/reports`,      reportsRoutes);
 app.use(`${API}/telemetry`,    telemetryRoutes);
 
 // ── New AI Services ───────────────────────────────────────────────────────────

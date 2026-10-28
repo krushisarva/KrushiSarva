@@ -14,8 +14,9 @@ import PhotoIcon from '../../../components/PhotoIcon';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { classifyError, ERROR_CODES } from '../../../utils/apiError';
 
@@ -105,7 +106,7 @@ export function useLoggerSave({ primary, secondary, t, failMessage }) {
           ? t('logger.sessionExpired', 'Session expired')
           : t('login.error', 'Error');
       // A 409 here is the log-full case the server now reports explicitly.
-      Alert.alert(title, c.status === 409 ? (c.message || failMessage) : c.message);
+      showPopup(title, c.status === 409 ? (c.message || failMessage) : c.message);
       return false;
     } finally {
       inFlight.current = false;

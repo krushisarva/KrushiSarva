@@ -1,7 +1,8 @@
 /**
  * Auth Routes
- * POST /api/v1/auth/send-otp     → request OTP
+ * POST /api/v1/auth/send-otp     → request OTP (development only — no SMS is sent)
  * POST /api/v1/auth/verify-otp   → verify OTP, get tokens
+ * POST /api/v1/auth/firebase-login → Firebase ID token (the SMS sign-in), get tokens
  * POST /api/v1/auth/refresh       → rotate refresh token
  * POST /api/v1/auth/logout        → revoke refresh token
  * POST /api/v1/auth/logout-all    → revoke all devices
@@ -25,7 +26,7 @@ import { auditAuthEvent, AUTH_ACTIONS, maskPhone } from '../services/audit.servi
 import { normalizeIndianMobile, indianMobileBody } from '../utils/phone.js';
 import { sendOtp, verifyOtp } from '../services/otp.service.js';
 import { verifyFirebaseIdToken, verifyFirebaseReauth, isFirebaseAuthEnabled } from '../services/firebaseAuth.service.js';
-import { issueSessionForVerifiedPhone, ACCOUNT_INACTIVE_CODE } from '../services/authSession.service.js';
+import { issueSessionForVerifiedPhone, ACCOUNT_INACTIVE_CODE, NOT_ADMIN_CODE } from '../services/authSession.service.js';
 import { checkOtpLock, clearOtpLockout } from '../services/otpLockout.service.js';
 import { otpPowGate } from '../services/proofOfWork.service.js';
 import { reportSecurityEvent } from '../services/incident.service.js';
@@ -161,13 +162,13 @@ router.post(
 );
 
 // ── POST /firebase-login ───────────────────────────────────────────────────────
-// Parallel login path for as long as KrushiSarva's DLT registration is pending.
-// Google sends and verifies the SMS OTP (it is the DLT-registered sender); the
-// client hands us the resulting Firebase ID token and we mint OUR session from it.
+// The SMS sign-in. Google sends and verifies the SMS OTP (it is the
+// DLT-registered sender); the client hands us the resulting Firebase ID token and
+// we mint OUR session from it.
 //
-// The MSG91 path above is untouched and remains the default — this route 503s
-// unless FIREBASE_AUTH_ENABLED is on AND a service account is configured, so a
-// deploy without Firebase behaves exactly as before.
+// This route 503s unless FIREBASE_AUTH_ENABLED is on AND a service account is
+// configured. /send-otp above sends no SMS, so without Firebase a production
+// deploy has no phone sign-in.
 //
 // Rate limit note: Firebase enforces its own per-number SMS quota on the send
 // side, which our OTP limiters never see. This limiter caps token-verification
@@ -189,6 +190,13 @@ router.post(
     body('idToken').isString().trim().isLength({ min: 20, max: 4096 })
       .withMessage('Firebase ID token required'),
     body('name').optional().trim().isLength({ min: 2, max: 80 }),
+    // The admin panel sends audience 'admin'. It can only NARROW this route: the
+    // session is issued only if the proven phone's EXISTING account is ADMIN and
+    // the SMS behind the token is recent, and nothing (no user, no consent row,
+    // no tokens) is created otherwise. Leaving it out is exactly the apps'
+    // behaviour. Role, scopes and tokenVersion still come from the DB alone —
+    // the client never supplies them.
+    body('audience').optional().isIn(['admin']).withMessage('Unknown audience'),
   ],
   validate,
   async (req, res) => {
@@ -197,13 +205,23 @@ router.post(
     }
 
     const { idToken, name } = req.body;
+    const requireRole = req.body.audience === 'admin' ? 'ADMIN' : undefined;
 
     let phone;
     let firebaseUid;
     try {
       // Google-signed JWT: signature, issuer, audience, expiry, revocation and the
       // sign-in provider are all checked inside.
-      ({ phone, firebaseUid } = await verifyFirebaseIdToken(idToken));
+      //
+      // The admin login also requires the SMS behind the token to be RECENT
+      // (auth_time within FIREBASE_REAUTH_MAX_AGE_SECONDS). A valid token alone
+      // only says "signed in at some point": an app's long-lived Firebase session
+      // keeps minting tokens with the original auth_time, and none of our
+      // revocations reach it. The OTP admin login needs a fresh code, so this one
+      // does too. The admin SPA always runs a new SMS challenge, so it passes.
+      ({ phone, firebaseUid } = requireRole
+        ? await verifyFirebaseReauth(idToken)
+        : await verifyFirebaseIdToken(idToken));
     } catch (err) {
       // OUR fault vs THEIRS. An unconfigured service account, a bad key, or Google
       // being unreachable is a 503 — answering 401 there tells a farmer their phone
@@ -218,15 +236,20 @@ router.post(
       // specific in the log for operators.
       logger.warn('[Auth] firebase-login token rejected: %s', err.message);
       await auditAuthEvent(null, AUTH_ACTIONS.OTP_FAILURE, req.ip, {
-        outcome: 'failure', reason: 'firebase_token_invalid', loginMethod: 'firebase',
+        outcome: 'failure', reason: err.staleReauth ? 'firebase_auth_stale' : 'firebase_token_invalid',
+        loginMethod: 'firebase', ...(requireRole ? { requiredRole: requireRole } : {}),
       });
-      return sendUnauthorized(res, 'Could not verify your phone number. Please try again.');
+      // A stale admin token is genuine but old: say what fixes it, or the admin
+      // retries the same token and reads it as a broken login.
+      return sendUnauthorized(res, err.staleReauth
+        ? 'That verification is too old. Please request a new code.'
+        : 'Could not verify your phone number. Please try again.');
     }
 
     try {
       // Honour the OTP brute-force lockout even though Google, not us, checked the
       // code. Without this the two login paths are a lockout-evasion pair: burn
-      // through the MSG91 attempts until the number locks, then walk in through
+      // through the /verify-otp attempts until the number locks, then walk in through
       // Firebase. The lock is keyed by phone, so it has to be enforced by every
       // path that can mint a session for that phone.
       //
@@ -254,7 +277,7 @@ router.post(
       // untraceable back to the Firebase account that produced it, which is the
       // only handle support has when investigating a disputed login.
       const { body: payload } = await issueSessionForVerifiedPhone({
-        req, res, phone, name, loginMethod: 'firebase', providerUid: firebaseUid,
+        req, res, phone, name, loginMethod: 'firebase', providerUid: firebaseUid, requireRole,
       });
       // A clean login through either path clears accumulated failure state, so a
       // user who genuinely owns the number isn't left half-locked.
@@ -262,6 +285,7 @@ router.post(
       return sendCreated(res, payload);
     } catch (err) {
       if (err.accountInactive) return sendError(res, err.message, 403, { code: ACCOUNT_INACTIVE_CODE });
+      if (err.notAdmin) return sendError(res, err.message, 403, { code: NOT_ADMIN_CODE });
       logger.error({ err }, '[Auth] firebase-login error');
       return sendError(res, 'Authentication failed', 500);
     }
@@ -381,10 +405,6 @@ router.post(
         return sendError(res, 'New number must be different from your current number', 400);
       }
 
-      // Reject if the number already belongs to someone else (phone is unique).
-      const taken = await prisma.user.findUnique({ where: { phone: newPhone }, select: { id: true } });
-      if (taken) return sendError(res, 'This number is already linked to another account', 409);
-
       // Prove ownership of the NEW number with a fresh Firebase challenge.
       if (!isFirebaseAuthEnabled()) {
         return sendError(res, 'Phone verification is not available on this server', 503);
@@ -408,6 +428,12 @@ router.post(
         logger.warn({ userId: me.id }, '[Auth] change-phone token/number mismatch');
         return sendError(res, 'Phone verification failed', 401);
       }
+
+      // Reject if the number already belongs to someone else (phone is unique).
+      // Checked only now, after the caller has proved they hold the number:
+      // asked first, this answered "is this phone registered?" for anyone.
+      const taken = await prisma.user.findUnique({ where: { phone: newPhone }, select: { id: true } });
+      if (taken) return sendError(res, 'This number is already linked to another account', 409);
 
       // Swap the number and bump the token version atomically.
       const updated = await prisma.$transaction(async (tx) => {

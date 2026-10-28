@@ -7,8 +7,8 @@
  * having the control: it fails exactly when an operator is relying on it.
  *
  * Deliberate exemptions, so enabling maintenance never locks you out of fixing it:
- *   - /healthz, /readyz, /health  — the platform healthcheck must keep passing or
- *     Railway will kill and restart the container mid-maintenance.
+ *   - /healthz, /readyz, /health  — the Docker healthcheck and uptime monitors
+ *     must keep passing, or the container is reported unhealthy mid-maintenance.
  *   - /api/v1/admin/*            — the admin panel must stay usable to turn it OFF.
  *   - /api/v1/auth/*             — an admin still has to be able to log in.
  *   - the /admin SPA assets      — same reason.

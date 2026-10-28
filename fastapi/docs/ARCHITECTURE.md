@@ -41,7 +41,7 @@ Diagnosis is a **multi-agent pipeline** coordinated by `orchestrator.py`. Cheap,
 |---|---|
 | API | FastAPI + Uvicorn, SlowAPI rate limiting |
 | Async jobs | Celery; Redis broker + result backend |
-| Vision / LLM | Gemini 2.5 Pro/Flash, Claude Sonnet/Haiku (native SDKs) |
+| Vision / LLM | Gemini 3.6 Flash / 3.5 Flash-Lite (free-tier key), Claude Sonnet/Haiku (native SDKs) |
 | Weather | Open-Meteo (keyless) |
 | Persistence | PostgreSQL via asyncpg (fire-and-forget) |
 | CV (quality + visual verify) | Pillow only (no OpenCV/numpy) |
@@ -67,9 +67,9 @@ Diagnosis is a **multi-agent pipeline** coordinated by `orchestrator.py`. Cheap,
  │  S1  ImageQuality (Pillow CV)  ‖  Weather fetch (Open-Meteo)   ──▶  S2  Weather rules ($0)            │
  │            │ quality gate (unusable → needs-rescan)                                                   │
  │            ▼                                                                                          │
- │  S3  DIAGNOSIS — Gemini 2.5 Pro, v2 prompt, per-crop candidate list, canonical name-snap              │
+ │  S3  DIAGNOSIS — Gemini 3.6 Flash, v2 prompt, per-crop candidate list, canonical name-snap            │
  │        ├─ provider down ───────────────▶  SERVICE UNAVAILABLE  (single model, NO fallback)           │
- │        └─ low-conf / ambiguous ─▶ S3.25 ENSEMBLE (Gemini Pro + Claude Sonnet) ─▶ Reconciler vote     │
+ │        └─ low-conf / ambiguous ─▶ S3.25 ENSEMBLE (Flash + Flash-Lite (+GPT-4o)) ─▶ Reconciler vote   │
  │  visual-verify (HSV) ─▶ S3.5 Cross-verify (rules, caps/penalties) ─▶ S4 Treatment (RAG + safety)     │
  │                                                                       ─▶ S5 Report (template, 4 pp.) │
  └──────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -87,9 +87,9 @@ Diagnosis is a **multi-agent pipeline** coordinated by `orchestrator.py`. Cheap,
 5. **Stage 1 (parallel).** Resolve field coordinates (GPS→district→state); run **image-quality CV**; **fetch weather** (Open-Meteo). 
 6. **Stage 2.** Rule-based **weather risk** (favorable diseases, advisory) — `$0`.
 7. **Quality gate.** Unusable images → short-circuit to a *needs-rescan* report.
-8. **Stage 3 — diagnosis.** Build the prompt with the crop's **candidate-disease list**, call **Gemini 2.5 Pro** (v2 prompt), parse, then **canonical-snap** the disease name. If the provider is down → **`service_unavailable`** result (no weaker-model fallback).
+8. **Stage 3 — diagnosis.** Build the prompt with the crop's **candidate-disease list**, call **Gemini 3.6 Flash** (`AI_CROP_DIAGNOSE_MODEL` default; v2 prompt), parse, then **canonical-snap** the disease name. If the provider is down → **`service_unavailable`** result (no weaker-model fallback).
 9. **Service-down short-circuit.** If diagnosis came back `service_unavailable`, the orchestrator returns a clear "try again later" report and stops.
-10. **Stage 3.25 — ensemble (conditional).** If confidence `< 0.80` or the call is ambiguous, fan out to **Gemini Pro + Claude Sonnet** in parallel; `reconciler.fuse()` votes (dead "Unknown" votes dropped; confidence-aware tie-break).
+10. **Stage 3.25 — ensemble (conditional).** If confidence `< 0.80` or the call is ambiguous, fan out to **Gemini 3.6 Flash + 3.5 Flash-Lite** (+ GPT-4o when `OPENAI_API_KEY` is set) in parallel; `reconciler.fuse()` votes (dead "Unknown" votes dropped; confidence-aware tie-break).
 11. **Visual verify + Stage 3.5 cross-verify.** Pixel-level HSV check of color claims, then rule-based confidence caps/penalties (weather contradiction, image quality, ambiguity, lab-confirmation).
 12. **Stage 4 — treatment.** RAG-grounded against the chemical registry; **cultural/biological-only** when no registered chemical exists for that (crop, disease).
 13. **Stage 5 — report.** Template assembles the 4-section farmer report + meta (tokens, cost, latency, models). Native-language strips via Sarvam.
@@ -156,7 +156,7 @@ mobile app ── GET /ai/scan/{job_id} (poll) ───────────
 
 ### 1. Auth — signed requests (`security/auth.py`)
 
-On Railway the FastAPI service has a public URL, so without a shared secret anyone could hit `/ai/scan` directly and burn LLM spend (`security/auth.py:1-14`). Express signs every proxied request; `verify_signed_request` is attached as a `Depends(...)` on **both** `/ai/scan` and `/ai/scan/{job_id}` (`routes/scan.py:88, 190`).
+On the VPS (Docker Compose) the FastAPI service has no public URL — Caddy forwards only to Express — but the network is never trusted: without a shared secret, anything that reached it could hit `/ai/scan` directly and burn LLM spend (`security/auth.py:1-14`). Express signs every proxied request; `verify_signed_request` is attached as a `Depends(...)` on **both** `/ai/scan` and `/ai/scan/{job_id}` (`routes/scan.py:88, 190`).
 
 - Header contract (`security/auth.py:21-23`): `X-Sig-Timestamp: <unix epoch>` and `X-Sig-Signature: hex(HMAC-SHA256(secret, f"{ts}.{METHOD}.{path}.{sha256(body)}"))`.
 - Checks, in order (`verify_signed_request`, lines 50-91): missing headers → 401 `missing_signature`; non-integer ts → 401 `bad_timestamp`; `abs(now - ts) > _SKEW` → 401 `stale_signature` (replay window default 60s via `AI_AUTH_SKEW_SEC`); signature mismatch via `hmac.compare_digest` → 401 `bad_signature`.
@@ -484,7 +484,7 @@ Signature: `run_disease_diagnosis_agent(images, image_quality, weather_risk, par
 
 #### 1. Single-model resolution (`get_feature_config`)
 
-`cfg = get_feature_config("CROP_DIAGNOSE")` (line 319) reads `AI_CROP_DIAGNOSE_MODEL` / `AI_CROP_DIAGNOSE_API_KEY` from the environment, falling back to the baked-in default `("gemini-2.5-flash", GEMINI_API_KEY)` (`llm_dispatch.py` `_DEFAULTS["CROP_DIAGNOSE"]`, line 73). Note the module docstring header says "Gemini 2.5 Flash" while the `run_*` docstring references `gemini-2.5-pro` as an example — the actual model is whatever the env/default resolves to; treat the docstring crop names as illustrative, not authoritative.
+`cfg = get_feature_config("CROP_DIAGNOSE")` (line 319) reads `AI_CROP_DIAGNOSE_MODEL` / `AI_CROP_DIAGNOSE_API_KEY` from the environment, falling back to the baked-in default `("gemini-3.6-flash", GEMINI_API_KEY)` (`llm_dispatch.py` `_DEFAULTS["CROP_DIAGNOSE"]`). Note the module docstrings name specific Gemini variants as examples — the actual model is whatever the env/default resolves to; treat the docstring model names as illustrative, not authoritative.
 
 If `cfg.api_key` is empty, the function returns `_service_unavailable(cfg.model, "no API key configured ...")` immediately (lines 320-323) — it does **not** attempt a call.
 
@@ -573,7 +573,7 @@ An optional on-prem MobileNetV2/ONNX PlantVillage classifier, **disabled by defa
 - **Two `_CROP_ALIASES` maps** can drift; a crop that resolves in `input_normalizer` may still miss in the whitelist's narrower alias map (it then falls through to `normalize_crop_name`, so usually fine — but worth knowing).
 - **Generic-bucket dedup**: when extending the catalog, beware that two real diseases must not collapse via a shared `(unspecified)`/`spp.` canonical — the `_add` guard handles the known cases but new combinations can surprise you.
 - **v1 is dead for traffic** but live for eval replay; changing `ACTIVE_VERSIONS["diagnose"]` is the rollback lever (no redeploy needed for prompt text changes — drop a new `.md` and bump the map).
-- **Doc/code mismatch**: the agent docstrings name specific Gemini variants; the real model is env-resolved (`AI_CROP_DIAGNOSE_MODEL`, default `gemini-2.5-flash`). Trust `get_feature_config`, not the prose.
+- **Doc/code mismatch**: the agent docstrings name specific Gemini variants; the real model is env-resolved (`AI_CROP_DIAGNOSE_MODEL`, default `gemini-3.6-flash`). Trust `get_feature_config`, not the prose.
 
 ---
 
@@ -611,7 +611,7 @@ If escalation fires, the orchestrator calls `ensemble_agent.select(crop)` then `
 ### 2. `ensemble_agent.select` — who votes
 
 `select(crop)` (`agents/ensemble_agent.py:51`) resolves the ordered voter set:
-1. `resolve_chain("ensemble", "best")` — tier is **intentionally ignored** (the ensemble always uses its "best" set regardless of any farmer-facing toggle). Today that resolves to **`gemini-2.5-pro` + `claude-sonnet-4-6`** (`registry.py:120–123`).
+1. `resolve_chain("ensemble", "best")` — tier is **intentionally ignored** (the ensemble always uses its "best" set regardless of any farmer-facing toggle). Today that resolves to **`gemini-3.6-flash` + `gemini-3.5-flash-lite`**, plus `gpt-4o` when `OPENAI_API_KEY` is set (`registry.py`).
 2. If that chain is empty, it falls back to `resolve_chain("diagnose", "best")` so callers still get *some* fan-out.
 3. A crop-specific specialist from `agents/specialists/` is appended if registered and present in `MODEL_CATALOG` (deduped). The reconciler treats it as one more equal voter.
 
@@ -686,7 +686,7 @@ It also merges `differentials` (losers' primaries become contenders, plus everyo
         └───────────────┬───────────────────────────────────────┘
             no │                       │ yes
                │           ensemble_agent.select(crop)
-               │              → [gemini-2.5-pro, claude-sonnet-4-6 (+specialist)]
+               │              → [gemini-3.6-flash, gemini-3.5-flash-lite (+gpt-4o, +specialist)]
                │                       │
                │      run_parallel: asyncio.gather, 90s/member, faults tolerated
                │           dispatch_one_vision (NO fallback)  ┄┄ vs _run_chain (treatment etc.)
@@ -899,7 +899,7 @@ params    ─┘                  │
                                                 (fire-and-forget)
 ```
 
-Note the model name is hard-coded inside `_generate_template_report`: `pipeline_model = "gemini-2.5-flash"` (line 915), surfaced into Section 4 metadata and `meta.model_diagnosis`. This is a static label baked into the report layer, not read from the diagnose stage — worth knowing if/when the diagnose model changes (it must be updated here too).
+Note the model name is hard-coded inside `_generate_template_report`: `pipeline_model = "gemini-3.6-flash"`, surfaced into Section 4 metadata and `meta.model_diagnosis`. This is a static label baked into the report layer, not read from the diagnose stage — worth knowing if/when the diagnose model changes (it must be updated here too).
 
 ### The 4-section template report
 
@@ -1054,7 +1054,7 @@ There are **two distinct ways** a request reaches an LLM, and they have delibera
 This is the path used by the **diagnose** and **treatment** steps (and chat/alert/pest). Each AI feature reads exactly **one** model + **one** API key from `.env`, keyed by the feature name:
 
 - `get_feature_config(feature)` (`llm_dispatch.py:154-169`) reads `AI_<FEATURE>_MODEL`, `AI_<FEATURE>_API_KEY`, `AI_<FEATURE>_BASE_URL` from `os.environ`, falling back to the baked-in `_DEFAULTS` (`llm_dispatch.py:70-78`) so a fresh checkout still boots. Recognised features are in `AI_FEATURES` (`llm_dispatch.py:52-59`): `TEXT_CHAT`, `CROP_DIAGNOSE`, `CROP_TREATMENT`, `ALERT`, `PEST`, `VOICE_STT`. An unknown name raises `ValueError`.
-- Defaults: `CROP_DIAGNOSE` and `CROP_TREATMENT` default to **`gemini-2.5-flash`** (with `GEMINI_API_KEY`); text features default to **`llama-3.3-70b-versatile`** (Groq).
+- Defaults: `CROP_DIAGNOSE` and `CROP_TREATMENT` default to **`gemini-3.6-flash`** (with `GEMINI_API_KEY`); every other feature also defaults to **`gemini-3.6-flash`** (`_DEFAULTS` in `agents/llm_dispatch.py`). Groq (`openai/gpt-oss-120b`, `GROQ_FALLBACK_MODEL`) is only the last-resort text-chat fallback.
 - `call_llm_text(...)` / `call_llm_vision(...)` (`llm_dispatch.py:174-246`) detect the provider, log `[LLMDispatch] feature=... provider=... model=...`, and forward to the matching helper. **There is no fallback chain** — whatever the provider raised propagates to the caller (`llm_dispatch.py:14-16`). This is the explicit design decision noted in the current architecture: **diagnose is single-model with no cross-model fallback**, so when the chosen provider is down the caller surfaces a clean `service_unavailable` rather than silently degrading to a weaker model (which would make quality impossible to reason about).
 
 **2. The router chain — `agents/router.py` (used by the ensemble)**
@@ -1139,7 +1139,7 @@ Where they're set (confirmed in code):
 - **`jobs/tasks.py:129-133`** re-establishes `request_id`/`user_id` inside background job workers (which don't go through the HTTP middleware).
 - `RequestContext` (`observability/logging.py:38-63`) is a context-manager so scripts/jobs can stamp logs manually.
 
-Output format is chosen by **`LOG_FORMAT`** (`setup_logging`, `observability/logging.py:140-157`): `text` (default, pipe-separated, appends `[rid=...]`) or `json` (one JSON object per line — recommended in prod for Railway/CloudWatch/Loki). `JsonFormatter` (`observability/logging.py:68-119`) always emits `ts, level, logger, msg`, conditionally adds `request_id/user_id/tier/stage` (only when set, to keep logs slim), and merges any `extra={...}` fields the caller passed (serialisability-checked, falling back to `repr`). `LOG_LEVEL` (default `INFO`) sets the root level; `httpx`, `httpcore`, `watchfiles`, and `uvicorn.access` are pinned to `WARNING`. `setup_logging()` is idempotent (clears existing handlers so the chosen format wins on `--reload`) and is called from the lifespan. `logging_config.py` is just a backward-compat shim re-exporting `setup_logging` for root-level/test imports.
+Output format is chosen by **`LOG_FORMAT`** (`setup_logging`, `observability/logging.py:140-157`): `text` (default, pipe-separated, appends `[rid=...]`) or `json` (one JSON object per line — recommended in prod for CloudWatch/Loki). `JsonFormatter` (`observability/logging.py:68-119`) always emits `ts, level, logger, msg`, conditionally adds `request_id/user_id/tier/stage` (only when set, to keep logs slim), and merges any `extra={...}` fields the caller passed (serialisability-checked, falling back to `repr`). `LOG_LEVEL` (default `INFO`) sets the root level; `httpx`, `httpcore`, `watchfiles`, and `uvicorn.access` are pinned to `WARNING`. `setup_logging()` is idempotent (clears existing handlers so the chosen format wins on `--reload`) and is called from the lifespan. `logging_config.py` is just a backward-compat shim re-exporting `setup_logging` for root-level/test imports.
 
 ---
 
@@ -1249,7 +1249,7 @@ The most important block is the **tie-break / dead-vote handling** (`:142`), whi
 | **snap (`snap_to_candidate`)** | Map a model-returned disease name to the crop's canonical **common** name iff it canonically matches a candidate (match-only, never nearest-neighbour). |
 | **canonicalize / `same_disease`** | `data/disease_synonyms.py` — collapses synonyms/binomials to one canonical name so "Alternaria solani" == "Early Blight". Used by snapping, the reconciler, and eval scoring. |
 | **OOD (out-of-distribution)** | The model flags `is_out_of_distribution` when the image isn't a plant or matches none of the crop's candidates → confidence is capped and `needs_advisor` set. |
-| **ensemble** | The conditional multi-model fan-out (Gemini Pro + Claude Sonnet) for low-confidence/ambiguous cases. Members run in parallel and vote. |
+| **ensemble** | The conditional multi-model fan-out (Gemini 3.6 Flash + 3.5 Flash-Lite, + GPT-4o when keyed) for low-confidence/ambiguous cases. Members run in parallel and vote. |
 | **reconciler (`fuse`)** | Combines the primary + ensemble votes: canonicalizes, drops dead "Unknown" votes, confidence-aware tie-break, fuses confidence, merges safety flags. |
 | **cross-verify** | Rule-based ($0) confidence adjustment: caps for OOD/crop-mismatch, penalties for weather contradiction, poor image quality, ambiguity, lab-confirmation. |
 | **`_LABEL_CLAIMS`** | `rag/knowledge_base.py` — the (crop, disease) → registered active-ingredients matrix. The hard gate for *chemical* recommendations. |

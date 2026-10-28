@@ -5,7 +5,7 @@
  * in the cycle's timeline; an optional cost feeds the cycle P&L.
  */
 import React, { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import {
   LoggerScaffold, SectionHeader, ChipRow, BigNumberInput, LabeledInput, NotesField, Card, useLoggerSave,
 } from './_loggerKit';
@@ -48,8 +48,8 @@ export default function CustomActivityLogScreen({ navigation, route }) {
   });
 
   const handleSave = useCallback(() => {
-    if (!canSave) { Haptics.error?.(); Alert.alert(t('customActivity.nameItTitle'), t('customActivity.nameItMsg')); return; }
-    if (!cycleId) { Alert.alert(t('customActivity.pickCycleTitle'), t('customActivity.pickCycleMsg')); return; }
+    if (!canSave) { Haptics.error?.(); showPopup(t('customActivity.nameItTitle'), t('customActivity.nameItMsg')); return; }
+    if (!cycleId) { showPopup(t('customActivity.pickCycleTitle'), t('customActivity.pickCycleMsg')); return; }
     save();
   }, [canSave, cycleId, save, t]);
 

@@ -20,6 +20,18 @@ export const LEGAL_DOCS = Object.freeze([
   { slug: 'terms',   file: 'terms.html',   title: 'Terms of Service' },
   { slug: 'refunds', file: 'refunds.html', title: 'Refund, Cancellation & Return Policy' },
   { slug: 'cookies', file: 'cookies.html', title: 'Cookie Policy' },
+  // Not a policy: how to delete an account, with or without the app. Google
+  // Play requires a working public URL for it before either app can be listed.
+  // It only describes what the app already does, so it does not wait for
+  // LEGAL_DOCS_APPROVED. Its contact email falls back to the owner's published
+  // address (also on website/index.html) while LEGAL_SUPPORT_EMAIL is unset: a
+  // missing fact would otherwise take the page down, and Play rejects both
+  // apps when this URL does not load. The fallback applies to this page only.
+  {
+    slug: 'delete-account', file: 'delete-account.html', title: 'Delete your account',
+    needsApproval: false,
+    fallbacks: { supportEmail: 'krushisarva@gmail.com' },
+  },
 ]);
 
 export const LEGAL_DOC_SLUGS = LEGAL_DOCS.map((d) => d.slug);

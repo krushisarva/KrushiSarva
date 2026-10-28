@@ -37,7 +37,11 @@ function currentSeasonYear() {
 router.get('/rates', authenticate, async (req, res) => {
   if (!await isEnabled('msp_tracker')) return sendError(res, 'MSP Tracker अभी उपलब्ध नहीं है।', 503);
 
-  const { season, year } = { ...currentSeasonYear(), ...req.query };
+  // Strings only: `?season[not]=x` parses to an object, which Prisma reads as a
+  // filter rather than a value.
+  const current = currentSeasonYear();
+  const season = typeof req.query.season === 'string' && req.query.season ? req.query.season : current.season;
+  const year   = typeof req.query.year === 'string' && req.query.year ? req.query.year : current.year;
 
   const rates = await prisma.mSPRate.findMany({
     where:   { season, year },

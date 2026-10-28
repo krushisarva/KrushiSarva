@@ -136,7 +136,7 @@ Sarvam
 Groq
 OpenAI
 Razorpay
-MSG91
+Firebase Authentication (SMS sign-in)
 Open-Meteo
 OpenWeatherMap
 IMD
@@ -499,7 +499,7 @@ admin/
 shared/
 Prisma schema
 Dockerfiles
-Railway config
+deploy/ (Docker Compose + Caddy) config
 CI workflows
 ```
 

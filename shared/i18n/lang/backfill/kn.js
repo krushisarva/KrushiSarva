@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 875 keys.
+// 871 keys.
 
 export default {
   "aiChat.attachHint": "ತ್ವರಿತ ರೋಗನಿರ್ಣಯಕ್ಕಾಗಿ ನಿಮ್ಮ ಬೆಳೆಯ ಫೋಟೋ ಹಂಚಿಕೊಳ್ಳಿ.",
@@ -16,10 +16,6 @@ export default {
   "aiChat.newChatTitle": "ಹೊಸ ಚಾಟ್ ಪ್ರಾರಂಭಿಸುವುದೇ?",
   "aiChat.photoAttached": "ಫೋಟೋ ಲಗತ್ತಿಸಲಾಗಿದೆ",
   "aiChat.photoNote": "ಟಿಪ್ಪಣಿ ಸೇರಿಸಿ (ಐಚ್ಛಿಕ)…",
-  "aiCredits.balanceLeft": "ಉಳಿದ ಬ್ಯಾಲೆನ್ಸ್",
-  "aiCredits.buySoon": "ಖರೀದಿ ಶೀಘ್ರದಲ್ಲೇ ಲಭ್ಯವಾಗಲಿದೆ.",
-  "aiCredits.monthlyBudget": "ಮಾಸಿಕ ಬಜೆಟ್",
-  "aiCredits.usedThisMonth": "ಈ ತಿಂಗಳು ಬಳಸಿದ್ದು",
   "aiHome.history.chat": "ಚಾಟ್ ಇತಿಹಾಸ",
   "aiHome.history.scan": "ಸ್ಕ್ಯಾನ್ ಇತಿಹಾಸ",
   "aiHome.history.voice": "ಧ್ವನಿ ಇತಿಹಾಸ",

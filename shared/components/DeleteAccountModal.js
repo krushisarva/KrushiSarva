@@ -61,7 +61,7 @@ export default function DeleteAccountModal({ visible, onClose }) {
   const [busy,      setBusy]      = useState(false);
   const [error,     setError]     = useState('');
   const [cooldown,  setCooldown]  = useState(0);
-  // Dev/staging convenience: with MSG91 unset the backend returns the OTP in the
+  // Dev/staging convenience: the backend's dev OTP path returns the OTP in the
   // send response so there is something to type without a real SMS.
   const [devOtp,    setDevOtp]    = useState('');
 
@@ -174,7 +174,7 @@ export default function DeleteAccountModal({ visible, onClose }) {
                   <Text style={S.listHead}>{t('deleteAccount.keptHead', 'Kept, but no longer linked to you')}</Text>
                   {[
                     t('deleteAccount.keptOrders',   'Past orders and bookings (required for tax and the other party)'),
-                    t('deleteAccount.keptListings', 'Community posts and listings, shown as “Deleted User”'),
+                    t('deleteAccount.keptListings', 'Community posts and reviews, shown as “Deleted User”. Your listings are taken off the app.'),
                   ].map((line) => (
                     <View key={line} style={S.listRow}>
                       <Ionicons name="information-circle" size={15} color={KHET.mutedForeground} />

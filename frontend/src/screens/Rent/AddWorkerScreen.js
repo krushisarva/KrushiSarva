@@ -7,9 +7,10 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Image, StatusBar,
+  TextInput, ActivityIndicator, Image, StatusBar,
   KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -101,7 +102,7 @@ export default function AddWorkerScreen({ navigation, route }) {
       setLat(gpsCoords.latitude);
       setLng(gpsCoords.longitude);
     } else {
-      Alert.alert(t('rent.permissionDenied'), t('rent.locationPermission'));
+      showPopup(t('rent.permissionDenied'), t('rent.locationPermission'));
     }
   };
 
@@ -135,7 +136,7 @@ export default function AddWorkerScreen({ navigation, route }) {
     const perm = fromCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') { Alert.alert(t('ai.permissionRequired')); return; }
+    if (perm.status !== 'granted') { showPopup(t('ai.permissionRequired')); return; }
 
     const res = fromCamera
       ? await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.75 })
@@ -145,9 +146,9 @@ export default function AddWorkerScreen({ navigation, route }) {
   };
 
   const pickAdditionalImages = async () => {
-    if (images.length >= 4) { Alert.alert(t('products.limitMsg')); return; }
+    if (images.length >= 4) { showPopup(t('products.limitMsg')); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('ai.permissionRequired')); return; }
+    if (status !== 'granted') { showPopup(t('ai.permissionRequired')); return; }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images', quality: 0.75, allowsMultipleSelection: true,
     });
@@ -158,7 +159,7 @@ export default function AddWorkerScreen({ navigation, route }) {
 
   const pickVideo = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('ai.permissionRequired')); return; }
+    if (status !== 'granted') { showPopup(t('ai.permissionRequired')); return; }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'videos', quality: 0.8 });
     if (res.canceled || !res.assets?.[0]) return;
     setVideo({ uri: res.assets[0].uri, url: null });
@@ -166,13 +167,13 @@ export default function AddWorkerScreen({ navigation, route }) {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!name.trim())     { Alert.alert(t('rent.required'), t('rent.yourName')); return; }
-    if (skills.length === 0) { Alert.alert(t('rent.required'), t('rent.skillsRequired')); return; }
-    if (!pricePerDay)     { Alert.alert(t('rent.required'), t('rent.enterPriceDay')); return; }
-    if (!location.trim()) { Alert.alert(t('rent.required'), t('rent.enterLocation')); return; }
-    if (!district.trim()) { Alert.alert(t('rent.required'), t('rent.enterDistrict')); return; }
+    if (!name.trim())     { showPopup(t('rent.required'), t('rent.yourName')); return; }
+    if (skills.length === 0) { showPopup(t('rent.required'), t('rent.skillsRequired')); return; }
+    if (!pricePerDay)     { showPopup(t('rent.required'), t('rent.enterPriceDay')); return; }
+    if (!location.trim()) { showPopup(t('rent.required'), t('rent.enterLocation')); return; }
+    if (!district.trim()) { showPopup(t('rent.required'), t('rent.enterDistrict')); return; }
     if (availableFrom && availableTo && availableTo < availableFrom) {
-      Alert.alert(t('rent.required'), t('rent.invalidDateRange', 'The end date must be on or after the start date.'));
+      showPopup(t('rent.required'), t('rent.invalidDateRange', 'The end date must be on or after the start date.'));
       return;
     }
 
@@ -194,7 +195,7 @@ export default function AddWorkerScreen({ navigation, route }) {
       else if (video?.url)       videoUrl  = video.url;
     } catch {
       setUploading(false);
-      Alert.alert(t('rent.uploadFailed'), t('rent.uploadFailedMsg'));
+      showPopup(t('rent.uploadFailed'), t('rent.uploadFailedMsg'));
       return;
     }
     setUploading(false);
@@ -235,7 +236,7 @@ export default function AddWorkerScreen({ navigation, route }) {
       }
     } catch (err) {
       const msg = err.response?.data?.error?.message || t('rent.error');
-      Alert.alert(t('rent.error'), msg);
+      showPopup(t('rent.error'), msg);
     } finally {
       setSubmitting(false);
     }

@@ -19,6 +19,9 @@
  *     the server's unique (chatId, clientMsgId) index returns the original.
  *   • Errors are specific: no internet / server busy / session expired / seller
  *     unavailable, each with the action that fixes it.
+ *   • A block (either side) keeps the thread readable and swaps the composer for
+ *     one line: "You blocked this user." + Unblock, or a neutral "You can't
+ *     reply". A send refused as USER_BLOCKED is final — never queued or retried.
  *
  * Sends via POST /animals/chats/:chatId/messages; socket events are primary for
  * receiving, polling is the fallback.
@@ -38,6 +41,12 @@ import { useAuth } from '@krushisarva/shared/context/AuthContext';
 import api from '@krushisarva/shared/services/api';
 import { connectSocket } from '@krushisarva/shared/services/socket';
 import { classifyError, backoffDelay, ERROR_CODES } from '../../utils/apiError';
+import { showPopup } from '../../utils/popup';
+import useFocusRefresh, { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import ReportSheet from '../../components/ReportSheet';
+import {
+  isUserBlockedError, readBlockFlags, chatBlockMode, NOT_BLOCKED, settleUnsent,
+} from '../../utils/blockState';
 
 const POLL_MS      = 10_000;  // socket is primary; polling is the fallback
 const POLL_MAX_MS  = 60_000;  // ceiling once an outage persists
@@ -77,6 +86,9 @@ function newClientMsgId() {
 
 const MessageBubble = memo(function MessageBubble({ message, isMe, otherInitial, otherAvatarUri, onRetry, t }) {
   const status = message.localStatus;
+  // Refused because of a block: final, so it is not offered as a retry.
+  const notSent = status === FAILED && !!message.blockedFail;
+  const retryable = status === FAILED && !notSent;
   return (
     <View style={[styles.messagRow, isMe && styles.messageRowMe]}>
       {!isMe && (
@@ -91,13 +103,14 @@ const MessageBubble = memo(function MessageBubble({ message, isMe, otherInitial,
         </View>
       )}
       <TouchableOpacity
-        activeOpacity={status === FAILED ? 0.6 : 1}
-        onPress={() => status === FAILED && onRetry?.(message)}
+        activeOpacity={retryable ? 0.6 : 1}
+        onPress={() => retryable && onRetry?.(message)}
         style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem, status === FAILED && styles.bubbleFailed]}
-        accessibilityRole={status === FAILED ? 'button' : 'text'}
+        accessibilityRole={retryable ? 'button' : 'text'}
         accessibilityLabel={[
           message.text,
-          status === FAILED ? t('chat.failedTapRetry', 'Not sent. Tap to try again.') : null,
+          notSent ? t('block.notSentA11y', 'Not sent.') : null,
+          retryable ? t('chat.failedTapRetry', 'Not sent. Tap to try again.') : null,
           status === QUEUED ? t('chat.queued', 'Waiting for connection') : null,
         ].filter(Boolean).join('. ')}
       >
@@ -114,6 +127,8 @@ const MessageBubble = memo(function MessageBubble({ message, isMe, otherInitial,
             </View>
           ) : status === SENDING ? (
             <Ionicons name="time-outline" size={11} color={isMe ? COLORS.primaryPale : COLORS.textLight} style={{ marginLeft: 4 }} />
+          ) : notSent ? (
+            <Text style={styles.failedHint}>· {t('block.notSent', 'Not sent')}</Text>
           ) : status === FAILED ? (
             <Text style={styles.failedHint}>· {t('chat.tapRetry', 'tap to retry')}</Text>
           ) : isMe ? (
@@ -141,6 +156,11 @@ export default function ChatScreen({ route, navigation }) {
     // relative to this listing — 'seller' when a buyer opens the chat, 'buyer'
     // when the seller opens it from their inbox.
     peerName, peerAvatar, peerRole, peerPhone, listingTitle,
+    // The other person's user id — what Report / Block act on.
+    peerId,
+    // The inbox row's block flags, so a blocked chat opens closed. Absent from
+    // other callers; the thread's meta is the authority once it loads.
+    blockedByMe: initialBlockedByMe, canMessage: initialCanMessage,
     // Legacy param kept for backward-compatibility with older navigations.
     sellerName,
   } = route.params || {};
@@ -178,6 +198,26 @@ export default function ChatScreen({ route, navigation }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderCursor, setOlderCursor] = useState(null);
   const [hasOlder, setHasOlder] = useState(false);
+  // Report / Block (Google Play: user content must be reportable, 1:1 chat must
+  // offer blocking). `chatPeerId` is learnt from the open-chat reply when the
+  // navigation did not carry `peerId`.
+  const [chatPeerId, setChatPeerId] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [blocking, setBlocking] = useState(false);
+  const blockingRef = useRef(false);
+  const [unblocking, setUnblocking] = useState(false);
+  const unblockingRef = useRef(false);
+  // Which side of a block this conversation is on (utils/blockState.js). The
+  // thread stays readable either way; only the composer goes. `blockedRef`
+  // mirrors "cannot send" for the send paths, which must not wait a render.
+  const [blockFlags, setBlockFlags] = useState(
+    () => readBlockFlags({ blockedByMe: initialBlockedByMe, canMessage: initialCanMessage }) || NOT_BLOCKED,
+  );
+  const blockedRef = useRef(blockFlags.canMessage === false);
+  const refusalRefreshRef = useRef(false);
+  // Opening a NEW chat was refused because of a block — there is no chat row,
+  // so there are no flags to read either; it just says the seller is unavailable.
+  const [openRefused, setOpenRefused] = useState(false);
 
   const flatListRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -236,12 +276,81 @@ export default function ChatScreen({ route, navigation }) {
     return [...rows, ...locals];
   }, []);
 
+  // ── Blocks ─────────────────────────────────────────────────────────────────
+  /**
+   * A block refused this send: everything still waiting is final too. Each
+   * bubble says "Not sent" and is NOT handed back to the outbox or offered as a
+   * retry — repeating a refused send only repeats the refusal.
+   */
+  const markBlockedNotSent = useCallback((clientMsgId) => {
+    const held = new Set(outboxRef.current.map((m) => m.clientMsgId));
+    outboxRef.current = [];
+    if (clientMsgId) held.add(clientMsgId);
+    setMessages((prev) => settleUnsent(prev, false, held));
+  }, []);
+
+  /**
+   * Adopt flags the server sent; null (an older server, or no word) keeps ours.
+   * Unsent bubbles follow: "Not sent" while blocked (a queued or failed one
+   * would otherwise still say "waiting" / "tap to retry" and do nothing), and
+   * retryable again once a block is gone (e.g. unblocked from the list).
+   */
+  const applyBlockFlags = useCallback((flags) => {
+    if (!flags) return;
+    blockedRef.current = !flags.canMessage;
+    if (!flags.canMessage) {
+      setFocused(false); // the input is about to unmount
+      markBlockedNotSent(null);
+    } else {
+      setMessages((prev) => settleUnsent(prev, true));
+    }
+    setBlockFlags(flags);
+  }, [markBlockedNotSent]);
+
+  /** Re-read the thread's meta to learn which side a block is on. */
+  const refreshBlockFlags = useCallback(async (cid) => {
+    if (!cid) return null;
+    try {
+      const { data: page } = await api.get(`/animals/chats/${cid}/messages`, { params: { limit: PAGE_SIZE } });
+      if (!aliveRef.current) return null;
+      setMessages((prev) => mergeServer(prev, page?.data || []));
+      const flags = readBlockFlags(page?.meta);
+      applyBlockFlags(flags);
+      return flags;
+    } catch {
+      return null; // the neutral "can't reply" state already on screen stands
+    }
+  }, [mergeServer, applyBlockFlags]);
+
+  /** HTTP 403 USER_BLOCKED, or the socket's USER_BLOCKED error, for one send. */
+  const onBlockedRefusal = useCallback((clientMsgId, cid) => {
+    blockedRef.current = true;
+    // The refusal does not say whose block it is. Until the meta does, the
+    // neutral wording is the only one that cannot be wrong.
+    setBlockFlags((prev) => (prev.canMessage === false ? prev : { blockedByMe: false, canMessage: false }));
+    markBlockedNotSent(clientMsgId);
+    setError(null);
+    setConnection('online'); // the server answered — this is not an outage
+    // Several sends refused at once need one re-read, not one each.
+    if (refusalRefreshRef.current) return;
+    refusalRefreshRef.current = true;
+    refreshBlockFlags(cid).finally(() => { refusalRefreshRef.current = false; });
+  }, [markBlockedNotSent, refreshBlockFlags]);
+
+  // A closed chat re-reads its block state when it comes back into view after
+  // an unblock elsewhere (the Blocked users list, where its own Unblock leads
+  // when it has no id): nothing else would — open() runs once, and the poll
+  // stays idle while the socket is up. An open chat costs nothing here.
+  useFocusRefresh(() => {
+    if (chatId && blockedRef.current) refreshBlockFlags(chatId);
+  }, { key: `animals:chat:${chatId}`, runOnFirstFocus: false });
+
   // ── Open the chat (with bounded, jittered retry) ───────────────────────────
   const open = useCallback(async ({ manual = false } = {}) => {
     if (manual) attemptRef.current = 0;
     setError(null);
+    let cid = chatId;
     try {
-      let cid = chatId;
       if (!cid) {
         if (!listingId) throw Object.assign(new Error('Missing listingId'), { fatal: true });
         const { data } = await api.post(`/animals/${listingId}/chat`);
@@ -249,6 +358,10 @@ export default function ChatScreen({ route, navigation }) {
         if (!cid) throw new Error('Failed to open chat');
         if (!aliveRef.current) return;
         setChatId(cid);
+        const { buyerId, sellerId } = data.data;
+        const other = sellerId && sellerId !== user?.id ? sellerId : buyerId;
+        if (other && other !== user?.id) setChatPeerId(other);
+        applyBlockFlags(readBlockFlags(data.data));
       }
 
       const { data: page } = await api.get(`/animals/chats/${cid}/messages`, { params: { limit: PAGE_SIZE } });
@@ -256,6 +369,7 @@ export default function ChatScreen({ route, navigation }) {
       const rows = page?.data || [];
       setMessages((prev) => mergeServer(prev, rows));
       persist(rows);
+      applyBlockFlags(readBlockFlags(page?.meta));
       setHasOlder(!!page?.meta?.hasMore);
       setOlderCursor(page?.meta?.nextCursor || null);
       setConnection('online');
@@ -265,6 +379,18 @@ export default function ChatScreen({ route, navigation }) {
       if (!aliveRef.current) return;
       const classified = classifyError(e, t('chat.openFailed', 'Could not open this conversation.'));
       if (classified.code === ERROR_CODES.CANCELED) return;
+      // A block is an answer, not an outage: no banner error, no retry. With no
+      // chat row yet (a new chat from a listing) all we can say is that the
+      // seller is not available; an existing chat reads the side from its meta.
+      if (isUserBlockedError(e)) {
+        blockedRef.current = true;
+        setOpening(false);
+        setConnection('online');
+        if (cid) setBlockFlags((prev) => (prev.canMessage === false ? prev : { blockedByMe: false, canMessage: false }));
+        else setOpenRefused(true);
+        markBlockedNotSent(null);
+        return;
+      }
       setError(classified);
       setConnection('offline');
       setOpening(false);
@@ -278,12 +404,15 @@ export default function ChatScreen({ route, navigation }) {
         retryTimerRef.current = setTimeout(() => { if (aliveRef.current) open(); }, delay);
       }
     }
-  }, [chatId, listingId, mergeServer, persist, t]);
+  }, [chatId, listingId, mergeServer, persist, t, user?.id, applyBlockFlags, markBlockedNotSent]);
 
   useEffect(() => { open(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** POST one already-optimistic message and reconcile its bubble. */
   const deliver = useCallback(async (msg) => {
+    // Already known to be refused (e.g. the outbox flushing after a block):
+    // settle it locally instead of asking the server to refuse it again.
+    if (blockedRef.current) { markBlockedNotSent(msg.clientMsgId); return; }
     setMessages((prev) => prev.map((m) => (m.clientMsgId === msg.clientMsgId ? { ...m, localStatus: SENDING } : m)));
     try {
       const { data } = await api.post(`/animals/chats/${msg.chatId}/messages`, {
@@ -299,6 +428,13 @@ export default function ChatScreen({ route, navigation }) {
       setError(null);
     } catch (e) {
       if (!aliveRef.current) return;
+      // Blocked after this screen opened. Checked before anything else so the
+      // message can never reach the outbox and be resent.
+      if (isUserBlockedError(e)) { onBlockedRefusal(msg.clientMsgId, msg.chatId); return; }
+      // A send that was already in flight when another one was refused: it can
+      // never go now, so it is not queued (no "waiting to send" under a closed
+      // composer, no offline banner) — it is "Not sent" like the rest.
+      if (blockedRef.current) { markBlockedNotSent(msg.clientMsgId); return; }
       const classified = classifyError(e, t('chat.sendFailed', 'Message not sent.'));
       // Offline is not a failure — hold the message and try again on reconnect.
       const queue = classified.code === ERROR_CODES.OFFLINE || classified.code === ERROR_CODES.TIMEOUT;
@@ -309,7 +445,7 @@ export default function ChatScreen({ route, navigation }) {
       setError(classified);
       if (queue) setConnection('offline');
     }
-  }, [t]);
+  }, [t, markBlockedNotSent, onBlockedRefusal]);
 
   // ── Outbox: flush anything typed while the chat was unreachable ────────────
   const flushOutbox = useCallback(async () => {
@@ -369,6 +505,7 @@ export default function ChatScreen({ route, navigation }) {
         const rows = data?.data || [];
         setMessages((prev) => mergeServer(prev, rows));
         persist(rows);
+        applyBlockFlags(readBlockFlags(data?.meta));
         setConnection('online');
         setError((e) => (e?.retryable ? null : e)); // a poll succeeding clears a transient error
         attempt = 0;
@@ -381,14 +518,14 @@ export default function ChatScreen({ route, navigation }) {
 
     schedule();
     return () => { cancelled = true; clearTimeout(pollTimerRef.current); };
-  }, [chatId, mergeServer, persist]));
+  }, [chatId, mergeServer, persist, applyBlockFlags]));
 
   // ── Socket: real-time messages + read receipts ─────────────────────────────
   useFocusEffect(useCallback(() => {
     if (!chatId || !user?.id) return undefined;
     let alive = true;
     let s = null;
-    let onNewMessage, onMessagesRead, onConnect, onDisconnect;
+    let onNewMessage, onMessagesRead, onConnect, onDisconnect, onSocketError;
 
     (async () => {
       try {
@@ -437,11 +574,19 @@ export default function ChatScreen({ route, navigation }) {
           open();
         };
         onDisconnect = () => { if (alive) setConnection('offline'); };
+        // The server refuses a socket send_message across a block with an
+        // `error` event carrying code USER_BLOCKED; settle it like the HTTP 403.
+        onSocketError = (payload) => {
+          if (!alive || !isUserBlockedError(payload)) return;
+          if (payload.chatId && payload.chatId !== chatId) return;
+          onBlockedRefusal(payload.clientMsgId || null, chatId);
+        };
 
         s.on('new_message', onNewMessage);
         s.on('messages_read', onMessagesRead);
         s.on('connect', onConnect);
         s.on('disconnect', onDisconnect);
+        s.on('error', onSocketError);
       } catch {
         if (alive) setConnection('offline'); // HTTP polling covers it
       }
@@ -454,6 +599,7 @@ export default function ChatScreen({ route, navigation }) {
         if (onMessagesRead) s.off('messages_read', onMessagesRead);
         if (onConnect)      s.off('connect', onConnect);
         if (onDisconnect)   s.off('disconnect', onDisconnect);
+        if (onSocketError)  s.off('error', onSocketError);
       }
     };
   }, [chatId, user?.id])); // eslint-disable-line react-hooks/exhaustive-deps
@@ -496,7 +642,7 @@ export default function ChatScreen({ route, navigation }) {
   // ── Send ───────────────────────────────────────────────────────────────────
   const sendMessage = useCallback((text) => {
     const trimmed = (text || '').trim();
-    if (!trimmed) return;
+    if (!trimmed || blockedRef.current) return;
 
     const msg = {
       id: `local-${newClientMsgId()}`,
@@ -521,6 +667,7 @@ export default function ChatScreen({ route, navigation }) {
   }, [chatId, user?.id, deliver, open]);
 
   const retryFailed = useCallback((msg) => {
+    if (msg?.blockedFail || blockedRef.current) return; // a block is not retried
     if (!chatId) { outboxRef.current.push(msg); open({ manual: true }); return; }
     deliver({ ...msg, chatId });
   }, [chatId, deliver, open]);
@@ -543,6 +690,131 @@ export default function ChatScreen({ route, navigation }) {
   const overCap  = inputText.length >= MAX_CHARS;
   const showCount = inputText.length >= COUNTER_AT;
   const queuedCount = messages.filter((m) => m.localStatus === QUEUED).length;
+  // 'byMe' | 'cannotReply' | 'unavailable' | null — when set, the composer is
+  // replaced by a one-line note; the thread above stays readable.
+  const blockMode = chatBlockMode(blockFlags) || (openRefused ? 'unavailable' : null);
+
+  // ── Report / Block ─────────────────────────────────────────────────────────
+  // Who the other person is: the navigation param, else the open-chat reply,
+  // else the sender of any message that is not ours. Unknown → no menu.
+  const otherUserId = (() => {
+    const id = peerId || chatPeerId
+      || messages.find((m) => m.senderId && m.senderId !== user?.id && !m.localStatus)?.senderId;
+    return id && id !== user?.id ? String(id) : null;
+  })();
+
+  const openReportUser = () => {
+    if (!otherUserId) return;
+    // Their last few messages give the moderator context; the server keeps the
+    // reporter's copy for a USER report (it has no text of its own to look up).
+    const theirs = messages
+      .filter((m) => m.senderId === otherUserId && typeof m.text === 'string' && m.text.trim())
+      .slice(-5)
+      .map((m) => m.text.trim());
+    setReportTarget({
+      targetType: 'USER',
+      targetId: otherUserId,
+      snapshot: theirs.length
+        ? [listingTitle ? `Animal chat: ${listingTitle}` : 'Animal chat', ...theirs].join('\n')
+        : undefined,
+    });
+  };
+
+  const blockUser = async () => {
+    if (!otherUserId || blockingRef.current) return;
+    blockingRef.current = true;
+    setBlocking(true);
+    try {
+      // The same call AnimalDetail's "Block seller" makes; it blocks a person,
+      // whichever side of the chat they are on.
+      await api.post(`/animals/sellers/${otherUserId}/block`, {});
+      // Their listings must vanish from the browse lists on next focus (the
+      // inbox refetches on every focus, so its row comes back "Blocked").
+      invalidateFocusData('animals');
+      if (aliveRef.current) applyBlockFlags({ blockedByMe: true, canMessage: false });
+      showPopup(
+        t('report.blockedTitle', 'User blocked'),
+        t('report.blockedBody', 'You can no longer message each other, and you will not see their animal listings.'),
+        [{ onPress: () => { if (aliveRef.current) navigation?.goBack?.(); } }],
+      );
+    } catch (e) {
+      showPopup(
+        t('report.blockFailed', 'Could not block this user'),
+        classifyError(e, t('report.tryAgain', 'Please try again.')).message,
+      );
+    } finally {
+      blockingRef.current = false;
+      if (aliveRef.current) setBlocking(false);
+    }
+  };
+
+  const confirmBlock = () => {
+    if (!otherUserId) return;
+    showPopup(
+      t('report.blockConfirmTitle', 'Block this user?'),
+      t('report.blockConfirmBody', 'You will not be able to message each other, and you will not see their animal listings.'),
+      [
+        { text: t('cancel', 'Cancel'), style: 'cancel' },
+        { text: t('report.block', 'Block'), style: 'destructive', onPress: blockUser },
+      ],
+    );
+  };
+
+  const unblockUser = async () => {
+    if (!otherUserId || unblockingRef.current) return;
+    unblockingRef.current = true;
+    setUnblocking(true);
+    try {
+      await api.delete(`/animals/sellers/${otherUserId}/block`);
+      invalidateFocusData('animals'); // their listings come back on next focus
+      if (!aliveRef.current) return;
+      // They may have blocked us too, so ask rather than assume. No answer (an
+      // older server, or the read failed) means the composer comes back.
+      const fresh = chatId ? await refreshBlockFlags(chatId) : null;
+      if (!aliveRef.current) return;
+      const next = fresh || NOT_BLOCKED;
+      applyBlockFlags(next);
+      setOpenRefused(false);
+      // Messages refused only because of our own block can be tried again.
+      if (next.canMessage) {
+        setMessages((prev) => prev.map((m) => (m.blockedFail ? { ...m, blockedFail: false } : m)));
+      }
+    } catch (e) {
+      // Nothing changed on the server, so nothing changes here.
+      showPopup(
+        t('block.unblockFailed', 'Could not unblock this user'),
+        classifyError(e, t('report.tryAgain', 'Please try again.')).message,
+      );
+    } finally {
+      unblockingRef.current = false;
+      if (aliveRef.current) setUnblocking(false);
+    }
+  };
+
+  const confirmUnblock = () => {
+    if (!otherUserId || unblockingRef.current) return;
+    showPopup(
+      t('block.unblockConfirmTitle', 'Unblock this user?'),
+      t('block.unblockConfirmBody', 'They will be able to message you again, and you will see their animal listings.'),
+      [
+        { text: t('cancel', 'Cancel'), style: 'cancel' },
+        { text: t('block.unblock', 'Unblock'), onPress: unblockUser },
+      ],
+    );
+  };
+
+  const openSafetyMenu = () => {
+    if (!otherUserId) return;
+    showPopup(peerDisplayName, null, [
+      // iOS will not present the sheet's Modal while the pop-up's is still
+      // animating away, so it waits for that to finish there.
+      { text: t('report.reportUser', 'Report user'), onPress: () => setTimeout(openReportUser, Platform.OS === 'ios' ? 400 : 0) },
+      blockFlags.blockedByMe
+        ? { text: t('block.unblockUser', 'Unblock user'), onPress: confirmUnblock }
+        : { text: t('report.blockUser', 'Block user'), style: 'destructive', onPress: confirmBlock },
+      { text: t('cancel', 'Cancel'), style: 'cancel' },
+    ]);
+  };
 
   /** The one-line status bar under the header. */
   const banner = (() => {
@@ -550,6 +822,8 @@ export default function ChatScreen({ route, navigation }) {
       return { tone: 'error', icon: 'log-in-outline', text: t('chat.sessionExpired', 'Session expired. Please sign in again.'), action: { label: t('signIn', 'Sign in'), onPress: () => navigation.navigate('Login') } };
     }
     if (error?.code === ERROR_CODES.FORBIDDEN) {
+      // A block already says so where the composer was; once is enough.
+      if (blockMode) return null;
       return { tone: 'error', icon: 'ban-outline', text: t('chat.sellerUnavailable', 'This seller is not available.'), action: null };
     }
     if (error?.code === ERROR_CODES.NOT_FOUND) {
@@ -602,6 +876,24 @@ export default function ChatScreen({ route, navigation }) {
             <Text style={styles.chatSubtitle} numberOfLines={1}>{headerSubtitle}</Text>
           ) : null}
         </View>
+        {otherUserId ? (
+          <TouchableOpacity
+            onPress={openSafetyMenu}
+            disabled={blocking || unblocking}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('report.moreOptions', 'More options')}
+            accessibilityHint={blockFlags.blockedByMe
+              ? t('block.moreOptionsHintBlocked', 'Report or unblock this user')
+              : t('report.moreOptionsHint', 'Report or block this user')}
+            accessibilityState={{ disabled: blocking || unblocking, busy: blocking || unblocking }}
+            testID="chat-safety-menu"
+          >
+            {blocking || unblocking
+              ? <ActivityIndicator size="small" color={COLORS.textDark} />
+              : <Ionicons name="ellipsis-vertical" size={22} color={COLORS.textDark} />}
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {banner ? (
@@ -665,7 +957,7 @@ export default function ChatScreen({ route, navigation }) {
                   : <Text style={styles.olderTxt}>{t('chat.loadOlder', 'Load older messages')}</Text>}
               </TouchableOpacity>
             ) : null}
-            ListEmptyComponent={
+            ListEmptyComponent={blockMode ? null : (
               <View style={styles.emptyWrap}>
                 <View style={styles.emptyIcon}>
                   <Ionicons name="chatbubble-ellipses-outline" size={36} color={COLORS.primary} />
@@ -676,11 +968,49 @@ export default function ChatScreen({ route, navigation }) {
                     .replace('{{name}}', peerDisplayName)}
                 </Text>
               </View>
-            }
+            )}
           />
         )}
 
-        {/* Composer */}
+        {/* Composer — or, across a block, one calm line in its place. "They
+            blocked you" is never said: that side only learns it cannot reply. */}
+        {blockMode ? (
+          <View
+            style={[styles.composerWrap, styles.blockedWrap, { paddingBottom: insets.bottom + 10 }]}
+            accessibilityLiveRegion="polite"
+            testID="chat-blocked-note"
+          >
+            <Ionicons
+              name={blockMode === 'byMe' ? 'ban-outline' : 'lock-closed-outline'}
+              size={18}
+              color={COLORS.textMedium}
+            />
+            <Text style={styles.blockedTxt}>
+              {blockMode === 'byMe'
+                ? t('block.youBlocked', 'You blocked this user.')
+                : blockMode === 'cannotReply'
+                  ? t('block.cannotReply', "You can't reply to this conversation.")
+                  : t('chat.sellerUnavailable', 'This seller is not available.')}
+            </Text>
+            {blockMode === 'byMe' ? (
+              <TouchableOpacity
+                style={styles.unblockBtn}
+                // No id to unblock by (an old navigation) → the list can do it.
+                onPress={otherUserId ? confirmUnblock : () => navigation?.navigate?.('BlockedUsers')}
+                disabled={unblocking}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={t('block.unblockName', 'Unblock {{name}}').replace('{{name}}', peerDisplayName)}
+                accessibilityState={{ disabled: unblocking, busy: unblocking }}
+                testID="chat-unblock"
+              >
+                {unblocking
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <Text style={styles.unblockTxt}>{t('block.unblock', 'Unblock')}</Text>}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : (
         <View style={[styles.composerWrap, { paddingBottom: insets.bottom + 8 }]}>
           <View style={[styles.composer, focused && styles.composerFocused, composerDisabled && styles.composerDisabled]}>
             <TextInput
@@ -717,7 +1047,10 @@ export default function ChatScreen({ route, navigation }) {
             </Text>
           )}
         </View>
+        )}
       </KeyboardAvoidingView>
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </SafeAreaView>
   );
 }
@@ -791,6 +1124,12 @@ const styles = StyleSheet.create({
   },
   composerFocused:  { borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   composerDisabled: { opacity: 0.6 },
+
+  // ── Blocked note (in place of the composer) ──
+  blockedWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, paddingHorizontal: 16 },
+  blockedTxt:  { flex: 1, fontSize: 14, color: COLORS.textMedium, fontWeight: '600', lineHeight: 20 },
+  unblockBtn:  { minHeight: 40, minWidth: 88, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+  unblockTxt:  { fontSize: 14, fontWeight: '800', color: COLORS.primary },
 
   input: {
     flex: 1,

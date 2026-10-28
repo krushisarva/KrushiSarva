@@ -20,7 +20,10 @@
  *
  * A refund cannot run twice for the same lines: it rides on the status
  * transition, and the cancel routes only move a line PENDING/CONFIRMED →
- * CANCELLED once (Serializable, with a no-op on repeat).
+ * CANCELLED once (Serializable, with a no-op on repeat). The seller route also
+ * moves SHIPPED → CANCELLED when the delivery failed ("could not deliver", with
+ * a reason — services/orderDelivery.service.js); that is the same single
+ * transition into a final status, so the same guarantee holds.
  */
 import prisma from '../config/db.js';
 import logger from '../utils/logger.js';

@@ -188,7 +188,7 @@ router.post('/generate', authenticate, requireFeature('ai_planner'), generateTas
   // release triple every other AI route uses, so concurrent calls can't overspend.
   const hold = await reserveCredits(req.user.id, 'ai_planner');
   if (!hold.ok) {
-    return sendError(res, 'You’ve used all your AI credits for this month. They refill on the 1st.', 402);
+    return sendError(res, "You've reached this month's free AI limit. It resets on the 1st of next month.", 402);
   }
   // releaseCredits is NOT idempotent — it unconditionally re-credits `reserved`. Once
   // the hold is finalised (settled OR released) the catch must not touch it again, or

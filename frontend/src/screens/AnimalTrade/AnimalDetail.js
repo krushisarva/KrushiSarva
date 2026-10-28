@@ -16,9 +16,10 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, Alert, Image, Animated, Dimensions, Share,
+  SafeAreaView, Image, Animated, Dimensions, Share,
   ActivityIndicator, Modal, Pressable,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import { fs } from '../../utils/responsive';
 import { formatLocation } from '../../utils/location';
@@ -35,7 +36,8 @@ import { SkeletonDetail } from '../../components/ui/Skeleton';
 import api from '@krushisarva/shared/services/api';
 import { useLocation } from '../../context/LocationContext';
 import { classifyError, ERROR_CODES } from '../../utils/apiError';
-import { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import useFocusRefresh, { invalidateFocusData } from '../../hooks/useFocusRefresh';
+import { isUserBlockedError } from '../../utils/blockState';
 
 const { width: W } = Dimensions.get('window');
 const HERO_H = 300;
@@ -169,11 +171,16 @@ export default function AnimalDetail({ route, navigation }) {
   // Report / block
   const [reportOpen, setReportOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const blockingRef = useRef(false);
 
   const [galIdx, setGalIdx] = useState(0);
   const [favourite, setFavourite] = useState(false);
 
-  const isOwner = !!(user?.id && listing?.sellerId && user.id === listing.sellerId);
+  // A list preview may carry only `seller.id`; either one identifies the owner,
+  // so Block never appears on your own listing even before the full row lands.
+  const listingSellerId = listing?.sellerId || listing?.seller?.id || null;
+  const isOwner = !!(user?.id && listingSellerId && user.id === listingSellerId);
 
   // ── Load the authoritative row ──────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -189,6 +196,15 @@ export default function AnimalDetail({ route, navigation }) {
     } catch (e) {
       const classified = classifyError(e, t('animalDetail.loadFailed', 'Could not load this listing.'));
       if (classified.code === ERROR_CODES.CANCELED) return;
+      // Gone, or across a block (an old link to someone either side blocked):
+      // the preview would offer Call / Chat that can only fail, so drop it for
+      // the plain "no longer available" page. Neutral on purpose — it never
+      // says who blocked whom.
+      if (classified.code === ERROR_CODES.NOT_FOUND || isUserBlockedError(e)) {
+        setListing(null);
+        setError(null);
+        return;
+      }
       // A preview is already on screen — keep it and show the problem quietly
       // instead of replacing a readable listing with an error page.
       setError(classified);
@@ -198,6 +214,12 @@ export default function AnimalDetail({ route, navigation }) {
   }, [listingId, coords, t]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Coming back to this screen after a block or unblock elsewhere (the chat's
+  // menu, the Blocked users list) re-reads the row, so a seller you just
+  // blocked does not stay on screen. Only after an 'animals' invalidation or a
+  // long absence — not on every focus.
+  useFocusRefresh(load, { key: `animals:detail:${listingId}`, staleMs: 10 * 60_000, runOnFirstFocus: false });
 
   // Similar nearby animals — best effort, never blocks the screen.
   useEffect(() => {
@@ -280,7 +302,7 @@ export default function AnimalDetail({ route, navigation }) {
   const handleCall = async () => {
     if (revealing) return;
     if (!user?.id) {
-      Alert.alert(t('animalDetail.signInTitle', 'Sign in to call'),
+      showPopup(t('animalDetail.signInTitle', 'Sign in to call'),
         t('animalDetail.signInToCall', 'Please sign in so the seller knows who is calling.'));
       return;
     }
@@ -290,10 +312,10 @@ export default function AnimalDetail({ route, navigation }) {
       if (!phone) throw new Error('no phone');
       setContact({ phone });
       const ok = await safeOpenURL(`tel:${sanitizePhone(phone)}`);
-      if (!ok) Alert.alert(t('product.error'), t('animalDetail.phoneError'));
+      if (!ok) showPopup(t('product.error'), t('animalDetail.phoneError'));
     } catch (e) {
       const classified = classifyError(e, t('animalDetail.phoneError'));
-      Alert.alert(t('product.error'), classified.message);
+      showPopup(t('product.error'), classified.message);
     } finally {
       setRevealing(false);
     }
@@ -308,7 +330,10 @@ export default function AnimalDetail({ route, navigation }) {
     try {
       await Share.share({ title, message });
     } catch (e) {
-      Alert.alert(t('product.error'), String(e?.message || e));
+      // Closing the browser's share sheet without sharing rejects with
+      // AbortError — the farmer changed their mind, which is not an error.
+      if (e?.name === 'AbortError') return;
+      showPopup(t('product.error'), String(e?.message || e));
     }
   };
 
@@ -334,36 +359,44 @@ export default function AnimalDetail({ route, navigation }) {
     try {
       await api.post(`/animals/${listing.id}/report`, { reason });
       setReportOpen(false);
-      Alert.alert(
+      showPopup(
         t('animal.reportThanksTitle', 'Thank you'),
         t('animal.reportThanks', 'Our team will look at this listing.'),
       );
     } catch (e) {
-      Alert.alert(t('product.error'), classifyError(e, t('animal.reportFailed', 'Could not send the report.')).message);
+      showPopup(t('product.error'), classifyError(e, t('animal.reportFailed', 'Could not send the report.')).message);
     } finally {
       setReporting(false);
     }
   };
 
+  const blockSeller = async () => {
+    // One request per decision, however many times "Block" is tapped.
+    if (!listingSellerId || isOwner || blockingRef.current) return;
+    blockingRef.current = true;
+    setBlocking(true);
+    try {
+      await api.post(`/animals/sellers/${listingSellerId}/block`, {});
+      invalidateFocusData('animals');
+      navigation.goBack();
+    } catch (e) {
+      // Offline / server error: nothing was blocked, so nothing changes here.
+      showPopup(t('product.error'), classifyError(e, t('animal.blockFailed', 'Could not block.')).message);
+    } finally {
+      blockingRef.current = false;
+      setBlocking(false);
+    }
+  };
+
+  // "You can undo this later" is true: Animal chats → Blocked users.
   const confirmBlock = () => {
-    Alert.alert(
+    if (!listingSellerId || isOwner || blockingRef.current) return;
+    showPopup(
       t('animal.blockTitle', 'Block this seller?'),
       t('animal.blockBody', 'You will not see their animals or be able to message each other. You can undo this later.'),
       [
         { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('animal.block', 'Block'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.post(`/animals/sellers/${listing.sellerId}/block`, {});
-              invalidateFocusData('animals');
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert(t('product.error'), classifyError(e, t('animal.blockFailed', 'Could not block.')).message);
-            }
-          },
-        },
+        { text: t('animal.block', 'Block'), style: 'destructive', onPress: blockSeller },
       ],
     );
   };
@@ -629,10 +662,20 @@ export default function AnimalDetail({ route, navigation }) {
                   <Ionicons name="flag-outline" size={15} color={COLORS.textMedium} />
                   <Text style={styles.reportTxt}>{t('animal.reportListing', 'Report listing')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.reportBtn} onPress={confirmBlock} accessibilityRole="button">
-                  <Ionicons name="ban-outline" size={15} color={COLORS.textMedium} />
-                  <Text style={styles.reportTxt}>{t('animal.blockSeller', 'Block seller')}</Text>
-                </TouchableOpacity>
+                {listingSellerId ? (
+                  <TouchableOpacity
+                    style={styles.reportBtn}
+                    onPress={confirmBlock}
+                    disabled={blocking}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: blocking, busy: blocking }}
+                  >
+                    {blocking
+                      ? <ActivityIndicator size="small" color={COLORS.textMedium} />
+                      : <Ionicons name="ban-outline" size={15} color={COLORS.textMedium} />}
+                    <Text style={styles.reportTxt}>{t('animal.blockSeller', 'Block seller')}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : null}
 

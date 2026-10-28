@@ -11,8 +11,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Alert,
+  ActivityIndicator, Image,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
@@ -21,6 +22,7 @@ import { COLORS, SHADOWS, RADIUS } from '@krushisarva/shared/constants/colors';
 import { useLanguage } from '@krushisarva/shared/context/LanguageContext';
 import api, { safeErrorMessage } from '@krushisarva/shared/services/api';
 import { SkeletonDetail } from '../../components/ui/Skeleton';
+import ReportSheet from '../../components/ReportSheet';
 
 const RISK_COLOR = {
   CRITICAL: COLORS.error,
@@ -233,6 +235,8 @@ export default function PastReportScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [downloading, setDownloading] = useState(false);
+  // "Report this result" (Google Play's AI-content rule): ReportSheet target or null.
+  const [reportTarget, setReportTarget] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -264,10 +268,10 @@ export default function PastReportScreen({ navigation, route }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert(t('pastReport.saved', 'Saved'), uri);
+        showPopup(t('pastReport.saved', 'Saved'), uri);
       }
     } catch (e) {
-      Alert.alert(t('pastReport.downloadFailed', 'Download failed'), e.message || '');
+      showPopup(t('pastReport.downloadFailed', 'Download failed'), e.message || '');
     } finally {
       setDownloading(false);
     }
@@ -297,7 +301,7 @@ export default function PastReportScreen({ navigation, route }) {
         });
       }
     } catch (e) {
-      Alert.alert(t('pastReport.shareFailed', 'Share failed'), e.message || '');
+      showPopup(t('pastReport.shareFailed', 'Share failed'), e.message || '');
     }
   };
 
@@ -335,6 +339,20 @@ export default function PastReportScreen({ navigation, route }) {
 
   const fields  = pickReportFields(row);
   const riskCol = RISK_COLOR[fields.riskLevel] || RISK_COLOR.UNKNOWN;
+
+  // Same shape as DiagnosisResultScreen's: the row id lets the team open the
+  // full report; the snapshot is what the farmer was shown, so the report still
+  // means something if the row is later erased.
+  const openReport = () => setReportTarget({
+    targetType: 'AI_DIAGNOSIS',
+    targetId: row.id || reportId || undefined,
+    snapshot: [
+      `${row.cropType || 'Crop'}: ${fields.diseaseName}${fields.scientific ? ` (${fields.scientific})` : ''}`,
+      fields.confidencePct ? `${fields.confidencePct}% confidence` : '',
+      `risk ${fields.riskLevel}`,
+      fields.immediateActions[0] || '',
+    ].filter(Boolean).join(' · '),
+  });
 
   return (
     <View style={S.safe}>
@@ -448,6 +466,19 @@ export default function PastReportScreen({ navigation, route }) {
           <BulletList title={t('pastReport.prevention', 'Prevention')} items={fields.preventionList} accent={COLORS.blue} />
         ) : null}
 
+        {/* ── Report this result — quiet, under the AI's sections it is about,
+            above the Kendra replies (which people wrote, not the AI) ── */}
+        <TouchableOpacity
+          style={S.reportLink}
+          onPress={openReport}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('report.titleResult', 'Report this result')}
+        >
+          <Ionicons name="flag-outline" size={15} color={COLORS.textMedium} />
+          <Text style={S.reportLinkTxt}>{t('report.titleResult', 'Report this result')}</Text>
+        </TouchableOpacity>
+
         {/* Krushi Kendra responses — when the report was shared with one or
             more nearby Kendras, surface their reply, stock status and how the
             farmer can get the product (collect vs. home delivery). */}
@@ -477,6 +508,8 @@ export default function PastReportScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
   );
 }
@@ -638,6 +671,9 @@ const S = StyleSheet.create({
   sectionTitle:    { fontSize: 13, fontWeight: '800', color: COLORS.textDark, marginBottom: 6 },
   bodyTxt:         { fontSize: 13, color: COLORS.textDark, lineHeight: 20, flex: 1 },
   bullet:          { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  // 44dp tall so a quiet link is still an easy tap.
+  reportLink:      { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 44, marginHorizontal: 16, marginBottom: 14, paddingRight: 12 },
+  reportLinkTxt:   { fontSize: 13, fontWeight: '600', color: COLORS.textMedium, textDecorationLine: 'underline' },
 
   // Native-language strips (report.local_blocks). Indic scripts need the extra
   // line-height so Devanagari matras and Tamil/Malayalam loops don't clip.

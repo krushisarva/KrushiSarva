@@ -50,8 +50,11 @@ const SEARCH_THRESHOLD = 8;
  *
  * Rendered inside the Modal, so it mounts only while the sheet is open: a form
  * with several pickers does not re-render all of them on every keyboard change.
+ *
+ * Exported for the one other bottom sheet in the app (OrderActionSheet), so the
+ * keyboard arithmetic exists once.
  */
-function SheetLayer({ children }) {
+export function SheetLayer({ children }) {
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardRoom(insets.bottom);
   const lift = bottomSheetLift({

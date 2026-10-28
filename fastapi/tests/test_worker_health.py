@@ -1,9 +1,10 @@
 """
 Celery worker liveness, as seen from the web process (claude.md §35).
 
-A healthy FastAPI process says nothing about whether any worker exists. Deploy
-the web role without the worker role — one `$ROLE` variable in
-fastapi/railway.json — and every scan is accepted, queued and never run, while
+A healthy FastAPI process says nothing about whether any worker exists. Run
+the web role without the worker role — the `fastapi` service in
+deploy/docker-compose.yml up while the `celery` one is down — and every scan
+is accepted, queued and never run, while
 /health stays green and the farmer watches a spinner. Nothing in this service
 could observe that, which is the gap these tests close.
 

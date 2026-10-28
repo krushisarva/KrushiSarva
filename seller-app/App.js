@@ -30,10 +30,28 @@ import * as phoneAuth from '@krushisarva/shared/services/firebasePhoneAuth';
 import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
 import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
+import AppUpdateBanner from '@krushisarva/shared/components/AppUpdateBanner';
 
 import BootScreen from './src/components/BootScreen';
-import { FeedbackProvider } from './src/components/ui';
+import { Button, FeedbackProvider } from './src/components/ui';
 import { NetworkProvider } from './src/hooks/useNetwork';
+import { KEYBOARD_RING_SELECTOR, TEXT_FIELD_NO_RING_CSS } from '@krushisarva/shared/utils/webFocusCss';
+
+// The shared update banner in the seller look: ember accent, paper card, pill
+// buttons (only the primary one filled), as everywhere else in this app.
+const UPDATE_BANNER_PALETTE = { accent: C.brand, card: C.surface, border: C.border, warn: C.warning };
+function UpdateBannerButton({ title, primary, loading, onPress }) {
+  return (
+    <Button
+      label={title}
+      size="sm"
+      variant={primary ? 'primary' : 'ghost'}
+      loading={loading}
+      onPress={onPress}
+      style={{ maxWidth: '100%' }}
+    />
+  );
+}
 
 function RootNavigator() {
   const { isLoggedIn, loading, restoreFailed } = useAuth();
@@ -76,8 +94,16 @@ export default function App() {
          reads as paper rather than as a white seam. */
       html, body { background-color: ${C.bg}; }
       /* Keyboard focus must stay visible — several controls set outline:none to
-         hide the browser's default ring over our own focus styling. */
-      :focus-visible { outline: 2px solid ${C.brand}; outline-offset: 3px; border-radius: 4px; }
+         hide the browser's default ring over our own focus styling. Never on a
+         text field: an input is :focus-visible on every focus, a mouse click
+         included, so this ring was drawn inside the field's own border as a
+         second one — see shared/utils/webFocusCss.js. No border-radius here:
+         it used to reshape whatever was focused (a pill chip snapped to 4px
+         corners), and an outline follows the control's own corners anyway.
+         The 3px gap stays: without it the ember ring cannot be seen against
+         an ember-filled button. */
+      ${KEYBOARD_RING_SELECTOR} { outline: 2px solid ${C.brand}; outline-offset: 3px; }
+      ${TEXT_FIELD_NO_RING_CSS}
     `;
     document.head.appendChild(style);
     return () => style.remove();
@@ -122,6 +148,9 @@ export default function App() {
                 <RootNavigator />
               </FeedbackProvider>
             </AuthProvider>
+            {/* "New version available" — floats over every screen, signed in
+                or not, so it sits outside AuthProvider. */}
+            <AppUpdateBanner palette={UPDATE_BANNER_PALETTE} ActionButton={UpdateBannerButton} />
           </LanguageProvider>
         </NetworkProvider>
       </SafeAreaProvider>

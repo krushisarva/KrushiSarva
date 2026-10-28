@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Alert, Image, ActivityIndicator, Dimensions, Animated,
+  Image, ActivityIndicator, Dimensions, Animated,
   FlatList, TextInput, Share,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +16,7 @@ import AnimatedScreen from '@krushisarva/shared/components/ui/AnimatedScreen';
 import MockImagePlaceholder from '../../components/MockImagePlaceholder';
 import { SkeletonDetail } from '../../components/ui/Skeleton';
 import OfferListSheet from './OfferListSheet';
+import ProductReviews from './ProductReviews';
 import { fs } from '../../utils/responsive';
 import {
   checkServiceability, classifyError, inr, discountPct, thumbUrl, detailImageUrl,
@@ -566,7 +568,7 @@ export default function ProductDetail({ route, navigation }) {
       refreshCart();
       return true;
     } catch (err) {
-      Alert.alert(t('product.error'), err.response?.data?.error?.message || t('product.cartError'));
+      showPopup(t('product.error'), err.response?.data?.error?.message || t('product.cartError'));
       return false;
     } finally {
       setAddingAction(null);
@@ -576,7 +578,7 @@ export default function ProductDetail({ route, navigation }) {
 
   async function handleAddToCart() {
     const ok = await addToCart(offer, quantity, 'cart');
-    if (ok) Alert.alert(t('product.addedToCart'), t('product.addedToCartMsg', { qty: quantity, name: product.name }), [{ text: t('ok') }]);
+    if (ok) showPopup(t('product.addedToCart'), t('product.addedToCartMsg', { qty: quantity, name: product.name }), [{ text: t('ok') }]);
   }
 
   async function handleBuyNow() {
@@ -590,7 +592,7 @@ export default function ProductDetail({ route, navigation }) {
     if (ok) {
       setOffer(chosen);
       setOffersOpen(false);
-      Alert.alert(
+      showPopup(
         t('product.addedToCart'),
         t('offers.addedFrom', { seller: chosen.sellerName, defaultValue: `Added from ${chosen.sellerName}` }),
         [{ text: t('ok') }],
@@ -1125,6 +1127,10 @@ export default function ProductDetail({ route, navigation }) {
               <Text style={[S.descText, { paddingBottom: 4 }]}>{product.description}</Text>
             </Collapsible>
           ) : null}
+
+          {/* What other buyers said. Asks the server only when the product has
+              ratings — see ProductReviews.js. */}
+          <ProductReviews productId={productId} ratingCount={reviews} />
 
         </View>
       </Animated.ScrollView>

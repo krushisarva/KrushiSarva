@@ -2,8 +2,14 @@ import { useState } from 'react';
 import { Sprout, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { errorMessage } from '../lib/api';
+import { FIREBASE_WEB_ENABLED, FirebasePhoneError, RECAPTCHA_CONTAINER_ID } from '../lib/firebasePhone';
 import { Button, Card, Field, Input } from '../components/ui';
 import { useToast } from '../lib/toast';
+
+// Firebase errors are mapped to safe, specific text in firebasePhone.ts; anything
+// else (an API error) goes through the usual axios mapping.
+const loginError = (e: unknown, fallback: string) =>
+  e instanceof FirebasePhoneError ? e.message : errorMessage(e, fallback);
 
 export default function LoginPage() {
   const { sendOtp, verifyOtp, notAdmin } = useAuth();
@@ -15,8 +21,8 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const onSend = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Shared by the phone form and (Firebase only) "Send a new code".
+  const send = async () => {
     setErr(null);
     setBusy(true);
     try {
@@ -33,10 +39,15 @@ export default function LoginPage() {
         toast.success('OTP sent to your phone');
       }
     } catch (e2) {
-      setErr(errorMessage(e2, 'Could not send OTP. Check the number and try again.'));
+      setErr(loginError(e2, 'Could not send OTP. Check the number and try again.'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSend = (e: React.FormEvent) => {
+    e.preventDefault();
+    void send();
   };
 
   const onVerify = async (e: React.FormEvent) => {
@@ -46,7 +57,7 @@ export default function LoginPage() {
     try {
       await verifyOtp(phone.trim(), otp.trim());
     } catch (e2) {
-      setErr(errorMessage(e2, 'Invalid OTP. Please try again.'));
+      setErr(loginError(e2, 'Invalid OTP. Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -88,11 +99,22 @@ export default function LoginPage() {
             </Field>
             {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
             <Button type="submit" variant="primary" className="w-full" loading={busy} disabled={otp.trim().length !== 6}>Verify & sign in</Button>
+            {/* Firebase only: a fresh SMS for the same number. Needed after a code
+                expires or the server refuses the verification ("request a new
+                code"); sendOtp disposes the old challenge first. */}
+            {FIREBASE_WEB_ENABLED && (
+              <button type="button" className="w-full text-center text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50" disabled={busy} onClick={() => { setOtp(''); void send(); }}>
+                Send a new code
+              </button>
+            )}
             <button type="button" className="w-full text-center text-sm text-slate-500 hover:text-slate-700" onClick={() => { setStep('phone'); setOtp(''); setErr(null); }}>
               Use a different number
             </button>
           </form>
         )}
+        {/* Firebase only: the invisible reCAPTCHA lives here, outside the step
+            switch, so it survives the phone → code transition. */}
+        {FIREBASE_WEB_ENABLED && <div id={RECAPTCHA_CONTAINER_ID} />}
       </Card>
     </div>
   );

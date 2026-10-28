@@ -51,7 +51,7 @@ export const NAV: NavGroup[] = [
   ]},
   { title: 'AI Operations', items: [
     { label: 'Usage & Cost', to: '/ai/usage', icon: Cpu, keywords: 'tokens cost' },
-    { label: 'Credits', to: '/ai/credits', icon: Coins, keywords: 'ledger grant deduct' },
+    { label: 'Allowance', to: '/ai/credits', icon: Coins, keywords: 'credits ledger grant deduct fair-use limit' },
     { label: 'Retrain Queue', to: '/ai/feedback', icon: FlaskConical, keywords: 'disease feedback' },
     { label: 'Disease Reports', to: '/ai/reports', icon: Activity },
   ]},

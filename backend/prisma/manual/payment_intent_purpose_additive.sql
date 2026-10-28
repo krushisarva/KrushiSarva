@@ -1,7 +1,7 @@
 -- payment_intents.purpose / refType / refId / metadata — additive schema,
 -- safe to apply MANUALLY in production. PAY-001.
 --
--- WHY MANUAL: the Railway deploy runs `prisma db push`, which makes the DB match
+-- WHY MANUAL: the old deploy ran `prisma db push`, which makes the DB match
 -- schema.prisma EXACTLY and therefore tries to DROP the FastAPI-owned tables it
 -- doesn't know about (ai_scan_diagnoses, ai_scan_feedback). Once those hold
 -- data, db push aborts ("data loss") and NONE of the schema applies — so these
@@ -43,7 +43,11 @@
 -- APPLY (any one):
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute --file prisma/manual/payment_intent_purpose_additive.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f backend/prisma/manual/payment_intent_purpose_additive.sql
---   Railway -> Postgres service -> Data/Query tab -> paste + run
+--   On the VPS, over SSH (Postgres has no public port; ks_app owns the tables):
+--     cd /opt/krushisarva
+--     docker compose exec -T postgres sh -c 'psql -U ks_app -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+--       < app/backend/prisma/manual/payment_intent_purpose_additive.sql
+--   (The VPS database, built by `prisma db push` on 2026-10-14, already has this.)
 --
 -- ON A VERY LARGE payment_intents TABLE: the two CREATE INDEX statements take a
 -- SHARE lock (blocking writes) for their duration. This table holds one row per

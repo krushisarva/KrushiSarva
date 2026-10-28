@@ -157,7 +157,7 @@ export function KycDetailPage() {
               {d.documents.map((doc) => (
                 <li key={doc.index}>
                   {doc.url ? (
-                    <a href={doc.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
+                    <a href={doc.url} target="_blank" rel="noreferrer" className="focus-flush flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
                       <FileText className="h-4 w-4" /> Document {doc.index + 1} <span className="ml-auto text-xs text-slate-500">(signed link, ~5 min)</span>
                     </a>
                   ) : (
@@ -192,7 +192,7 @@ export function KycDetailPage() {
                   {d.licence.documents.map((doc) => (
                     <li key={doc.index}>
                       {doc.url ? (
-                        <a href={doc.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
+                        <a href={doc.url} target="_blank" rel="noreferrer" className="focus-flush flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-700 hover:bg-slate-50">
                           <FileText className="h-4 w-4" /> Licence {doc.index + 1} <span className="ml-auto text-xs text-slate-500">(signed link, ~5 min)</span>
                         </a>
                       ) : (

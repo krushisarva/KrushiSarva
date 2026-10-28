@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import {
   _resetFocusOwner, blurField, focusField, getFocusOwner, nextFieldId, subscribeFocusOwner,
 } from '../fieldFocus';
@@ -57,4 +59,17 @@ test('an empty id is ignored rather than becoming the owner', () => {
   expect(getFocusOwner()).toBe(a);
   blurField(undefined);
   expect(getFocusOwner()).toBe(a);
+});
+
+// The TextField's <input> (../Form.js) is a flex child of the bordered shell.
+// On the web an <input> will not shrink below the width of 20 characters in its
+// own font, so the delivery code's large, widely spaced digits made it wider
+// than a phone-width shell: the input stuck out of its own border, the centred
+// digits sat off-centre and the sheet scrolled sideways.
+test('the text field input may shrink to its shell', () => {
+  const form = fs.readFileSync(path.join(__dirname, '../Form.js'), 'utf8');
+  const input = /\n  input: \{([\s\S]*?)\n  \},/.exec(form);
+  expect(input).not.toBeNull();
+  expect(input[1]).toMatch(/\bflex: 1,/);
+  expect(input[1]).toMatch(/\bminWidth: 0,/);
 });

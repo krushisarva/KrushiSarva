@@ -730,6 +730,67 @@ model OrderItem {
   @@map("order_items")
 }
 
+/// One SELLER's delivery of their part of one order (seller delivery, phase 4 —
+/// docs/SELLER_DELIVERY_DESIGN.md §8.6). One row per (order, seller): a
+/// two-Kendra order is two deliveries, each with its own code and its own
+/// outcome. All logic is in services/orderDelivery.service.js.
+///
+/// ── Why a table and not columns on order_items ──────────────────────────────
+/// A seller's lines on an order move together and are delivered together, so the
+/// code, the wrong-try counter and the reason belong to the SHIPMENT. On
+/// order_items they would have to be copied onto every line and kept in step.
+///
+/// The row is created when the seller marks the order shipped (that is when the
+/// code is issued), or later by a delivery without a code / a failed delivery on
+/// an order that was shipped before this table existed. An order with no row is
+/// simply one that was never out for delivery under this feature.
+///
+/// Scalar ids only — no relation fields on Order or User — so this is purely
+/// additive: creating the table touches no existing one (same choice as
+/// ReturnRequest). Orders are never deleted, so there is nothing to cascade.
+model OrderDelivery {
+  id                 String    @id @default(uuid())
+  orderId            String
+  sellerId           String
+  /// The 4-digit proof-of-delivery code, AES-256-GCM ciphertext (utils/encrypt.js,
+  /// listed in keyRotation.service.js). NEVER returned to the seller — only to the
+  /// buyer's own signed-in read, and only while the shipment is SHIPPED. Null
+  /// until the seller marks the order shipped, and for a row created by a
+  /// delivery that never had a code.
+  code               String?
+  /// WRONG tries in the current window. Incremented by one atomic UPDATE outside
+  /// the status transaction, so a refused attempt still counts. Not a lifetime
+  /// total: it restarts when an expired lock is next tried against.
+  codeAttempts       Int       @default(0)
+  /// Set by the wrong try that uses up the last attempt; code attempts are
+  /// refused until it passes. Delivering WITHOUT a code stays possible.
+  codeLockedUntil    DateTime?
+  /// 'CODE' | 'NO_CODE'. Null until delivered, and stays null for a delivery
+  /// made with neither (an older seller app while the code is optional).
+  deliveredVia       String?
+  /// Why it was delivered without the code: FARMER_PHONE_OFF | RECEIVED_BY_OTHER
+  /// | HANDED_AT_SHOP | OTHER. Counted per seller for the admin.
+  noCodeReason       String?
+  /// "Could not deliver" — why a SHIPPED order was cancelled:
+  /// REFUSED | UNREACHABLE | ADDRESS_NOT_FOUND.
+  failedReason       String?
+  // ── Cash on delivery (phase 5) — UNUSED until then, deliberately ─────────────
+  // Phase 5 changes how a payment is recorded and needs owner decisions D3/D4
+  // first. The columns exist now so that phase does not need a second schema
+  // change; nothing reads or writes them.
+  codAmountDue       Decimal?  @db.Decimal(12, 2)
+  codCollectedAmount Decimal?  @db.Decimal(12, 2)
+  codCollectedAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // The only access path there is: "this seller's delivery of this order", and
+  // (as a prefix) "the deliveries of these orders". No other index — every extra
+  // one is paid for on a write that happens on each shipped order.
+  @@unique([orderId, sellerId])
+  @@map("order_deliveries")
+}
+
 // ── Returns / RMA (admin SUPPORT) ─────────────────────────────────────────────
 // One buyer-initiated return/refund request against an order (optionally a single
 // item). Scalar orderId/userId FKs only — no relation fields on Order/User — so
@@ -2366,6 +2427,12 @@ enum NotificationType {
   SYSTEM
   CROP_REPORT_RECEIVED
   CROP_REPORT_REPLIED
+  /// Seller delivery, phase 1: "you have a new order", sent to each SELLER on an
+  /// order when it is created. Without the value the push itself still goes out
+  /// (the insert is best-effort) but the in-app notification row is refused by
+  /// the database, exactly as 'animal_chat' once was — see the comment on that
+  /// push in animaltrade.routes.js.
+  NEW_ORDER
 }
 
 enum ShareStatus {

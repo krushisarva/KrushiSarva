@@ -98,14 +98,40 @@ export function createConnectionLimiter(limits = DEFAULT_LIMITS) {
  * @param {string} event     socket event name
  * @param {string} category  limiter category (message|typing|read|join)
  * @param {Function} handler  the original async handler
- * @param {{ notify?: boolean }} [opts]
+ * The payload is untrusted: a client can emit an event with no argument, `null`
+ * or a string. Every handler destructures its first argument, and socket.io
+ * calls listeners with no try/catch, so a bare `socket.emit('dm_typing')` threw
+ * an uncaught TypeError that took the whole process down. Anything that is not
+ * a plain object is dropped here, and a handler that throws or rejects is
+ * reported through `onError` instead of escaping.
+ *
+ * @param {{ notify?: boolean, onError?: (err: Error, event: string) => void }} [opts]
  */
-export function onLimited(socket, allow, event, category, handler, { notify = category === 'message' } = {}) {
+export function onLimited(socket, allow, event, category, handler, { notify = category === 'message', onError } = {}) {
+  const report = (err) => { if (onError) onError(err, event); };
   socket.on(event, (...args) => {
     if (!allow(category)) {
       if (notify) socket.emit('rate_limited', { event });
       return undefined;
     }
-    return handler(...args);
+    const payload = args[0];
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+    try {
+      const result = handler(...args);
+      if (result && typeof result.catch === 'function') return result.catch(report);
+      return result;
+    } catch (err) {
+      report(err);
+      return undefined;
+    }
   });
+}
+
+/**
+ * Is this a usable record id from the wire? Ids go straight into Prisma
+ * `where` clauses, where an object is a filter, not a value: `{ not: '' }` in
+ * place of a chat id matched every chat on the platform. Strings only.
+ */
+export function isId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64;
 }

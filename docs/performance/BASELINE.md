@@ -66,8 +66,8 @@ for microservices, Kafka, sharding, or a search cluster.
 `backend/src/config/db.js` pins `connection_limit=12` per Express replica
 (`DB_CONNECTION_LIMIT` overrides). This is **chosen, not derived** — it was
 previously `os.cpus().length * 2 + 1`, which reads the *host's* core count
-rather than the container's cgroup quota, so one replica on a shared 32-core
-Railway host claimed 65 connections against `max_connections` 100.
+rather than the container's cgroup quota, so one replica on the previous
+host's shared 32-core machine claimed 65 connections against `max_connections` 100.
 
 Budget as documented in that file:
 

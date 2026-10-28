@@ -46,7 +46,10 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div ref={ref} tabIndex={-1} className={`card relative z-10 w-full ${width} max-h-[90vh] overflow-y-auto`}>
+      {/* The panel is only where focus lands when the dialog opens — not a
+          control. No ring: opened from the keyboard it drew a second border
+          round the whole card. The controls inside keep theirs. */}
+      <div ref={ref} tabIndex={-1} className={`card relative z-10 w-full ${width} max-h-[90vh] overflow-y-auto focus-visible:ring-0 focus-visible:ring-offset-0`}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close">
@@ -70,7 +73,7 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div ref={ref} tabIndex={-1} className={`absolute right-0 top-0 h-full w-full ${width} overflow-y-auto bg-white shadow-xl focus:outline-none`}>
+      <div ref={ref} tabIndex={-1} className={`absolute right-0 top-0 h-full w-full ${width} overflow-y-auto bg-white shadow-xl focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0`}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
           <Button variant="ghost" onClick={onClose} aria-label="Close"><X className="h-5 w-5" /></Button>

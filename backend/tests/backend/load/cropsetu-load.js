@@ -46,8 +46,8 @@ const PEAK_RPS = parseInt(__ENV.PEAK_RPS || '3000', 10);
 const THINK    = parseFloat(__ENV.THINK || '5');
 
 // Tokens are minted out-of-band (mint-tokens.mjs) because the real login path is
-// OTP + SMS and is itself rate limited to 5/hour/phone — exercising it would test
-// MSG91, not this API.
+// Firebase SMS and is itself rate limited per phone — exercising it would test
+// Firebase, not this API.
 const tokens = new SharedArray('tokens', () => {
   if (!__ENV.TOKENS) return [];
   return JSON.parse(open(__ENV.TOKENS)).map((u) => u.token);

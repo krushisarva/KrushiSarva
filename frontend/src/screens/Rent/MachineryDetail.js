@@ -10,9 +10,10 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, ActivityIndicator, Dimensions,
+  Image, ActivityIndicator, Dimensions,
   StatusBar, Modal, TextInput, Animated, Linking,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { safeOpenURL, sanitizePhone } from '../../utils/sanitize';
 import { fs } from '../../utils/responsive';
 import { Video, ResizeMode } from 'expo-av';
@@ -32,6 +33,7 @@ import useRentBooking from './components/useRentBooking';
 import { noticeText } from './components/rentBookingFlow';
 import { LEGAL_URLS } from '@krushisarva/shared/constants/config';
 import { inr } from '../AgriStore/shopUtils';
+import ReportSheet from '../../components/ReportSheet';
 
 // Machinery icon registry keys — fall back to 'tractor' so the hero is never blank.
 const MACH_ICON_KEYS = ['tractor','harvester','sprayer','rotavator','thresher','transplanter','truck','tempo'];
@@ -200,6 +202,8 @@ export default function MachineryDetail({ route, navigation }) {
   const [bookingDone,  setBookingDone]  = useState(null);
   // The current user's existing active/pending booking on THIS listing (null if none).
   const [myBooking,    setMyBooking]    = useState(null);
+  // "Report listing" (Google Play user-content rule): ReportSheet target or null.
+  const [reportTarget, setReportTarget] = useState(null);
 
   // Fetch full detail if not passed
   useEffect(() => {
@@ -326,7 +330,7 @@ export default function MachineryDetail({ route, navigation }) {
     }
     // Choosing the end date: reject a range that spans a booked / unavailable gap.
     if (rangeHasBlocked(selStart, dk)) {
-      Alert.alert(
+      showPopup(
         t('rent.unavailableRangeTitle', 'Dates not available'),
         t('rent.unavailableRangeMsg', 'Your selected range includes dates that are booked or outside the availability window. Please pick a continuous available range.'),
       );
@@ -400,7 +404,7 @@ export default function MachineryDetail({ route, navigation }) {
       bookingRef.current = false;
       if (!aliveRef.current) return;
       const { title, body } = noticeText(notice, t, inr);
-      Alert.alert(title, body);
+      showPopup(title, body);
       // The dates went to someone else — show that on the calendar rather than
       // leaving a range selected that can never be booked. Money having moved
       // also means a booking may exist elsewhere, so RentHome is re-read too.
@@ -414,21 +418,21 @@ export default function MachineryDetail({ route, navigation }) {
 
   const handleBook = async () => {
     if (isOwner) {
-      Alert.alert(t('rent.ownListingTitle', 'Your Listing'), t('rent.ownListingMsg', "This is your own listing — you can't book it."));
+      showPopup(t('rent.ownListingTitle', 'Your Listing'), t('rent.ownListingMsg', "This is your own listing — you can't book it."));
       return;
     }
     if (!selStart || !selEnd) {
-      Alert.alert(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
+      showPopup(t('rent.selectDatesAlert'), t('rent.selectDatesMsg'));
       return;
     }
     const days = selectedDays();
     if (days <= 0) {
-      Alert.alert(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
+      showPopup(t('rent.invalidRange'), t('rent.invalidRangeMsg'));
       return;
     }
     // Final safety net — the calendar prevents this, but never trust the selection blindly.
     if (isDayBlocked(selStart) || isDayBlocked(selEnd) || rangeHasBlocked(selStart, selEnd)) {
-      Alert.alert(
+      showPopup(
         t('rent.unavailableRangeTitle', 'Dates not available'),
         t('rent.unavailableRangeMsg', 'Your selected range includes dates that are booked or outside the availability window. Please pick a continuous available range.'),
       );
@@ -782,6 +786,19 @@ export default function MachineryDetail({ route, navigation }) {
               </View>
             </>
           )}
+
+          {/* ── Report listing — quiet, last; never on your own listing ── */}
+          {!isOwner && user && m.id ? (
+            <TouchableOpacity
+              style={D.reportLink}
+              onPress={() => setReportTarget({ targetType: 'MACHINERY_LISTING', targetId: m.id })}
+              accessibilityRole="button"
+              accessibilityLabel={t('report.titleListing', 'Report listing')}
+            >
+              <Ionicons name="flag-outline" size={15} color={COLORS.textMedium} />
+              <Text style={D.reportLinkTxt}>{t('report.titleListing', 'Report listing')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -928,6 +945,8 @@ export default function MachineryDetail({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />
     </View>
     </AnimatedScreen>
   );
@@ -1011,6 +1030,9 @@ const D = StyleSheet.create({
   ownerName:    { fontSize: 15, fontWeight: '700', color: COLORS.textDark },
   ownerLoc:     { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
   callSmall:    { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+  // 44dp tall so a quiet link is still an easy tap.
+  reportLink:   { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 44, paddingRight: 12 },
+  reportLinkTxt:{ fontSize: 13, fontWeight: '700', color: COLORS.textMedium },
 
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10, padding: 12, paddingTop: 10, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.lightGray2 },
   // callBtn (flex:1) + bookBtn2 (flex:2) keep their intentional 1:2 width ratio.

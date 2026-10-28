@@ -16,8 +16,9 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal, TextInput,
-  Alert, RefreshControl, ActivityIndicator, Platform, KeyboardAvoidingView,
+  RefreshControl, ActivityIndicator, Platform, KeyboardAvoidingView,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -209,7 +210,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
       setCycle(c);
       setFinancials(f);
     } catch {
-      Alert.alert(t('login.error') || 'Error', t('farmProfile.loadCropCycleError') || 'Could not load cycle.');
+      showPopup(t('login.error') || 'Error', t('farmProfile.loadCropCycleError') || 'Could not load cycle.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -235,7 +236,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
       load();
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || 'Error', e.message || (t('farmProfile.saveFailed') || 'Save failed.'));
+      showPopup(t('login.error') || 'Error', e.message || (t('farmProfile.saveFailed') || 'Save failed.'));
     }
   }, [modal, formData, cycleId, load, t]);
 
@@ -249,7 +250,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
       load();
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || 'Error', e?.response?.data?.error?.message || e.message || t('farmProfile.completeCycleError', 'Could not complete cycle.'));
+      showPopup(t('login.error') || 'Error', e?.response?.data?.error?.message || e.message || t('farmProfile.completeCycleError', 'Could not complete cycle.'));
     } finally {
       setCompleting(false);
     }
@@ -266,7 +267,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
       load();
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || 'Error', e?.response?.data?.error?.message || e.message || t('farmProfile.reopenCycleError', 'Could not reopen cycle.'));
+      showPopup(t('login.error') || 'Error', e?.response?.data?.error?.message || e.message || t('farmProfile.reopenCycleError', 'Could not reopen cycle.'));
     } finally {
       setCompleting(false);
     }
@@ -283,7 +284,7 @@ export default function CropCycleDetailScreen({ navigation, route }) {
     } catch (e) {
       Haptics.error?.();
       setShowDelete(false);
-      Alert.alert(t('login.error', 'Error'), e?.response?.data?.error?.message || t('farmProfile.deleteFailed', 'Could not delete cycle.'));
+      showPopup(t('login.error', 'Error'), e?.response?.data?.error?.message || t('farmProfile.deleteFailed', 'Could not delete cycle.'));
     } finally {
       setDeleting(false);
     }

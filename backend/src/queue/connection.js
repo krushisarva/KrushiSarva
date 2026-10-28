@@ -22,7 +22,7 @@ export function createQueueConnection() {
     maxRetriesPerRequest: null, // REQUIRED by BullMQ
     enableReadyCheck: false,
     retryStrategy: reconnectDelay,
-    family: 0, // resolve IPv6 too — Railway private networking is IPv6-only
+    family: 0, // resolve IPv6 too, so IPv6-only Redis hosts/networks work
   });
   // Without a listener, ioredis throws 'error' as an unhandled exception during
   // an outage. The queue's own fail-open logic handles unavailability; here we

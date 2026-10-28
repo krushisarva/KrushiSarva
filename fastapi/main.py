@@ -104,6 +104,13 @@ async def lifespan(app: FastAPI):
                 f"[Config] FATAL: missing required production config: {', '.join(missing)}"
             )
 
+    # Request signing is the only thing between the network and the LLM
+    # budget (FastAPI has no public URL, but the network is never trusted).
+    # AI_AUTH_REQUIRED=false is a local-development switch; refuse to
+    # start with it in production rather than serve every /ai/* route unsigned.
+    if IS_PROD and os.getenv("AI_AUTH_REQUIRED", "true").strip().lower() == "false":
+        raise RuntimeError("[Config] FATAL: AI_AUTH_REQUIRED=false is not allowed in production")
+
     # Test DB connectivity at startup using the shared pool
     if DATABASE_URL:
         try:
@@ -200,13 +207,20 @@ app.add_middleware(
 
 # ── Request body-size guard (AISVC-12) ───────────────────────────────────────
 # Reject oversized POST bodies early (before they're buffered into memory or
-# reach the LLM token meter) with 413. Uses Content-Length when present; for
-# chunked uploads with no length header we let it through to the per-image size
-# checks downstream.
+# reach the LLM token meter) with 413. Uses Content-Length when present. A
+# chunked body carries no length, and request signing reads the whole body into
+# memory BEFORE it can reject the caller — so an unauthenticated chunked upload
+# of any size was buffered in full. Express always sends Content-Length, so a
+# chunked body is refused with 411.
 @app.middleware("http")
 async def _body_size_guard(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH"):
         cl = request.headers.get("content-length")
+        if not cl and "chunked" in request.headers.get("transfer-encoding", "").lower():
+            return JSONResponse(
+                {"success": False, "error": "length required"},
+                status_code=411,
+            )
         if cl:
             try:
                 if int(cl) > _MAX_BODY_BYTES:
@@ -277,8 +291,9 @@ async def health():
     # A backed-up queue with no worker consuming it makes this service useless
     # for scans even though the process is perfectly healthy, so it belongs in
     # the status. It does NOT belong in a liveness verdict — restarting the web
-    # role cannot conjure a worker, and fastapi/railway.json declares no
-    # healthcheckPath, so this is read by operators rather than by a supervisor.
+    # role cannot conjure a worker. deploy/docker-compose.yml's healthcheck does
+    # read this body, but Docker only marks the container unhealthy and restarts
+    # nothing on that, so this is read by operators rather than by a supervisor.
     worker = await run_in_threadpool(worker_health)
     return {
         "status":  "ok" if (db_ok and not crit and not worker.get("stuck")) else "degraded",

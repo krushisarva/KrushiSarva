@@ -17,9 +17,10 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { showPopup } from '../../../utils/popup';
 import { Ionicons } from '@expo/vector-icons';
 
 import CosmicScreen from '../ui/CosmicScreen';
@@ -86,12 +87,12 @@ export default function IrrigationLogScreen({ navigation, route }) {
   const handleSave = useCallback(async () => {
     if (!canSave) {
       Haptics.error?.();
-      Alert.alert(t('irrigationLog.missingInfoTitle'), t('irrigationLog.missingInfoBody'));
+      showPopup(t('irrigationLog.missingInfoTitle'), t('irrigationLog.missingInfoBody'));
       return;
     }
     if (!cycleId) {
       // v2 backend accepts plotId alone; legacy backend requires cycleId.
-      Alert.alert(t('irrigationLog.pickCycleTitle'), t('irrigationLog.pickCycleBody'));
+      showPopup(t('irrigationLog.pickCycleTitle'), t('irrigationLog.pickCycleBody'));
       return;
     }
     setSaving(true);
@@ -110,7 +111,7 @@ export default function IrrigationLogScreen({ navigation, route }) {
       setCelebrate(true);
     } catch (e) {
       Haptics.error?.();
-      Alert.alert(t('login.error') || t('irrigationLog.errorTitle'), e.message || t('irrigationLog.couldNotSave'));
+      showPopup(t('login.error') || t('irrigationLog.errorTitle'), e.message || t('irrigationLog.couldNotSave'));
     } finally {
       setSaving(false);
     }

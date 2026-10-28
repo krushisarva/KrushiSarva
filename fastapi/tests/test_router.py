@@ -125,17 +125,17 @@ def test_resolve_chain_report_is_empty():
 
 
 def test_resolve_chain_env_override(monkeypatch):
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
     chain = resolve_chain("diagnose", "fast")
-    assert chain[0] == "gemini-2.5-pro"
-    assert chain[1] == "gemini-2.5-flash"
+    assert chain[0] == "gemini-3.6-flash"
+    assert chain[1] == "gemini-3.5-flash-lite"
 
 
 def test_resolve_chain_filters_unknown_models(monkeypatch):
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "imaginary-model,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "imaginary-model,gemini-3.5-flash-lite")
     chain = resolve_chain("diagnose", "fast")
     assert "imaginary-model" not in chain
-    assert "gemini-2.5-flash" in chain
+    assert "gemini-3.5-flash-lite" in chain
 
 
 def test_resolve_chain_filters_missing_keys(monkeypatch):
@@ -143,11 +143,11 @@ def test_resolve_chain_filters_missing_keys(monkeypatch):
     # catalog entry directly (monkeypatch restores it) rather than reloading the
     # module, so we don't clobber the shared Gemini key for other tests.
     from agents.registry import MODEL_CATALOG
-    monkeypatch.setenv("DIAGNOSE_BEST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
-    monkeypatch.setitem(MODEL_CATALOG["gemini-2.5-pro"], "api_key", "")
+    monkeypatch.setenv("DIAGNOSE_BEST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
+    monkeypatch.setitem(MODEL_CATALOG["gemini-3.6-flash"], "api_key", "")
     chain = resolve_chain("diagnose", "best")
-    assert "gemini-2.5-pro" not in chain      # dropped — no key
-    assert "gemini-2.5-flash" in chain         # survives
+    assert "gemini-3.6-flash" not in chain      # dropped — no key
+    assert "gemini-3.5-flash-lite" in chain         # survives
 
 
 # ── _is_transient ───────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ class _BoomTransient(Exception):
 
 def test_run_chain_falls_back_on_transient(monkeypatch):
     # Force a deterministic 2-model Gemini chain
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
 
     calls = []
 
@@ -203,13 +203,13 @@ def test_run_chain_falls_back_on_transient(monkeypatch):
         stage="diagnose", tier="fast", runner=fake_runner,
     ))
     assert text == "ok-text"
-    assert model == "gemini-2.5-flash"
+    assert model == "gemini-3.5-flash-lite"
     assert len(calls) == 2
     assert tok["total_tokens"] == 15
 
 
 def test_run_chain_reraises_after_full_exhaustion(monkeypatch):
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
 
     async def all_fail(model_id):
         raise _BoomTransient()
@@ -223,7 +223,7 @@ def test_run_chain_reraises_after_full_exhaustion(monkeypatch):
 
 
 def test_run_chain_does_not_fallback_on_permanent_error(monkeypatch):
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
 
     calls = []
     async def fail(model_id):
@@ -240,12 +240,12 @@ def test_run_chain_does_not_fallback_on_permanent_error(monkeypatch):
 
 def test_run_chain_empty_response_triggers_fallback(monkeypatch):
     """A model returning '' should be treated as failure, not silently accepted."""
-    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-2.5-pro,gemini-2.5-flash")
+    monkeypatch.setenv("DIAGNOSE_FAST_CHAIN", "gemini-3.6-flash,gemini-3.5-flash-lite")
 
     calls = []
     async def runner(model_id):
         calls.append(model_id)
-        if model_id == "gemini-2.5-pro":
+        if model_id == "gemini-3.6-flash":
             return ("", {"input_tokens": 0, "output_tokens": 0,
                          "total_tokens": 0, "cost_usd": 0, "model": model_id})
         return ("ok", {"input_tokens": 5, "output_tokens": 10,
@@ -255,5 +255,5 @@ def test_run_chain_empty_response_triggers_fallback(monkeypatch):
         stage="diagnose", tier="fast", runner=runner,
     ))
     assert text == "ok"
-    assert model == "gemini-2.5-flash"
+    assert model == "gemini-3.5-flash-lite"
     assert len(calls) == 2

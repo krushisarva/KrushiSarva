@@ -15,8 +15,9 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import React, { useState, useCallback, useRef, memo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator, RefreshControl, Alert, Modal,
+  Image, ActivityIndicator, RefreshControl, Modal,
 } from 'react-native';
+import { showPopup } from '../../utils/popup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -154,8 +155,8 @@ export default function MyAnimalListingsScreen({ navigation }) {
       const msg = e?.response?.data?.error?.message
         || t('myAnimalListingsScreen.deleteFailedMsg');
       setPendingDelete(null);
-      // Brief alert for the error case — single-button alerts work fine on web.
-      Alert.alert(t('myAnimalListingsScreen.deleteFailedTitle'), msg);
+      // The error case is a plain one-button pop-up.
+      showPopup(t('myAnimalListingsScreen.deleteFailedTitle'), msg);
     } finally {
       setDeleting(false);
     }

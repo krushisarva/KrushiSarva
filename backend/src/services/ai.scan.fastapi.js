@@ -6,7 +6,7 @@
  *   ai.predict.service.js). When USE_FASTAPI_FOR_SCAN=true we instead
  *   forward the image to FastAPI's full agentic pipeline (Image Quality
  *   → Weather → Disease Diagnosis → Treatment with chemical-registry
- *   validation → Report). FastAPI runs on a separate Railway service,
+ *   validation → Report). FastAPI runs in its own container,
  *   so we cannot share a filesystem — the image must travel inline as
  *   base64. The materialise step on the FastAPI side writes it back to
  *   a temp file before invoking the path-based pipeline.

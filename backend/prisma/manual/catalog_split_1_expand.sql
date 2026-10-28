@@ -6,7 +6,7 @@
 --   product_variants → the sellable unit (for agri-inputs: PACK SIZE)
 --   seller_listings  → one offer per seller per variant
 --
--- WHY MANUAL: the Railway deploy runs `prisma db push --skip-generate`, which
+-- WHY MANUAL: the old deploy ran `prisma db push --skip-generate`, which
 -- makes the DB match schema.prisma EXACTLY — so it tries to DROP tables Prisma
 -- does not know about (FastAPI's ai_scan_diagnoses, mandi_prices, …). Once those
 -- hold data, db push aborts on "data loss" and NONE of the schema applies. That
@@ -33,7 +33,9 @@
 --   cd backend && DATABASE_URL=<prod> npx prisma db execute \
 --       --file prisma/manual/catalog_split_1_expand.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f backend/prisma/manual/catalog_split_1_expand.sql
---   Railway → Postgres service → Data/Query tab → paste + run
+--   NOT on the VPS database: `prisma db push` built it on 2026-10-14 with the new
+--   tables already in place, and the helper tables/functions this file adds are
+--   deliberately absent there (docs/deploy/VPS_DEPLOY_PLAN.md §7 step 4).
 --
 -- Idempotent: safe to re-run.
 -- ============================================================================

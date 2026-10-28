@@ -147,37 +147,36 @@ function parseVelocityRules() {
 
 // ── OTP development bypass (auth bypass — NEVER in production) ────────────────
 // Accepting the fixed OTP "000000" to skip real verification is strictly a
-// non-production convenience (local dev + automated tests with no SMS provider).
+// non-production convenience (local dev + automated tests).
 // Resolved ONCE here, FAIL-CLOSED, so verifyOtp() checks a single frozen flag and
-// absent / loose config can never enable it. ALL three must hold:
+// absent / loose config can never enable it. BOTH must hold:
 //   • explicit opt-in : OTP_DEV_BYPASS_ENABLED === 'true'
 //   • never in prod   : NODE_ENV must not be 'production'
-//   • no live SMS     : MSG91_AUTH_KEY must be empty
 // The opt-in is what closes the old hole: the previous gate keyed only on
 // NODE_ENV !== 'production', so a prod deploy that forgot to set NODE_ENV (unset,
-// "prod", "staging") with no SMS key silently accepted "000000". Requiring a
-// positive opt-in means a misconfigured prod box is safe by default, and the boot
-// guard below additionally REFUSES to start if the opt-in is set under
-// NODE_ENV=production — so it fails fast instead of exposing the bypass.
+// "prod", "staging") silently accepted "000000". Requiring a positive opt-in
+// means a misconfigured prod box is safe by default, and the boot guard below
+// additionally REFUSES to start if the opt-in is set under NODE_ENV=production —
+// so it fails fast instead of exposing the bypass.
 const _otpDevBypass =
   process.env.OTP_DEV_BYPASS_ENABLED === 'true' &&
-  process.env.NODE_ENV !== 'production' &&
-  !process.env.MSG91_AUTH_KEY;
+  process.env.NODE_ENV !== 'production';
 
 // ── Reverse-proxy trust (X-Forwarded-For) ────────────────────────────────────
-// Behind Railway / any load balancer the socket peer is the proxy, so per-IP
+// Behind Caddy / any load balancer the socket peer is the proxy, so per-IP
 // rate limiting must resolve the real client from X-Forwarded-For. Express does
 // that SAFELY only when `trust proxy` is set to the exact number of proxy hops
 // in front of the app: it then reads the client from the right-most untrusted
 // hop, which a client cannot forge. Trusting too many hops (or `true`) lets a
 // client prepend a fake XFF entry, mint a fresh per-IP bucket every request, and
-// bypass the global limiter — i.e. silently disable it. Railway terminates at a
-// single edge proxy → 1. Override via TRUST_PROXY: a number (hop count),
-// true/false, or an Express trust-proxy string ('loopback', subnet list, …).
+// bypass the global limiter — i.e. silently disable it. In production Caddy is
+// the single reverse proxy in front of the app → 1. Override via TRUST_PROXY:
+// a number (hop count), true/false, or an Express trust-proxy string
+// ('loopback', subnet list, …).
 function parseTrustProxy() {
   const raw = process.env.TRUST_PROXY;
   if (raw == null || raw.trim() === '') {
-    // Default: 1 hop in production (Railway edge proxy); loopback in dev/test
+    // Default: 1 hop in production (Caddy); loopback in dev/test
     // where requests come straight from localhost and there is no real proxy.
     return process.env.NODE_ENV === 'production' ? 1 : 'loopback';
   }
@@ -265,9 +264,6 @@ export const ENV = {
   // instance. Generous enough for phone + tablet + web + transient reconnects.
   SOCKET_MAX_CONN_PER_USER: parseInt(process.env.SOCKET_MAX_CONN_PER_USER || '10', 10),
 
-  MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY || '',
-  MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID || '',
-  MSG91_SENDER_ID: process.env.MSG91_SENDER_ID || 'FRMESY',
   // Short code TTL — expire OTPs quickly to shrink the guessing window.
   OTP_EXPIRE_MINUTES: parseInt(process.env.OTP_EXPIRE_MINUTES || '5', 10),
   OTP_MAX_ATTEMPTS: parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10),
@@ -283,15 +279,14 @@ export const ENV = {
   OTP_FAIL_WINDOW_SECONDS: parseInt(process.env.OTP_FAIL_WINDOW_SECONDS || '900', 10),
   OTP_LOCK_CYCLE_WINDOW_SECONDS: parseInt(process.env.OTP_LOCK_CYCLE_WINDOW_SECONDS || '86400', 10),
 
-  // ── Firebase Phone Auth (parallel login path — see firebaseAuth.service.js) ──
-  // SMS to Indian numbers needs a DLT-registered sender. Until KrushiSarva's own
-  // DLT registration is approved, MSG91 delivers nothing; Firebase works because
-  // Google is the registered sender. This path is ADDITIVE — the MSG91 OTP flow
-  // is untouched and stays the default. Turn this off once DLT is live.
+  // ── Firebase Phone Auth (the SMS sign-in — see firebaseAuth.service.js) ─────
+  // SMS to Indian numbers needs a DLT-registered sender; Google is one, so it
+  // sends and verifies the code. Off, production has no SMS sign-in at all: the
+  // /send-otp path is development-only (otp.service.js).
   FIREBASE_AUTH_ENABLED: process.env.FIREBASE_AUTH_ENABLED === 'true',
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || '',
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL || '',
-  // Service-account PEM. Stored with literal "\n" in .env / Railway; the admin
+  // Service-account PEM. Stored with literal "\n" in .env files; the admin
   // SDK needs real newlines — firebaseAuth.service.js does that conversion.
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY || '',
   // How recent the Firebase SMS challenge must be for a token to re-authorise a
@@ -305,7 +300,7 @@ export const ENV = {
   // ── AI & Weather (Krishi Raksha + FarmMind) ────────────────────────────────
   // Gemini is FREE (15 RPM / 1 M tokens/day). Get key: https://aistudio.google.com/app/apikey
   GEMINI_API_KEY:      process.env.GEMINI_API_KEY  || '',
-  GEMINI_MODEL:        process.env.GEMINI_MODEL    || 'gemini-2.5-flash',
+  GEMINI_MODEL:        process.env.GEMINI_MODEL    || 'gemini-3.6-flash',
   OPENAI_API_KEY:      process.env.OPENAI_API_KEY  || '',
   OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY || '',
 
@@ -321,8 +316,10 @@ export const ENV = {
   // ── FastAPI AI Backend (CropGuard agentic pipeline) ───────────────────────────
   // Run: cd AI_CROP_DISESE_DETECTION && .venv/bin/uvicorn main:app --port 8001 --reload
   AI_BACKEND_URL: process.env.AI_BACKEND_URL || 'http://localhost:8001',
-  // Shared secret used to HMAC-sign every Express → FastAPI request so the
-  // FastAPI public URL on Railway cannot be hit directly by anyone else.
+  // Shared secret used to HMAC-sign every Express → FastAPI request so FastAPI
+  // accepts calls only from Express. In production FastAPI has no public URL
+  // (Caddy forwards only to Express), but the signature stays required:
+  // never trust the network.
   // Set BOTH services to the same value. In dev with AI_AUTH_REQUIRED=false
   // on FastAPI you can leave this empty.
   AI_SHARED_SECRET: process.env.AI_SHARED_SECRET || '',

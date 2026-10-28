@@ -40,7 +40,10 @@ import LoginScreen from '@krushisarva/shared/screens/LoginScreen';
 import ServerUnreachableScreen from '@krushisarva/shared/screens/ServerUnreachableScreen';
 import RootErrorBoundary from '@krushisarva/shared/components/RootErrorBoundary';
 import InAppChatBanner from './src/components/InAppChatBanner';
+import AppUpdateBanner from '@krushisarva/shared/components/AppUpdateBanner';
 import { COLORS } from '@krushisarva/shared/constants/colors';
+import { TEXT_FIELD_NO_RING_CSS } from '@krushisarva/shared/utils/webFocusCss';
+import PopupHost from './src/components/PopupHost';
 
 function RootNavigator() {
   const { isLoggedIn, loading, user, restoreFailed } = useAuth();
@@ -109,6 +112,10 @@ export default function App() {
       html, body { height: auto !important; min-height: 100%; overflow-y: auto !important; }
       #root { height: auto !important; min-height: 100vh; overflow: visible !important; display: block !important; }
       #root > div { height: auto !important; min-height: 100vh; overflow: visible !important; }
+      /* One border per text field: without this the browser draws its own
+         focus ring inside (or round) the border the field already has, on
+         every click — see shared/utils/webFocusCss.js. */
+      ${TEXT_FIELD_NO_RING_CSS}
     `;
     document.head.appendChild(style);
     return () => style.remove();
@@ -141,6 +148,16 @@ export default function App() {
               </FarmProvider>
             </CartProvider>
           </AuthProvider>
+          {/* Every message and every "are you sure?" in the app. There is no
+              Alert.alert anywhere: screens call showPopup() (src/utils/popup.js)
+              and this draws it, in the app's own style, on Android and in a
+              browser alike. Outside AuthProvider on purpose — the sign-in and
+              onboarding screens raise pop-ups too — and inside LanguageProvider
+              for the translated "OK". */}
+          <PopupHost />
+          {/* "New version available" — floats over every screen, signed in or
+              not, so it sits outside AuthProvider. */}
+          <AppUpdateBanner />
         </LanguageProvider>
       </SafeAreaProvider>
     </RootErrorBoundary>
