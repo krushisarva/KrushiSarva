@@ -1,0 +1,47 @@
+{
+  "_comment": "Fixed sample for `ksm render-sample` (golden review of conjunct-heavy Marathi). Not published; numbers are illustrative and all appear in the payload.",
+  "plan": {
+    "series": "mandi",
+    "topic_key": "sample-golden",
+    "evergreen": false,
+    "payload": {
+      "data_date": "2026-10-15",
+      "source": "Agmarknet / data.gov.in, Government of India",
+      "unit_mr": "₹ प्रति क्विंटल",
+      "commodities": [
+        {"key": "soybean", "name_mr": "सोयाबीन", "msp": 5708, "msp_label": "हमीभाव 2026-27",
+         "median_modal": 4950, "vs_msp_pct": -13.3, "prev_median_modal": null,
+         "markets": [
+           {"market": "Latur", "market_mr": "लातूर", "district": "Latur", "modal": 5010, "min": 4700, "max": 5150},
+           {"market": "Akola", "market_mr": "अकोला", "district": "Akola", "modal": 4950, "min": 4600, "max": 5100},
+           {"market": "Washim", "market_mr": "वाशिम", "district": "Washim", "modal": 4900, "min": 4550, "max": 5050}
+         ]}
+      ]
+    }
+  },
+  "script": {
+    "hook": {"voice_mr": "लातूरमध्ये सोयाबीन ५,०१० रुपये प्रति क्विंटल.", "onscreen_mr": "सोयाबीन ₹5,010\nलातूर बाजार"},
+    "segments": [
+      {"voice_mr": "कृषी बाजार समित्यांमध्ये सोयाबीनचा सरासरी भाव ४,९५० रुपये प्रति क्विंटल होता.",
+       "onscreen_mr": "सरासरी ₹4,950 प्रति क्विंटल", "visual": {"kind": "mandi_bars", "data_ref": "commodities[0]"}},
+      {"voice_mr": "हमीभाव ५,७०८ रुपये आहे; बाजारभाव त्यापेक्षा कमी आहे.",
+       "onscreen_mr": "हमीभाव ₹5,708", "visual": {"kind": "msp_compare", "data_ref": "commodities[0]"}},
+      {"voice_mr": "क्षेत्र, द्राक्ष, श्रीमंत, कृषी — हे शब्द नीट दिसतात का ते तपासा.",
+       "onscreen_mr": "क्षेत्र · द्राक्ष · श्रीमंत", "visual": {"kind": "illustration", "asset_id": "CROP-Soybean"}},
+      {"voice_mr": "विक्रीपूर्वी आपल्या बाजार समितीतील आजचा भाव पाहा.",
+       "onscreen_mr": "विक्रीपूर्वी भाव पाहा", "visual": {"kind": "step_card"}}
+    ],
+    "cta_mr": "फॉलो करा आणि गावाच्या WhatsApp ग्रुपवर पाठवा.",
+    "platform": {
+      "yt": {"title": "सोयाबीन बाजारभाव लातूर ₹5,010 | Soybean mandi price", "description": "स्रोत: Agmarknet / data.gov.in. निवेदन: AI आवाज", "tags": ["soybean", "बाजारभाव"], "hashtags": ["#सोयाबीन", "#बाजारभाव"]},
+      "ig": {"caption": "सोयाबीन बाजारभाव. स्रोत: Agmarknet. निवेदन: AI आवाज", "hashtags": ["#सोयाबीन", "#बाजारभाव"]},
+      "fb": {"caption": "सोयाबीन बाजारभाव. स्रोत: Agmarknet. निवेदन: AI आवाज", "hashtags": ["#सोयाबीन"]}
+    },
+    "claims": [
+      {"kind": "number", "text_mr": "लातूर ५,०१०", "value": "5010", "unit": "₹/क्विंटल", "data_ref": "commodities[0].markets[0].modal"},
+      {"kind": "number", "text_mr": "हमीभाव ५,७०८", "value": "5708", "unit": "₹/क्विंटल", "data_ref": "commodities[0].msp"}
+    ],
+    "chemicals_mentioned_en": [],
+    "sources_onscreen_mr": "स्रोत: Agmarknet / data.gov.in · 15 ऑक्टो 2026"
+  }
+}

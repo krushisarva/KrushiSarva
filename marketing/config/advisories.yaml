@@ -1,0 +1,202 @@
+# Sourced facts for रब्बी पेरणी मार्गदर्शक (rabi sowing guide, drought year 2026).
+#
+# ┌──────────────────────────────────────────────────────────────────────────────┐
+# │ EVERY ENTRY IS `verified: false`. These were drafted WITHOUT web access from  │
+# │ widely established Maharashtra agronomy and kept deliberately conservative.   │
+# │ ksm.sources.advisories.load_advisories() hides unverified entries and         │
+# │ advisory_payload() refuses them, so the rabi_guide series produces NOTHING     │
+# │ until a human (or an allow-listed web check) reads the listed sources, pins    │
+# │ the exact source page URL, corrects the facts if needed, and sets:             │
+# │     verified: true / verified_by: <name> / verified_on: YYYY-MM-DD            │
+# └──────────────────────────────────────────────────────────────────────────────┘
+#
+# Rules for every fact (the loader lints for doses and chemical words and raises):
+#  - NO pesticide, fungicide, herbicide or fertiliser names; NO doses or rates.
+#  - Seed treatment is mentioned only as "बीजप्रक्रिया — कृषी सहाय्यक/KVK च्या सल्ल्याने".
+#  - NO yield or income promises; NO price predictions.
+#  - Dates are sowing windows from agronomy practice, not government deadlines.
+# `en` is the fact; `mr` is a phrasing hint for the writer (Claude may only rephrase).
+# Sources are site roots of allow-listed official domains; replace them with the exact
+# advisory page (university package of practices, KVK or IMD agromet bulletin) when verifying.
+entries:
+  - id: chana-sowing-window
+    crop: chana
+    crop_mr: हरभरा
+    topic: sowing window
+    topic_mr: पेरणीची वेळ
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "In Maharashtra, rainfed chana is usually sown from mid-October to early November, using the moisture left in the soil after the monsoon."
+        mr: "कोरडवाहू हरभऱ्याची पेरणी साधारण ऑक्टोबरच्या मध्यापासून नोव्हेंबरच्या सुरुवातीपर्यंत, जमिनीतील ओलाव्यावर केली जाते."
+      - en: "Where irrigation is available, chana can be sown up to about mid-November."
+        mr: "पाण्याची सोय असल्यास हरभऱ्याची पेरणी नोव्हेंबरच्या मध्यापर्यंत करता येते."
+      - en: "Medium to deep black soils that hold moisture suit chana best."
+        mr: "ओलावा धरून ठेवणारी मध्यम ते भारी काळी जमीन हरभऱ्यासाठी योग्य."
+    sources:
+      - https://mpkv.ac.in/
+      - https://vnmkv.ac.in/
+      - https://pdkv.ac.in/
+
+  - id: chana-critical-water
+    crop: chana
+    crop_mr: हरभरा
+    topic: protective irrigation in a dry year
+    topic_mr: कमी पाण्यात संरक्षित पाणी
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "If only limited water is available, give it at the critical stages: flowering and pod filling."
+        mr: "पाणी कमी असेल तर ते फुलोरा आणि घाटे भरण्याच्या अवस्थेत द्या."
+      - en: "Avoid heavy irrigation in chana; excess water harms the crop."
+        mr: "हरभऱ्याला जास्त पाणी देऊ नका; जास्त पाणी पिकाला हानिकारक."
+    sources:
+      - https://mpkv.ac.in/
+      - https://icar.org.in/
+
+  - id: rabi-jowar-sowing
+    crop: rabi_jowar
+    crop_mr: रब्बी ज्वारी
+    topic: sowing window and soil
+    topic_mr: पेरणीची वेळ आणि जमीन
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Rabi jowar in Maharashtra is generally sown from the second half of September to mid-October on stored soil moisture."
+        mr: "रब्बी ज्वारीची पेरणी साधारण सप्टेंबरच्या दुसऱ्या पंधरवड्यापासून ऑक्टोबरच्या मध्यापर्यंत, साठवलेल्या ओलाव्यावर केली जाते."
+      - en: "It suits medium to deep black soils that hold moisture."
+        mr: "ओलावा धरणारी मध्यम ते भारी काळी जमीन रब्बी ज्वारीला योग्य."
+      - en: "Rabi jowar also gives fodder, which matters in a drought year."
+        mr: "रब्बी ज्वारीपासून कडबाही मिळतो — दुष्काळी वर्षात जनावरांसाठी महत्त्वाचा."
+    sources:
+      - https://mpkv.ac.in/
+      - https://vnmkv.ac.in/
+
+  - id: wheat-irrigated-window
+    crop: wheat
+    crop_mr: गहू
+    topic: sowing window (irrigated only)
+    topic_mr: बागायती गव्हाची पेरणीची वेळ
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Wheat needs assured irrigation; in a drought year sow wheat only if water is available for the whole season."
+        mr: "गव्हाला खात्रीशीर पाणी लागते; दुष्काळी वर्षात संपूर्ण हंगामासाठी पाणी असेल तरच गहू घ्या."
+      - en: "Timely sowing of irrigated wheat in Maharashtra is in the first half of November."
+        mr: "बागायती गव्हाची वेळेवर पेरणी नोव्हेंबरच्या पहिल्या पंधरवड्यात करतात."
+      - en: "For late sowing, choose a variety recommended for late sowing by your agricultural university."
+        mr: "उशिरा पेरणीसाठी कृषी विद्यापीठाने शिफारस केलेले उशिरा पेरणीचे वाण निवडा."
+    sources:
+      - https://mpkv.ac.in/
+      - https://icar.org.in/
+
+  - id: safflower-dry-year
+    crop: safflower
+    crop_mr: करडई
+    topic: a crop for low moisture
+    topic_mr: कमी ओलाव्यातील पीक
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Safflower is a rabi oilseed with deep roots that can use moisture from lower soil layers, so it suits rainfed farming."
+        mr: "करडईची मुळे खोलवर जातात आणि खालच्या थरातील ओलावा वापरतात, म्हणून ती कोरडवाहू शेतीला योग्य."
+      - en: "Rainfed safflower is generally sown from late September to mid-October."
+        mr: "कोरडवाहू करडईची पेरणी साधारण सप्टेंबरच्या शेवटापासून ऑक्टोबरच्या मध्यापर्यंत करतात."
+    sources:
+      - https://vnmkv.ac.in/
+      - https://mpkv.ac.in/
+
+  - id: onion-rabi-nursery
+    crop: onion
+    crop_mr: कांदा
+    topic: rabi onion nursery
+    topic_mr: रब्बी कांदा रोपवाटिका
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "For rabi onion, the nursery is sown in October-November and seedlings are transplanted about six to eight weeks later."
+        mr: "रब्बी कांद्यासाठी रोपवाटिका ऑक्टोबर-नोव्हेंबरमध्ये टाकतात आणि साधारण सहा ते आठ आठवड्यांनी पुनर्लागवड करतात."
+      - en: "Raise the nursery on raised beds with good drainage."
+        mr: "रोपवाटिका गादीवाफ्यावर, पाण्याचा चांगला निचरा होईल अशी करा."
+      - en: "Rabi onion needs irrigation through the season; plan the area to the water you have."
+        mr: "रब्बी कांद्याला संपूर्ण हंगामात पाणी लागते; उपलब्ध पाण्यानुसारच क्षेत्र ठरवा."
+    sources:
+      - https://mpkv.ac.in/
+      - https://icar.org.in/
+
+  - id: moisture-conservation
+    crop: general
+    crop_mr: सर्व रब्बी पिके
+    topic: saving soil moisture in a drought year
+    topic_mr: दुष्काळी वर्षात ओलावा वाचवा
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Cover the soil with crop residue (mulch) to cut evaporation."
+        mr: "पिकांच्या अवशेषांचे आच्छादन करा — बाष्पीभवन कमी होते."
+      - en: "Shallow hoeing (inter-culturing) breaks surface cracks and helps keep moisture in the soil."
+        mr: "कोळपणी केल्याने जमिनीच्या भेगा बुजतात आणि ओलावा टिकून राहतो."
+      - en: "Sow soon after field preparation, across the slope, so the seed gets the available moisture."
+        mr: "मशागतीनंतर लगेच, उताराला आडवी पेरणी करा, म्हणजे बियाण्याला ओलावा मिळतो."
+    sources:
+      - https://icar.org.in/
+      - https://vnmkv.ac.in/
+      - https://pdkv.ac.in/
+
+  - id: seed-treatment-advice
+    crop: general
+    crop_mr: सर्व रब्बी पिके
+    topic: seed treatment
+    topic_mr: बीजप्रक्रिया
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Treat seed before sowing; ask your agriculture assistant or KVK which treatment suits your crop and area."
+        mr: "पेरणीपूर्वी बीजप्रक्रिया करा — कृषी सहाय्यक/KVK च्या सल्ल्याने."
+      - en: "Use certified seed and keep the bill and the seed tag."
+        mr: "प्रमाणित बियाणे वापरा आणि बिल व बियाण्याचा टॅग जपून ठेवा."
+    sources:
+      - https://krishi.maharashtra.gov.in/
+      - https://icar.org.in/
+
+  - id: sowing-decision-dry-soil
+    crop: general
+    crop_mr: सर्व रब्बी पिके
+    topic: when to sow in a dry year
+    topic_mr: कोरड्या वर्षात पेरणी कधी करावी
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "Do not sow into dry soil; sow only when there is enough moisture in the seed zone."
+        mr: "कोरड्या जमिनीत पेरणी करू नका; बियाण्याच्या खोलीपर्यंत पुरेसा ओलावा असेल तेव्हाच पेरा."
+      - en: "Follow your district's agromet advisory (IMD / KVK) before sowing."
+        mr: "पेरणीपूर्वी आपल्या जिल्ह्याचा कृषी हवामान सल्ला (IMD / KVK) पाहा."
+    sources:
+      - https://imdpune.gov.in/
+      - https://mausam.imd.gov.in/
+
+  - id: crop-choice-drought
+    crop: general
+    crop_mr: सर्व रब्बी पिके
+    topic: matching crop to water in a drought year
+    topic_mr: पाण्यानुसार पीक निवड
+    verified: false
+    verified_by: null
+    verified_on: null
+    facts:
+      - en: "In a low-rainfall year, prefer crops that need less water, such as chana, safflower and rabi jowar, over water-hungry crops."
+        mr: "कमी पावसाच्या वर्षात जास्त पाणी लागणाऱ्या पिकांऐवजी हरभरा, करडई, रब्बी ज्वारी यांसारखी कमी पाण्याची पिके निवडा."
+      - en: "Keep part of the available water for drinking water and livestock."
+        mr: "उपलब्ध पाण्यातील काही भाग पिण्यासाठी आणि जनावरांसाठी राखून ठेवा."
+    sources:
+      - https://krishi.maharashtra.gov.in/
+      - https://icar.org.in/

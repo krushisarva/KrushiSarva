@@ -1,0 +1,14 @@
+# The running agent keeps its DB, renders, cache and logs under
+# ~/Library/Application Support/ks-marketing (see src/ksm/paths.py), never in the repo.
+# These are local leftovers that must not be committed.
+.venv/
+.out/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+
+# OAuth client downloads and tokens go into the macOS Keychain (`ksm secrets set`),
+# never into git. Delete the downloaded file after storing it.
+client_secret*.json
+*.token
+.env

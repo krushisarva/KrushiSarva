@@ -1,0 +1,106 @@
+# Minimum Support Prices (₹ per quintal). Every row MUST have an official source_url
+# (domain in sources_allowlist.yaml); ksm.sources.msp.load_msp refuses the file otherwise.
+#
+# Season rules (why the label matters):
+#  - KMS = Kharif Marketing Season, October to September. From 1 Oct 2026 the KMS 2026-27
+#    MSP applies to soybean, tur and cotton being sold now.
+#  - RMS = Rabi Marketing Season, April to March. RMS 2027-28 prices apply to the crop
+#    being SOWN now (Oct-Dec 2026) and sold from April 2027 — NOT to gram/wheat sold today.
+#    So the बाजारभाव video never compares today's chana price with the RMS 2027-28 MSP
+#    (crops_mr.yaml: chana show_vs_msp: false).
+#  - Cotton has two MSPs (medium vs long staple). Always say which staple.
+#
+# Do not use backend/prisma/seed-msp.js or market.data.service.js: they are stale.
+rows:
+  # ── Kharif Marketing Season 2026-27 (Cabinet approval 13 May 2026) ──
+  - crop: soybean
+    season_label: KMS 2026-27
+    variety: null
+    price: 5708
+    label_mr: "हमीभाव (खरीप 2026-27)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  - crop: tur
+    season_label: KMS 2026-27
+    variety: null
+    price: 8450
+    label_mr: "हमीभाव (खरीप 2026-27)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  - crop: cotton
+    season_label: KMS 2026-27
+    variety: medium staple
+    price: 8267
+    label_mr: "हमीभाव (खरीप 2026-27, मध्यम धागा)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  - crop: cotton
+    season_label: KMS 2026-27
+    variety: long staple
+    price: 8667
+    label_mr: "हमीभाव (खरीप 2026-27, लांब धागा)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  - crop: paddy
+    season_label: KMS 2026-27
+    variety: common
+    price: 2441
+    label_mr: "हमीभाव (खरीप 2026-27, साधारण धान)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  - crop: paddy
+    season_label: KMS 2026-27
+    variety: grade a
+    price: 2461
+    label_mr: "हमीभाव (खरीप 2026-27, ग्रेड ए धान)"
+    source_url: https://ddnews.gov.in/en/cabinet-approves-higher-msp-for-14-kharif-crops-for-2026-27-marketing-season/
+    source_date: 2026-05-13
+  # Maize, jowar, bajra, moong, urad, groundnut etc. for KMS 2026-27 are intentionally
+  # omitted: the research notes did not capture their figures from the official release.
+  # Add them only after reading the DD News / PIB release above.
+
+  # ── Rabi Marketing Season 2027-28 (Cabinet approval 30 Sep 2026; PIB PRID=2316941) ──
+  # Also reported by DD News:
+  # https://ddnews.gov.in/en/cabinet-approves-msp-hike-for-all-rabi-crops-for-2027-28-marketing-season/
+  - crop: wheat
+    season_label: RMS 2027-28
+    variety: null
+    price: 2610
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30
+  - crop: gram
+    season_label: RMS 2027-28
+    variety: null
+    price: 5958
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30
+  - crop: rapeseed-mustard
+    season_label: RMS 2027-28
+    variety: null
+    price: 6613
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30
+  - crop: safflower
+    season_label: RMS 2027-28
+    variety: null
+    price: 7215
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30
+  - crop: lentil
+    season_label: RMS 2027-28
+    variety: null
+    price: 7390
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30
+  - crop: barley
+    season_label: RMS 2027-28
+    variety: null
+    price: 2286
+    label_mr: "हमीभाव (रब्बी विपणन 2027-28)"
+    source_url: https://www.pib.gov.in/PressReleasepage.aspx?PRID=2316941&reg=48&lang=1
+    source_date: 2026-09-30

@@ -1,0 +1,22 @@
+# How the Marathi TTS voice should SAY words that are written differently on screen.
+# Applied to narration text only (voice/), never to on-screen captions.
+# confirmed: false = needs the founder's sign-off before it is relied on.
+entries:
+  - written: KrushiSarva
+    spoken: कृषीसर्व
+    confirmed: false        # founder must confirm the Devanagari brand spelling (plan §1.11)
+  - written: Agmarknet
+    spoken: ॲगमार्कनेट
+    confirmed: true
+  - written: MSP
+    spoken: एमएसपी
+    confirmed: true
+  - written: APMC
+    spoken: बाजार समिती
+    confirmed: true
+  - written: KVK
+    spoken: कृषी विज्ञान केंद्र
+    confirmed: true
+  - written: data.gov.in
+    spoken: डेटा डॉट जीओव्ही डॉट इन
+    confirmed: true

@@ -1,0 +1,29 @@
+# Official domains. Used to:
+#  - restrict Claude's web_search/web_fetch during fact-checks (writer/factcheck),
+#  - validate source URLs in msp.yaml, advisories.yaml and official calendar.yaml events.
+# A subdomain of a listed domain is allowed (www.pib.gov.in matches pib.gov.in).
+# Add a domain only if it is a government, ICAR or state agricultural university site.
+domains:
+  - pib.gov.in               # Press Information Bureau (Cabinet decisions, MSP)
+  - pmkisan.gov.in           # PM-KISAN
+  - agriwelfare.gov.in       # Union Ministry of Agriculture & Farmers Welfare
+  - krishi.maharashtra.gov.in  # Maharashtra Agriculture Department
+  - gr.maharashtra.gov.in    # Maharashtra Government Resolutions
+  - maharashtra.gov.in
+  - mahadbt.maharashtra.gov.in
+  - nsmny.mahait.org         # Namo Shetkari Mahasanman Nidhi
+  - pmfby.gov.in             # crop insurance
+  - ddnews.gov.in            # DD News (public broadcaster)
+  - mausam.imd.gov.in        # IMD
+  - imdpune.gov.in           # IMD Pune (agromet advisories)
+  - agmarknet.gov.in
+  - enam.gov.in
+  - icar.org.in
+  - mpkv.ac.in               # Mahatma Phule Krishi Vidyapeeth, Rahuri
+  - vnmkv.ac.in              # Vasantrao Naik Marathwada Krishi Vidyapeeth, Parbhani
+  - pdkv.ac.in               # Dr. Panjabrao Deshmukh Krishi Vidyapeeth, Akola
+  - dbskkv.org               # Dr. Balasaheb Sawant Konkan Krishi Vidyapeeth, Dapoli
+  - cicr.org.in              # ICAR-Central Institute for Cotton Research, Nagpur
+  - cotcorp.org.in           # Cotton Corporation of India
+  - ppqs.gov.in              # Plant Protection, Quarantine & Storage
+  - data.gov.in

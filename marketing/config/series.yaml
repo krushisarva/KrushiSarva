@@ -1,0 +1,101 @@
+# Video series. The planner picks a series for each slot by slot_kind, enabled, status
+# and weight (weights may later be overridden from the series_weights table).
+#
+# status: v1 = build now; m3 / m4 = milestone; later = blocked on an outside decision.
+# length_s: [min, max] seconds; never above 58 (settings.video.max_seconds).
+# freshness_hours: a time-sensitive video expires this long after its data_date/slot.
+# web_factcheck: fact-check may use web_search/web_fetch on sources_allowlist.yaml only.
+# visuals: visual kinds the writer may request (models.VisualKind).
+# disclaimer: key of the Marathi disclaimer line the renderer adds.
+# prompt: series prompt file in src/ksm/writer/prompts/.
+series:
+  - key: mandi
+    name_mr: आजचा बाजारभाव
+    slot_kind: fresh
+    status: v1
+    enabled: true
+    weight: 1.0
+    days: [mon, tue, wed, thu, fri, sat]      # APMCs mostly closed on Sunday
+    length_s: [35, 55]
+    evergreen: false
+    time_sensitive: true
+    freshness_hours: 30
+    web_factcheck: false                      # numbers come only from the Agmarknet payload + msp.yaml
+    visuals: [title, mandi_bars, msp_compare, illustration, end_card]
+    disclaimer: mandi_source                  # "स्रोत: Agmarknet / data.gov.in · <date>. हा अंदाज नाही."
+    prompt: series_mandi.v1.md
+
+  - key: rabi_guide
+    name_mr: रब्बी पेरणी मार्गदर्शक
+    slot_kind: advisory
+    status: v1
+    enabled: true                             # produces nothing until advisories.yaml entries are verified
+    weight: 1.0
+    length_s: [40, 58]
+    evergreen: true
+    time_sensitive: false
+    freshness_hours: null
+    web_factcheck: false
+    visuals: [title, step_card, checklist, illustration, msp_compare, end_card]
+    disclaimer: advisory_general              # "आपल्या भागासाठी कृषी सहाय्यक / KVK चा सल्ला घ्या."
+    prompt: series_rabi_guide.v1.md
+
+  - key: yojana
+    name_mr: योजना अपडेट – खरं की खोटं?
+    slot_kind: advisory
+    status: m3
+    enabled: false
+    weight: 0.8
+    length_s: [35, 55]
+    evergreen: false
+    time_sensitive: true
+    freshness_hours: 48
+    web_factcheck: true                       # every date/amount needs an official source
+    visuals: [title, step_card, checklist, illustration, end_card]
+    disclaimer: scheme_official
+    prompt: series_yojana.v1.md
+
+  - key: pik_doctor
+    name_mr: पीक डॉक्टर
+    slot_kind: advisory
+    status: m4
+    enabled: false
+    weight: 0.5
+    length_s: [35, 55]
+    evergreen: true
+    time_sensitive: false
+    freshness_hours: null
+    web_factcheck: false
+    visuals: [title, step_card, checklist, illustration, end_card]   # never disease/pest images
+    disclaimer: diagnosis                     # copied from shared/i18n/translations.js diagnosis.disclaimer
+    prompt: series_pik_doctor.v1.md
+
+  - key: weather
+    name_mr: हवामान अलर्ट
+    slot_kind: fresh
+    status: later                             # needs IMD reuse terms or a paid weather plan
+    enabled: false
+    weight: 0.0
+    length_s: [20, 35]
+    evergreen: false
+    time_sensitive: true
+    freshness_hours: 12
+    web_factcheck: false
+    visuals: [title, illustration, end_card]
+    disclaimer: weather_source
+    prompt: series_weather.v1.md
+
+  - key: app_howto
+    name_mr: KrushiSarva कसे वापरावे
+    slot_kind: advisory
+    status: later                             # only once settings.app_cta_url (Play listing) is set
+    enabled: false
+    weight: 0.0
+    length_s: [30, 50]
+    evergreen: true
+    time_sensitive: false
+    freshness_hours: null
+    web_factcheck: false
+    visuals: [title, broll, step_card, end_card]
+    disclaimer: none
+    prompt: series_app_howto.v1.md
