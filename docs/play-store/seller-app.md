@@ -21,7 +21,8 @@ Play Console home → **Create app**.
 | Field | What to enter |
 |---|---|
 | App name | `KrushiSarva Seller` (18 of 30 characters) |
-| Default language | **English (India) – en-IN** |
+| Package name | `com.krushisarva.seller`, then click **Check availability**. It can never be changed after **Create app**, and it must match `seller-app/app.json`. |
+| Default language | **English (India) – en-IN** (the form starts on English (United Kingdom); change it) |
 | App or game | **App** |
 | Free or paid | **Free** |
 | Declarations | Tick **Developer Program Policies** and **US export laws** |
@@ -189,7 +190,7 @@ Paste:
 https://srv2061596.hstgr.cloud/legal/privacy
 ```
 
-**Warning:** this page shows an error (it returns "503 Service Unavailable") until the finished policy, written from your answers on 28 October 2026, is on the server and switched on. It is the same policy as the farmer app's. Do not send anything for review until it opens a real policy.
+This page is live (since 29 October 2026). It is the same policy as the farmer app's. Open it once in a browser to check before you save.
 
 ### 3.2 App access
 
@@ -349,12 +350,9 @@ Choose **My app does not have any health features**.
 
 ### 3.11 Advertising ID
 
-The right answer is **No**: the app has no advertising or analytics library.
+Answer **No**: the app has no advertising or analytics library.
 
-**Check one thing first**, after your first upload: Test and release → **App bundle explorer** → pick the version → **Permissions** list.
-
-- If `com.google.android.gms.permission.AD_ID` is **not** there: answer **No**.
-- If it **is** there: the notifications library (Firebase Cloud Messaging, through `expo-notifications`) may have added it on its own. I could not confirm this from the code alone. Do **not** answer Yes. Ask Claude to add `com.google.android.gms.permission.AD_ID` to `blockedPermissions` in `seller-app/app.json`, build again, upload, then answer **No**.
+Since 29 October 2026, `com.google.android.gms.permission.AD_ID` is in `blockedPermissions` in `seller-app/app.json`, so no build can contain it. After the first upload you can confirm it in Test and release → **App bundle explorer** → **Permissions**. Do not upload a build made before 29 October 2026.
 
 ### 3.12 If Play asks for anything else
 

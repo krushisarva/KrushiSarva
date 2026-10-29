@@ -20,7 +20,8 @@ Play Console home → **Create app**.
 | Field | What to enter |
 |---|---|
 | App name | `KrushiSarva` (11 of 30 characters) |
-| Default language | **English (India) – en-IN** |
+| Package name | `com.krushisarva.app`, then click **Check availability**. It can never be changed after **Create app**, and it must match `frontend/app.json`. |
+| Default language | **English (India) – en-IN** (the form starts on English (United Kingdom); change it) |
 | App or game | **App** |
 | Free or paid | **Free** (a free app can never be changed to paid later; that is fine) |
 | Declarations | Tick **Developer Program Policies** and **US export laws** |
@@ -251,7 +252,7 @@ Paste:
 https://srv2061596.hstgr.cloud/legal/privacy
 ```
 
-**Warning:** this page shows an error (it returns "503 Service Unavailable") until the finished policy, written from your answers on 28 October 2026, is on the server and switched on. Google checks this link. Paste it now if you like, but do not send anything for review until the link opens a real policy.
+This page is live (since 29 October 2026). Open it once in a browser to check before you save.
 
 ### 3.2 App access
 
@@ -297,7 +298,7 @@ Then answer by topic (Google's wording changes a little over time):
 | Drugs, alcohol or tobacco | **No** | crop chemicals (pesticides, fertilisers) are not "controlled substances" |
 | Gambling, real or simulated | **No** | |
 | Can users interact or exchange content (text, images, audio)? | **Yes** | animal trade chat, listings with photos, reviews |
-| Does the app share the user's current location with other users? | **Yes** | buyers see roughly how far away an animal or a machine is (worked out from the seller's location); the exact spot is never shown |
+| Does the app share the user's current **and precise** location with other users? | **No** | others see only a rough distance (animal listing positions are rounded to about 10 km); the seller app's map button uses the typed delivery address, not GPS |
 | Can users buy digital goods in the app? | **No** | AI credit buying was removed; payments are only for physical goods and rentals |
 | Is it a web browser or search engine? | **No** | |
 | Does it contain generative AI content? (if asked) | **Yes** | Krushi Intelligence chat, voice and crop scan; AI chat, voice answers and scan results each have a Report button |
@@ -428,12 +429,9 @@ Choose **My app does not have any health features**. Crop disease and animal tra
 
 ### 3.11 Advertising ID
 
-The right answer is **No**: the app has no advertising or analytics library and never reads the advertising ID.
+Answer **No**: the app has no advertising or analytics library and never reads the advertising ID.
 
-**Check one thing first**, after your first upload: Test and release → **App bundle explorer** → pick the version → look at its **Permissions** list.
-
-- If `com.google.android.gms.permission.AD_ID` is **not** in the list: answer **No**.
-- If it **is** in the list: the notifications library (Firebase Cloud Messaging, which comes in through `expo-notifications`) may have added it on its own. I could not confirm this from the code alone. Do **not** answer Yes. Ask Claude to add `com.google.android.gms.permission.AD_ID` to `blockedPermissions` in `frontend/app.json`, build again, upload the new version, then answer **No**. Answering No while the permission is still in the bundle makes Play stop the release.
+Since 29 October 2026, `com.google.android.gms.permission.AD_ID` is in `blockedPermissions` in `frontend/app.json`, so no build can contain it even if a library (such as Firebase Cloud Messaging through `expo-notifications`) adds it. After the first upload you can confirm it: Test and release → **App bundle explorer** → pick the version → **Permissions**. `AD_ID` should not be listed. A build made before 29 October 2026 may still contain it; do not upload one of those to Play.
 
 ### 3.12 If Play asks for anything else
 
