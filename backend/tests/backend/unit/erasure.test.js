@@ -128,3 +128,27 @@ describe('erasure reaches the tables Prisma does not know about', () => {
     expect(fn.slice(0, fn.indexOf('\n}'))).toMatch(/throw err/);
   });
 });
+
+// The Firebase sign-in record holds the mobile number (Google Play account
+// deletion). It is deleted best-effort once the database work has committed.
+describe('erasure deletes the Firebase sign-in record', () => {
+  const src = readFileSync(
+    new URL('../../../src/services/erasure.service.js', import.meta.url), 'utf8',
+  );
+
+  test('only AFTER the transaction commits', () => {
+    const call = src.indexOf('deleteFirebaseUserByPhone(');
+    const txn  = src.indexOf('prisma.$transaction');
+    expect(txn).toBeGreaterThan(-1);
+    expect(call).toBeGreaterThan(txn);
+  });
+
+  test('by the phone read before the transaction scrubbed it', () => {
+    expect(src).toMatch(/deleteFirebaseUserByPhone\(user\.phone, \{ userId \}\)/);
+  });
+
+  test('a rejection cannot fail the erasure, and the outcome is in the summary', () => {
+    expect(src).toMatch(/deleteFirebaseUserByPhone\([^)]*\)\.catch\(/);
+    expect(src).toMatch(/return \{ erased: true,[^}]*firebaseRecord \}/);
+  });
+});

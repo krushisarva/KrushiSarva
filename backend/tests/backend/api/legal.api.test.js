@@ -82,13 +82,36 @@ describe('legal pages — production publishing gate', () => {
     expect(res.headers['cache-control']).toBe('no-store');
   });
 
-  test('approval alone does not publish a document that still has open owner decisions', async () => {
-    asProduction({ ...FACTS, docsApproved: true });
+  test('approval alone does not publish a document with an open gap, and never leaks the gap', async () => {
+    asProduction({ ...FACTS, grievanceName: '', docsApproved: true });
     const res = await request(app).get('/legal/refunds');
 
     expect(res.status).toBe(503);
     expect(res.text).not.toContain('class="owner-todo"');
-    expect(res.text).not.toContain('Owner decision needed');
+    expect(res.text).not.toContain('name of the Grievance Officer');
+  });
+
+  test('every policy document is free of open owner decisions, so all publish once approved', async () => {
+    asProduction({ ...FACTS, docsApproved: true });
+    for (const slug of ['privacy', 'terms', 'refunds', 'cookies']) {
+      const res = await request(app).get(`/legal/${slug}`);
+      expect(res.status).toBe(200);
+      expect(res.text).not.toContain('class="owner-todo"');
+    }
+  });
+
+  test('the terms and refund policy state the owner decisions of 2026-10-29', async () => {
+    asProduction({ ...FACTS, docsApproved: true });
+    const terms = (await request(app).get('/legal/terms')).text;
+    expect(terms).toContain('18 or older');
+    expect(terms).toContain('no commission');
+    expect(terms).toContain('courts at Pune, Maharashtra');
+    expect(terms).toContain('24 hours');
+
+    const refunds = (await request(app).get('/legal/refunds')).text;
+    expect(refunds).toContain('Account → My Orders');
+    expect(refunds).toContain('the owner rejects your request');
+    expect(refunds).toContain('care@example.test');
   });
 
   test('approval does not publish a document whose business facts are missing', async () => {
@@ -196,7 +219,7 @@ describe('GET /api/v1/legal', () => {
     expect(version).toBe(CONSENT_POLICY_VERSION);
     expect(documents.map((d) => d.slug)).toEqual(['privacy', 'terms', 'refunds', 'cookies', 'delete-account']);
     expect(documents.find((d) => d.slug === 'cookies')).toMatchObject({ path: '/legal/cookies', published: true });
-    expect(documents.find((d) => d.slug === 'refunds').published).toBe(false);
+    expect(documents.find((d) => d.slug === 'refunds').published).toBe(true);
     expect(entity.entityName).toBe('Example Agri Private Limited');
     expect(entity).not.toHaveProperty('gstin');
   });

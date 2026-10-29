@@ -20,6 +20,14 @@ jest.unstable_mockModule('../../../src/services/firebaseAuth.service.js', () => 
   isFirebaseAuthEnabled:  () => true,
 }));
 
+// Erasure also deletes the user's Firebase sign-in record. The local .env can hold
+// a real service account, so this must be stubbed or the suite would reach Google.
+const mockDeleteFirebaseUser = jest.fn();
+jest.unstable_mockModule('../../../src/services/firebaseUserDeletion.service.js', () => ({
+  deleteFirebaseUserByPhone:    mockDeleteFirebaseUser,
+  isFirebaseDeletionConfigured: () => true,
+}));
+
 // Any string long enough to clear the validator; the stub decides pass/fail.
 const FAKE_ID_TOKEN = 'f'.repeat(64);
 
@@ -549,7 +557,11 @@ describe('DELETE /api/v1/users/me', () => {
   // and the SMS behind it is recent. Each case programmes the stub accordingly.
   const reauthResolvesTo = (phone) => mockVerifyReauth.mockResolvedValue({ phone, firebaseUid: 'uid-test' });
   const reauthRejectsWith = (err) => mockVerifyReauth.mockRejectedValue(err);
-  beforeEach(() => mockVerifyReauth.mockReset());
+  beforeEach(() => {
+    mockVerifyReauth.mockReset();
+    mockDeleteFirebaseUser.mockReset();
+    mockDeleteFirebaseUser.mockResolvedValue('deleted');
+  });
 
   test('401 — unauthenticated', async () => {
     const res = await request(app).delete('/api/v1/users/me').send({ idToken: FAKE_ID_TOKEN });
@@ -634,4 +646,54 @@ describe('DELETE /api/v1/users/me', () => {
     const reborn = await prisma.user.create({ data: { phone: originalPhone, name: 'New Owner' } });
     expect(reborn.id).not.toBe(user.id);
   }, 30000);
+
+  // ── Firebase sign-in record ────────────────────────────────────────────────
+  // The record holds the mobile number, so it goes with the account. It is found
+  // by the phone read BEFORE the transaction swaps it for the deleted_ sentinel.
+  test('deletes the Firebase sign-in record by the original phone', async () => {
+    const { user, headers } = await createTestUser();
+    reauthResolvesTo(user.phone);
+
+    const res = await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
+
+    expect(res.status).toBe(200);
+    expect(mockDeleteFirebaseUser).toHaveBeenCalledTimes(1);
+    expect(mockDeleteFirebaseUser).toHaveBeenCalledWith(user.phone, { userId: user.id });
+  }, 30000);
+
+  test('a Firebase failure does not fail or undo the erasure', async () => {
+    const { user, headers } = await createTestUser();
+    reauthResolvesTo(user.phone);
+    mockDeleteFirebaseUser.mockResolvedValue('failed');
+
+    const res = await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.erased).toBe(true);
+    const after = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(after.phone).toBe(`deleted_${user.id}`);
+    expect(after.isActive).toBe(false);
+  }, 30000);
+
+  test('even a Firebase helper that throws cannot fail the erasure', async () => {
+    const { user, headers } = await createTestUser();
+    reauthResolvesTo(user.phone);
+    mockDeleteFirebaseUser.mockRejectedValue(new Error('unexpected'));
+
+    const res = await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
+
+    expect(res.status).toBe(200);
+    const after = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(after.phone).toBe(`deleted_${user.id}`);
+  }, 30000);
+
+  test('a rejected re-auth never touches Firebase', async () => {
+    const { headers } = await createTestUser();
+    reauthRejectsWith(new Error('Firebase token is invalid'));
+
+    const res = await request(app).delete('/api/v1/users/me').set(headers).send({ idToken: FAKE_ID_TOKEN });
+
+    expect(res.status).toBe(401);
+    expect(mockDeleteFirebaseUser).not.toHaveBeenCalled();
+  });
 });

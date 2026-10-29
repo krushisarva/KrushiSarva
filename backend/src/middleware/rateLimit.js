@@ -162,7 +162,7 @@ export function rateLimiter({ windowMs, max, prefix, key, message }) {
       id = null;
     }
     // Nothing to key on (e.g. malformed/absent phone) → let downstream
-    // validation produce the proper 422 instead of rate-limiting blind.
+    // validation produce the proper 400 instead of rate-limiting blind.
     if (!id) return next();
 
     const fullKey = `rl:${prefix}:${id}`;

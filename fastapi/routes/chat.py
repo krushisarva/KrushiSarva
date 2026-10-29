@@ -9,6 +9,7 @@ import json
 import logging
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from security.auth import verify_signed_request
 from services.chat_service import chat_with_farmmind, stream_voice_reply
 
@@ -74,7 +75,8 @@ async def ai_chat(request: Request):
             ),
             timeout=_CHAT_BUDGET_SEC,
         )
-        _record_chat_spend(request, result)
+        # record_spend is a synchronous Redis write; keep it off the event loop.
+        await run_in_threadpool(_record_chat_spend, request, result)
         return JSONResponse({"success": True, "data": result})
     except asyncio.TimeoutError:
         logger.error("[Chat] pipeline exceeded %ss budget", _CHAT_BUDGET_SEC)
@@ -137,7 +139,7 @@ async def ai_chat_stream(request: Request):
                 # that disconnects mid-stream still consumed everything spent up
                 # to the final frame.
                 if isinstance(evt, dict) and evt.get("type") == "final":
-                    _record_chat_spend(request, evt)
+                    await run_in_threadpool(_record_chat_spend, request, evt)
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             logger.error("[ChatStream] %s", exc, exc_info=True)

@@ -5,6 +5,107 @@ verified** — code written is not completion (`claude.md` §4.3).
 
 ---
 
+## PERF-013 — Synchronous Redis calls no longer stall the FastAPI event loop
+
+```
+ID:        PERF-013
+Feature:   FastAPI scan submit/poll, signed-request check, chat/OCR/alert metering
+Priority:  P1
+Status:    COMPLETE — verified (SlowAPI's own checks remain, see limitations)
+```
+
+**Re-verified before changing anything.** All six FastAPI Redis clients are
+still the synchronous `redis` library, and every handler that touches them is
+`async def`. Inline on the event loop, per request:
+
+| Path | Blocking calls on the loop before | After |
+|---|---|---|
+| `GET /ai/scan/{id}` | owner GET, Celery `AsyncResult.state` GET, existence EXISTS, (+ idem-key GET + SETEX when done) | **0** (+ SlowAPI's 2) |
+| `POST /ai/scan` | replay SET NX, cap GET, idem GET, key→job GET, reserve EVAL, `send_task` LPUSH, 4× SETEX | **0** (+ SlowAPI's ~3) |
+| `POST /ai/chat`, `/ai/chat/stream`, `/ai/soil-card-ocr`, `/ai/alerts` | replay SET NX, spend INCRBYFLOAT + EXPIRE | **0** |
+
+One blocked call freezes every request on that uvicorn process for one Redis
+round trip — and for up to the 2 s `socket_connect_timeout` when Redis is down.
+None of these clients sets a `socket_timeout`, so a Redis that accepts the
+connection but stops answering froze the whole process, `/health` included.
+
+**What changed.** The smallest fix the codebase already had a pattern for:
+`starlette.concurrency.run_in_threadpool` (used by `main.py` for
+`worker_health`). No client was converted, merged or reconfigured (§31: they use
+different DB numbers and roles), so every fail-open / fail-closed branch, the
+re-probe intervals and the `[ALERT]` lines run exactly as before — just on a
+worker thread. A 402 raised in the thread still reaches FastAPI as a 402.
+
+- `routes/scan.py:176,192,207,209,246,262,317,327,346,348` — every spend,
+  idempotency and `jobs.queue` call.
+- `security/auth.py:146` — the replay-nonce `SET NX` (POST only, as before).
+- `routes/chat.py:79,142`, `routes/soil_ocr.py:56`, `services/alert_service.py:147`
+  — the spend recorders.
+
+**Correctness consequence that had to be handled.** On one event loop the
+in-memory spend mirror's read-modify-write blocks were atomic; on threads they
+are not. Two concurrent reserves on the in-memory path could both read the same
+total and both pass the cap, and `_mem_prune` could iterate a dict another thread
+was resizing. `security/spend.py:182` adds `_MEM_LOCK` around every `_MEM`
+read-modify-write; `services/idempotency.py:127` does the same for the LRU
+eviction scan. The Redis path was already atomic (Lua) and is unchanged. The
+`jobs.queue` health flags (`_redis_ok`, probe timestamps) race benignly — worst
+case one extra PING or one duplicated alert line.
+
+**Tests.** `fastapi/tests/test_event_loop_offload.py`, 4 tests, hermetic:
+
+1. scan poll — owner, status, idem-key and idem-set fakes block 250 ms each; the
+   test asserts each ran off the loop thread and a loop-side ticker kept moving.
+2. scan submit (correctly signed) — same for replay, cap, idem-get, lookup, enqueue.
+3. a 402 raised by the cap inside the threadpool is still a 402 and nothing enqueues.
+4. 40 threads reserving $0.30 against a $1.00 in-memory cap through a barrier →
+   exactly 4 pass, counter exactly $1.20.
+
+Against the `HEAD` versions of `scan.py` and `auth.py` (loaded from a scratch copy,
+no tree changes): **tests 1 and 2 fail** — `owner ran on the event loop`,
+`replay ran on the event loop`. Tests 3–4 guard behaviour that must not change.
+
+Full suite (Python 3.13 venv, `python -m pytest tests -q`): **356 passed, 8
+skipped, 1 failed**. Without the new file: 352 passed — the same count as before
+the change. The one failure is `test_security.py::test_hmac_python_matches_node`,
+the known Windows-only failure (it shells out to `node`), also failing on main.
+
+**Measurement.** No Redis was reachable on this machine, so there is no real
+round-trip figure; the evidence is structural. With a 250 ms blocking fake, the
+loop was frozen for the whole 250 ms per call before and kept ticking after.
+Each removed call is one Redis RTT (sub-millisecond on the same host, up to 2 s on
+a connect timeout) that no longer stalls every other in-flight request.
+
+**Known limitations.**
+
+- **SlowAPI is still synchronous on the loop**: its middleware check and the route
+  decorator call the `limits` Redis storage inline, ~2 calls per poll and ~3 per
+  submit. Fixing that means replacing or wrapping the library, not this patch.
+- Celery's result backend is **thread-local** (`app.backend`), so each threadpool
+  thread that polls a status builds its own backend client: up to one extra Redis
+  connection per thread (anyio default 40) per uvicorn worker. Well inside Redis's
+  10,000 `maxclients`; worth watching in `INFO clients` under load.
+- The worker-side weather and treatment caches still block the Celery worker's
+  loop. That loop serves one task, not HTTP traffic; left as is.
+- Unchanged and noted: `idempotency.cache_key` SHA-256s the full base64 image
+  on the loop when no `Idempotency-Key` header is sent (CPU, not Redis).
+
+**Rollback.** Revert the seven FastAPI files and delete the test file; no schema,
+config or data change.
+
+---
+
+## PERF-017 — Stale "422" comments in the rate limiter and auth routes
+
+`backend/src/middleware/rateLimit.js:165` said a malformed key falls through to
+"the proper 422"; `middleware/validate.js` answers **400**, the contract PERF-001
+settled. Comment now says 400. `node --check` passes. No behaviour change.
+
+The same stale "(422)" sentence at `backend/src/routes/auth.routes.js:65` was fixed
+later the same day (now "(400)"); `node --check` passes. No behaviour change.
+
+---
+
 ## PAY-002 — A rent booking can finally be paid for
 
 ```

@@ -21,11 +21,11 @@ in §Refuted, because negative results are worth as much as positive ones
 | PERF-010 | No Celery/queue/breaker observability | P0 | COMPLETE |
 | PERF-011 | 12 cron schedules on every web replica | P1 | COMPLETE |
 | PERF-012 | Auth hot-path user read is uncached (AUTH-01) | P1 | COMPLETE |
-| PERF-013 | Blocking Redis inside FastAPI `async def` | P1 | TODO |
+| PERF-013 | Blocking Redis inside FastAPI `async def` | P1 | COMPLETE (SlowAPI's own checks remain inline) |
 | PERF-014 | 403-vs-404 disagreement between farm and cycle routes | P2 | DECIDED — convention documented in utils/response.js |
 | PERF-015 | Missing composite indexes (comments, posts added; chats rejected) | P2 | COMPLETE |
 | PERF-016 | Mobile: duplicate fetches + i18n bundles at boot | P2 | COMPLETE (backfill split still open) |
-| PERF-017 | Stale "422" comments contradict the 400 contract | P3 | TODO |
+| PERF-017 | Stale "422" comments contradict the 400 contract | P3 | COMPLETE — rateLimit.js and auth.routes.js fixed |
 
 **Payments backlog** — from `docs/PAYMENT_GATEWAY_PROMPT.md`, worked in ID order.
 Razorpay already works for AgriStore; every item below extends that one core
@@ -231,7 +231,11 @@ second is easy to miss when enumerating invalidation sites.
 
 ## PERF-013 — Blocking Redis calls inside FastAPI `async def`
 
-**P1 · TODO**
+**P1 · COMPLETE (2026-10-29)** — see COMPLETED.md. Re-verified first: every call
+below still ran inline on the event loop. The scan, chat, soil-OCR and alert
+handlers now reach them through `run_in_threadpool`. Still inline: SlowAPI's own
+limiter checks (middleware + route decorator, synchronous inside the library),
+and the Celery worker's weather/treatment caches (worker loop, not the HTTP one).
 
 All six FastAPI Redis clients are the **synchronous** `redis` library
 (`weather_service.py:32`, `security/auth.py:75`, `security/spend.py:63`,
@@ -245,7 +249,8 @@ whole run and `job_was_enqueued` fires on **every** poll. `POST /ai/scan` is ~14
 blocking round-trips.
 
 Separately: **`weather_service.py:32` hardcodes `host="localhost"`**, so it cannot
-reach the previous host's Redis at all.
+reach the previous host's Redis at all. *(Already fixed before 2026-10-29: it now
+builds from `_REDIS_URL` via `from_url`, pinned by `tests/test_weather_cache.py`.)*
 
 ---
 
@@ -323,7 +328,9 @@ reproduced. Recorded rather than fixed, to keep that change focused.
 
 ## PERF-017 — Comments still claim the validator returns 422
 
-**P3 · TODO**
+**P3 · COMPLETE (2026-10-29)** — `middleware/rateLimit.js:165` and
+`routes/auth.routes.js:65` now both say 400 (`validate.js` answers 400). Comment-only
+changes; `node --check` passes on both files.
 
 `rateLimit.js:165` ("the proper 422") and `auth.routes.js:69` ("the validator below
 (422)") contradict the shipped 400 contract settled in PERF-001 —

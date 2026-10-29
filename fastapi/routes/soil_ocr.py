@@ -9,6 +9,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from security.auth import verify_signed_request
 from services.soil_ocr_service import extract_soil_card
@@ -51,7 +52,8 @@ async def soil_card_ocr(request: Request):
 
     try:
         result = await extract_soil_card(image, model_override=model_override)
-        _record_soil_ocr_spend(request, result)
+        # record_spend is a synchronous Redis write; keep it off the event loop.
+        await run_in_threadpool(_record_soil_ocr_spend, request, result)
         return JSONResponse({"success": True, "data": result})
     except Exception as exc:  # noqa: BLE001
         logger.error("[SoilOCR] Error: %s", exc, exc_info=True)

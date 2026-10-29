@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from agents.llm_dispatch import call_llm_text, get_feature_config
 from services.chat_service import current_season
@@ -142,7 +143,8 @@ async def generate_smart_alerts(farm_context: dict) -> list[dict[str, Any]]:
     # AI-07: this call burned tokens whether or not it produced usable text, and
     # none of it ever reached the daily counter — the cap only ever saw /ai/scan.
     # Recorded BEFORE the `if not raw` early return for exactly that reason.
-    _record_alert_spend(farm_context, token_info)
+    # Synchronous Redis write — off the event loop (PERF-013).
+    await run_in_threadpool(_record_alert_spend, farm_context, token_info)
 
     if not raw:
         return []

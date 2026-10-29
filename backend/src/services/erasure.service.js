@@ -15,6 +15,8 @@
  *     User". This keeps buyers'/sellers' history and tax records intact.
  *   • Cloudinary assets owned by the user (avatar, KYC docs, crop-scan / soil /
  *     farm / voice media) are destroyed best-effort.
+ *   • The user's Firebase Authentication record (it holds the mobile number) is
+ *     deleted best-effort, found by the phone captured before the scrub.
  *
  * Keeping the User row (rather than deleting it) deliberately avoids the ~25
  * relations that default to ON DELETE RESTRICT — those would otherwise block a
@@ -26,6 +28,7 @@
 import prisma from '../config/db.js';
 import logger from '../utils/logger.js';
 import { publicIdFromUrl, destroyAsset } from '../config/cloudinary.js';
+import { deleteFirebaseUserByPhone } from './firebaseUserDeletion.service.js';
 
 export const ANON_NAME = 'Deleted User';
 
@@ -288,5 +291,8 @@ export async function eraseUserAccount(userId) {
     logger.warn({ userId, total: mediaRefs.length, deleted: mediaDeleted }, '[erasure] some Cloudinary assets were not confirmed deleted');
   }
 
-  return { erased: true, mediaRefs: mediaRefs.length, mediaDeleted };
+  // 4) Delete the Firebase sign-in record (best-effort, never blocks erasure).
+  const firebaseRecord = await deleteFirebaseUserByPhone(user.phone, { userId }).catch(() => 'failed');
+
+  return { erased: true, mediaRefs: mediaRefs.length, mediaDeleted, firebaseRecord };
 }

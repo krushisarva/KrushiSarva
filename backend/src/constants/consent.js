@@ -8,7 +8,7 @@
  */
 
 // Bump this (and re-prompt users) when the Terms/Privacy notice changes.
-export const CONSENT_POLICY_VERSION = '2026-10-28';
+export const CONSENT_POLICY_VERSION = '2026-10-29';
 
 // Canonical purposes — mirror the Prisma ConsentPurpose enum exactly.
 export const CONSENT_PURPOSES = {
