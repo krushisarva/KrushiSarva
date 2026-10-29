@@ -12,12 +12,13 @@ from keyring.errors import KeyringError
 SERVICE = "ks-marketing"
 
 KNOWN: tuple[str, ...] = (
-    "anthropic_api_key", "sarvam_api_key", "datagov_api_key", "pexels_api_key", "telegram_bot_token",
-    "youtube_client_json", "youtube_refresh_token", "meta_system_user_token",
+    "gemini_api_key", "anthropic_api_key", "sarvam_api_key", "datagov_api_key", "pexels_api_key",
+    "telegram_bot_token", "youtube_client_json", "youtube_refresh_token", "meta_system_user_token",
 )
 
 # Short names accepted on the command line (SETUP.md says `ksm secrets set meta`).
 ALIASES: dict[str, str] = {
+    "gemini": "gemini_api_key",
     "anthropic": "anthropic_api_key", "sarvam": "sarvam_api_key", "datagov": "datagov_api_key",
     "pexels": "pexels_api_key", "telegram": "telegram_bot_token", "meta": "meta_system_user_token",
     "youtube_client": "youtube_client_json",

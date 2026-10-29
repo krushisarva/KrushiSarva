@@ -45,13 +45,14 @@ block any download call to action while it's empty.
 - When APMCs are closed (Sundays, and Diwali week around 6–10 Nov), an evergreen video fills the slot.
 
 **रब्बी पेरणी मार्गदर्शक**
-- Claude may only rephrase the sourced facts.
+- The AI writer (Gemini) may only rephrase the sourced facts.
 - No chemicals or doses.
 - An entry is used only after it's marked `verified: true`.
 
 **योजना अपडेट – खरं की खोटं?**
 - Covered only when an official source confirms it: PIB, a GR, pmkisan.gov.in or nsmny.
 - The fact-check uses web search restricted to `config/sources_allowlist.yaml`. A claim with no official evidence is cut.
+- That web fact-check needs Claude for now. On Gemini (the default) this series refuses to run until web checking is built for Gemini, or until `llm.provider` is set back to `anthropic` (paid).
 - This is the highest-growth topic in Marathi agri media.
 
 **पीक डॉक्टर**

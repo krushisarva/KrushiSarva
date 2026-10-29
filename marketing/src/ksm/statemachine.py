@@ -171,9 +171,15 @@ class Deps:
         import httpx
 
         def claude() -> Any:
-            import anthropic
-
+            # The key stays "claude" (tests and callers use it); it is whichever LLM writes the scripts.
             from .secrets import get_secret
+            if settings.provider == "gemini":
+                from .writer.gemini import GeminiClient
+                return GeminiClient(get_secret("gemini_api_key"))
+            if settings.provider != "anthropic":
+                raise ValueError(f"unknown llm.provider {settings.provider!r} in settings.yaml "
+                                 "(expected gemini or anthropic)")
+            import anthropic
             return anthropic.Anthropic(api_key=get_secret("anthropic_api_key"), max_retries=3)
 
         def tts() -> Any:
@@ -384,14 +390,14 @@ def _step_script(conn: sqlite3.Connection, video: Any, deps: Deps, now: datetime
     except Exception as e:
         usage = getattr(e, "usage", None)
         if usage:
-            ledger_record(conn, "anthropic", "writer", usage_cost_inr(usage, deps.settings), video["id"], now=now,
-                          **_usage_units(usage))
+            ledger_record(conn, deps.settings.provider, "writer", usage_cost_inr(usage, deps.settings), video["id"],
+                          now=now, **_usage_units(usage))
         if type(e).__name__ == "ClaudeRefusal":
-            alert(conn, video["id"], f"व्हिडिओ #{video['id']}: Claude ने स्क्रिप्ट नाकारली ({e}). थांबवला.")
+            alert(conn, video["id"], f"व्हिडिओ #{video['id']}: AI ने स्क्रिप्ट नाकारली ({e}). थांबवला.")
             return set_state(conn, video["id"], V.BLOCKED, now, error=str(e)[:500])
         raise
-    ledger_record(conn, "anthropic", "writer", usage_cost_inr(usage, deps.settings), video["id"], now=now,
-                  **_usage_units(usage))
+    ledger_record(conn, deps.settings.provider, "writer", usage_cost_inr(usage, deps.settings), video["id"],
+                  now=now, **_usage_units(usage))
     if not isinstance(script, VideoScript):
         script = VideoScript.model_validate(script)
     meta: dict[str, Any] = {p: getattr(script.platform, p).model_dump() for p in ALL_PLATFORMS}
@@ -439,11 +445,12 @@ def _step_check(conn: sqlite3.Connection, video: Any, deps: Deps, now: datetime)
         except Exception as e:
             failed_usage = getattr(e, "usage", None)   # ClaudeError carries the spend of a failed call
             if failed_usage:
-                ledger_record(conn, "anthropic", "factcheck", usage_cost_inr(failed_usage, deps.settings),
-                              video["id"], now=now, **_usage_units(failed_usage))
+                ledger_record(conn, deps.settings.provider, "factcheck",
+                              usage_cost_inr(failed_usage, deps.settings), video["id"], now=now,
+                              **_usage_units(failed_usage))
             raise
-        ledger_record(conn, "anthropic", "factcheck", usage_cost_inr(usage, deps.settings), video["id"], now=now,
-                      **_usage_units(usage))
+        ledger_record(conn, deps.settings.provider, "factcheck", usage_cost_inr(usage, deps.settings), video["id"],
+                      now=now, **_usage_units(usage))
         checks["factcheck"] = _report_dict(fc)
         report.extend(fc)
     with tx(conn):

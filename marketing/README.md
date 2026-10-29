@@ -6,9 +6,10 @@ that tap, nothing needs a human.
 
 - **Where it runs:** a small Python 3.12 service on your Mac, run by launchd (a background
   LaunchAgent). There's no server and no Railway.
-- **What it calls:** Claude (script and fact-check), Sarvam (AI voice), ffmpeg-full (render),
-  Telegram (approval) and the YouTube and Meta APIs (publishing).
-- **What it costs:** about ₹1,400 a month, with a hard cap of ₹1,500.
+- **What it calls:** Google Gemini on the free tier (script and fact-check), Sarvam (AI voice),
+  ffmpeg-full (render), Telegram (approval) and the YouTube and Meta APIs (publishing).
+- **What it costs:** about ₹150 a month, all of it for the Sarvam voice. Gemini's free tier costs
+  nothing. The hard cap stays at ₹1,500.
 - **Where it stands:** milestone M1 is the mandi series, morning slot, YouTube only.
   `config/settings.yaml` ships with `dry_run: true`.
 
@@ -24,7 +25,7 @@ that tap, nothing needs a human.
 ## How it works
 
 ```
-evening/afternoon (Mac awake) ─► plan slot ─► fetch data ─► Claude script (JSON) ─► checks ─► Sarvam voice
+evening/afternoon (Mac awake) ─► plan slot ─► fetch data ─► Gemini script (JSON) ─► checks ─► Sarvam voice
    ─► render (ffmpeg-full + ASS captions) ─► QA ─► Telegram card to your phone
 you tap ✅ ─► YouTube: private + publishAt(slot)   Facebook: SCHEDULED(slot)   ← post at the slot even if the Mac is asleep
             Instagram: container created ≤20 h before the slot → published at the slot when the Mac is awake (or on first wake before the cut-off)
@@ -33,7 +34,7 @@ next days ─► metrics at 24 h / 48 h / 7 d, daily follower snapshots, Sunday 
 
 - **The background agent** reconciles every 60 seconds and immediately when the Mac wakes. It detects sleep from the gap between the wall clock and the monotonic clock.
 - **Crash safety:** every publish follows "record intent → call → record result", so a crash or sleep mid-upload never causes a duplicate post.
-- **Checks block publishing.** The deterministic checks (numbers, chemicals, rules, length limits) always run before Claude's fact-check, and a failed check stops the video.
+- **Checks block publishing.** The deterministic checks (numbers, chemicals, rules, length limits) always run before Gemini's fact-check, and a failed check stops the video.
 - **All state lives outside the repo,** in `~/Library/Application Support/ks-marketing/`: the SQLite DB, renders, cache and logs. macOS blocks background processes from reading `~/Desktop`.
 
 ---
@@ -87,9 +88,9 @@ Activate the venv first: `cd ~/Desktop/KrushiSarva/marketing && source .venv/bin
 | Command | What it does |
 |---|---|
 | `ksm install --load` | Copies code, config, fonts and brand art to `~/Library/Application Support/ks-marketing/`, then installs and loads the LaunchAgent. **Re-run after every `git pull` or config edit.** |
-| `ksm doctor [--live]` | Health check. Covers ffmpeg libass, fonts, Keychain, disk, memory and agent state. `--live` also calls Telegram, YouTube, Meta, data.gov.in, Sarvam and Anthropic. |
+| `ksm doctor [--live]` | Health check. Covers ffmpeg libass, fonts, Keychain, disk, memory and agent state. `--live` also calls Telegram, YouTube, Meta, data.gov.in, Sarvam and Gemini (or Anthropic, if `llm.provider` is `anthropic`). |
 | `ksm day0 --yes` | One-time live tests that make **real test posts** (see SETUP.md §11). |
-| `ksm secrets set <name>` | Stores a secret in the Keychain. Names: `anthropic_api_key`, `sarvam_api_key`, `datagov_api_key`, `pexels_api_key`, `telegram_bot_token`, `youtube_client_json`, `meta_system_user_token`. Short aliases work too (`anthropic`, `meta`, …). |
+| `ksm secrets set <name>` | Stores a secret in the Keychain. Names: `gemini_api_key`, `sarvam_api_key`, `datagov_api_key`, `pexels_api_key`, `telegram_bot_token`, `youtube_client_json`, `meta_system_user_token`, and `anthropic_api_key` (only needed when `llm.provider` is `anthropic`). Short aliases work too (`gemini`, `anthropic`, `meta`, …). |
 | `ksm auth-youtube` | One-time Google consent. Stores the YouTube refresh token. Run it as the channel owner. |
 | `ksm pair-telegram` | Ties the bot to your Telegram ID (send `/start <code>`). |
 | `ksm tick` | Runs one reconcile pass by hand (the agent does this every 60 s). |
@@ -104,6 +105,12 @@ Activate the venv first: `cd ~/Desktop/KrushiSarva/marketing && source .venv/bin
 - `platforms`: `["yt"]` in M1; add `"fb"` and `"ig"` after the Meta day-0 checks.
 - `app_cta_url`: stays empty until the Play listing is live. No download call to action is generated without it.
 - `budget.monthly_inr`: the spend cap.
+- `llm.provider`: the AI that writes and fact-checks scripts. `gemini` (Google, free tier) is the
+  default. `anthropic` switches back to Claude, which is paid (about ₹1,250 a month more) and needs
+  `anthropic_api_key`. If you switch, also update PRIVACY.md and the Google Sites page, which name
+  Google as the script service.
+- `llm.model`: the model name for that provider. Default: `gemini-3.6-flash`.
+- The effort settings in the `claude:` block apply to both providers.
 
 Secrets are never in files.
 
@@ -172,6 +179,11 @@ Logs are in `~/Library/Application Support/ks-marketing/logs/`. When in doubt, s
 **Rendering is waiting**
 - Rendering pauses while the Android emulator runs or macOS reports memory pressure. It resumes on its own.
 
+**The scheme series won't run**
+- The योजना अपडेट series (milestone M3) fact-checks with web search, and that only works on Claude
+  for now. On Gemini it stops with a config error.
+- Leave it disabled, or set `llm.provider: anthropic` (paid) and run `ksm install --load`.
+
 ---
 
 ## File layout
@@ -189,7 +201,7 @@ marketing/
   src/ksm/     cli config paths clock db+migrations secrets ledger guards
                daemon reconcile statemachine planner
                sources/  agmarknet msp advisories calendar pexels
-               writer/   claude schemas prompts/
+               writer/   claude gemini schemas prompts/
                checks/   numbers chemicals rules factcheck limits marathi
                voice/    sarvam timeline
                render/   layout cards ass ffmpeg qa vision_qa

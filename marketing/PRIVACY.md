@@ -1,6 +1,6 @@
 # KrushiSarva Publisher: privacy notice
 
-Last updated: 16 October 2026
+Last updated: 28 October 2026
 
 This is the publisher privacy notice for **KrushiSarva Publisher** (the `ksm` tool in this
 folder). YouTube's API Developer Policies and Meta's app settings both require a public privacy
@@ -33,10 +33,12 @@ information about viewers, followers, commenters, or users of the KrushiSarva ap
 The statistics are totals only. They never include anything about an individual viewer.
 
 To make each video, the tool sends:
-- the script to **Anthropic (Claude)**, which drafts and checks it;
+- the script to **Google (Gemini API, free tier)**, which drafts and checks it;
 - the narration text to **Sarvam AI**, which turns it into the AI voice.
 
-Scripts and narration contain no personal data.
+Scripts and narration are built only from public government data and contain no personal data.
+On the Gemini API's free tier, Google may use what is sent to improve its products, and people at
+Google may read it. Gemini API terms: https://ai.google.dev/gemini-api/terms
 
 ## What it does not do
 

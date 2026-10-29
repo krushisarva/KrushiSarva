@@ -482,7 +482,7 @@ def guard_alerts(conn: sqlite3.Connection, guard, now: datetime) -> None:  # noq
     if budget == "exhausted":
         msgs["budget-exhausted"] = "या महिन्याचे बजेट संपले: नवीन व्हिडिओ बनणार नाहीत; आधी मंजूर केलेले प्रकाशित होतील."
     elif budget == "degraded":
-        msgs["budget-degraded"] = "बजेटपैकी ८०% खर्च झाला: Claude effort कमी केला आहे."
+        msgs["budget-degraded"] = "बजेटपैकी ८०% खर्च झाला: AI effort कमी केला आहे."
     elif budget == "warn":
         msgs["budget-warn"] = "खर्चाचा वेग जास्त: या गतीने महिना संपण्याआधी बजेट संपेल."
     for kind, msg in msgs.items():

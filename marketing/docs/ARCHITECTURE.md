@@ -7,13 +7,16 @@ time maths in `ksm.clock`; DB helpers in `ksm.db`.
 
 Rules that apply to every module:
 - Python 3.12, type hints, no module-level network calls, no secrets in files.
-- External HTTP uses `httpx` (sync) with explicit timeouts; Claude uses the official
+- External HTTP uses `httpx` (sync) with explicit timeouts. The AI writer is provider-specific
+  (`llm.provider` in `config/settings.yaml`): Gemini (`gemini`, the default, free tier) goes
+  through `writer/gemini.py` over `httpx`; Claude (`anthropic`, paid) uses the official
   `anthropic` SDK (1.x). Every external client is injectable (constructor arg or
   function parameter) so tests run hermetically with fakes or `respx`.
 - Secrets come from `ksm.secrets.get_secret(name)` (macOS Keychain via `keyring`,
-  service name `ks-marketing`). Names: `anthropic_api_key`, `sarvam_api_key`,
-  `datagov_api_key`, `pexels_api_key`, `telegram_bot_token`, `youtube_client_json`,
-  `youtube_refresh_token`, `meta_system_user_token`.
+  service name `ks-marketing`). Names: `gemini_api_key`, `anthropic_api_key` (only when
+  `llm.provider` is `anthropic`), `sarvam_api_key`, `datagov_api_key`, `pexels_api_key`,
+  `telegram_bot_token`, `youtube_client_json`, `youtube_refresh_token`,
+  `meta_system_user_token`.
 - Never log secrets. Never write outside `ksm.paths.Paths` locations (tests use `tmp_path`).
 - All Devanagari text rendering goes through libass (ASS subtitles) in ffmpeg-full.
   Pillow may only draw text-free graphics (shapes, bars, images).
@@ -72,13 +75,27 @@ def run_deterministic(script, payload, *, series, app_cta_url) -> CheckReport   
 
 ### writer/
 ```python
-def write_script(client: anthropic.Anthropic, *, settings: Settings, series_cfg: dict, plan: VideoPlan,
+# writer/claude.py (shared entry points for both providers)
+def structured_call(client, out_type: type[BaseModel], *, settings: Settings, effort: str,
+                    what: str, **kw) -> tuple[BaseModel, dict]
+    # one structured-output request; dispatches on settings.provider ("gemini" | "anthropic").
+    # Usage first (every failure carries the spend), then refusal, then cut-off, then validation.
+    # Raises ClaudeRefusal / ClaudeError for both providers.
+def write_script(client, *, settings: Settings, series_cfg: dict, plan: VideoPlan,
                  glossary: dict, recent_titles: list[str], feedback: str | None) -> tuple[VideoScript, dict]
+    # client = GeminiClient (provider "gemini") or anthropic.Anthropic (provider "anthropic").
     # returns (script, usage) where usage = {"input_tokens","output_tokens","cache_read_input_tokens",
     #  "cache_creation_input_tokens","web_search_requests","cost_inr"}
 def factcheck(client, *, settings, plan: VideoPlan, script: VideoScript, web: bool) -> tuple[CheckReport, dict]
     # Marathi QA + claim verification; web tools only when web=True, restricted to config/sources_allowlist.yaml.
+    # web=True is Claude-only for now: on Gemini a series that needs it (the M3 scheme series) is a config error.
+
+# writer/gemini.py
+class GeminiClient:  # raw httpx, REST v1beta models/{model}:generateContent
+    # API key in the x-goog-api-key header (never in the URL); JSON-schema structured output;
+    # retries 429 and 5xx; errors reuse ClaudeError / ClaudeRefusal so callers handle both providers alike.
 ```
+The `claude:` block's effort settings (`writer_effort`, `factcheck_effort`) apply to both providers.
 Prompts are versioned files in `writer/prompts/` (`writer.v1.md`, `factcheck.v1.md`, `series_*.v1.md`).
 
 ### voice/

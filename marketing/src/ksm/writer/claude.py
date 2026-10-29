@@ -1,5 +1,9 @@
 """Claude calls: the script writer, plus request/usage plumbing shared with ksm.checks.factcheck.
 
+``settings.provider`` (settings.yaml ``llm.provider``) picks the model behind
+``structured_call``: ``gemini`` delegates to ksm.writer.gemini, ``anthropic`` is described
+below. ``ClaudeError`` / ``ClaudeRefusal`` are the error classes for either provider.
+
 Request shape (claude-opus-5-5, anthropic SDK 1.x):
 - thinking is always on for this model and cannot be disabled, so ``thinking`` is omitted;
   depth is controlled by ``output_config.effort``, set explicitly on every call.
@@ -201,7 +205,17 @@ def structured_call(client: Any, out_type: type[BaseModel], *, settings: Setting
 
     Order matters: usage first (so every failure carries the spend), then refusal, then
     max_tokens, then validation. Raises ClaudeRefusal / ClaudeError.
+
+    With ``settings.provider == "gemini"`` the call goes to ksm.writer.gemini instead (same
+    contract), so write_script and factcheck work unchanged for either provider.
     """
+    provider = getattr(settings, "provider", "anthropic")
+    if provider == "gemini":
+        from . import gemini  # lazy: gemini imports this module for the shared error classes
+
+        return gemini.structured_call(client, out_type, settings=settings, effort=effort, what=what, **kw)
+    if provider != "anthropic":
+        raise ValueError(f"unknown llm.provider {provider!r} in settings.yaml (expected gemini or anthropic)")
     req = _common(settings, effort)
     req["output_config"] = {**req["output_config"],
                             "format": {"type": "json_schema", "schema": transform_schema(out_type)}}

@@ -1,7 +1,8 @@
 """`ksm day0 --yes`: one-time live tests before going live (plan §8).
 
-STUB: only the low-risk checks are automated (Telegram message, Anthropic call, Sarvam
-voice sample, Agmarknet facet listing). The checks that publish to YouTube / Facebook /
+STUB: only the low-risk checks are automated (Telegram message, one tiny call to the
+configured script writer (Gemini or Anthropic, per `llm.provider`; the other is skipped),
+Sarvam voice sample, Agmarknet facet listing). The checks that publish to YouTube / Facebook /
 Instagram, and the scheduled-wake network test, are listed with their manual steps; they
 post publicly visible content and are deliberately not run by code in this build.
 Everything that runs is real (messages are sent, small API charges apply), hence --yes.
@@ -24,6 +25,7 @@ class Day0Check:
     secrets: tuple[str, ...]
     description: str
     run: Callable[["Day0Ctx"], str] | None = None     # None = manual step
+    provider: str | None = None                       # set = runs only when settings.provider matches
 
 
 @dataclass
@@ -63,6 +65,35 @@ def _anthropic(ctx: Day0Ctx) -> str:
     return f"{ctx.settings.model} answered {text!r} ({r.usage.input_tokens}+{r.usage.output_tokens} tokens)"
 
 
+GEMINI_DAY0_MAX_OUTPUT_TOKENS = 64
+
+
+def _gemini(ctx: Day0Ctx) -> str:
+    from .doctor import GEMINI_BASE, gemini_error, gemini_headers
+    from .secrets import get_secret
+
+    model = ctx.settings.llm_model
+    if not model:
+        raise RuntimeError("no model set: add llm.model to settings.yaml")
+    key = get_secret("gemini_api_key")
+    body = {"contents": [{"role": "user", "parts": [{"text": "Reply with the single word OK."}]}],
+            "generationConfig": {"maxOutputTokens": GEMINI_DAY0_MAX_OUTPUT_TOKENS}}
+    r = ctx.http.post(f"{GEMINI_BASE}/models/{model}:generateContent", headers=gemini_headers(key), json=body,
+                      timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(gemini_error(r, key))
+    data = r.json()
+    cand = (data.get("candidates") or [{}])[0]
+    text = "".join(p.get("text", "") for p in ((cand.get("content") or {}).get("parts") or [])
+                   if not p.get("thought")).strip()
+    u = data.get("usageMetadata") or {}
+    tokens = f"{u.get('promptTokenCount', '?')}+{u.get('candidatesTokenCount', 0)} tokens"
+    if u.get("thoughtsTokenCount"):
+        tokens += f", {u['thoughtsTokenCount']} thinking"
+    finish = "" if text else f", finishReason {cand.get('finishReason', '?')}"
+    return f"{model} answered {text!r} ({tokens}{finish})"
+
+
 def _sarvam(ctx: Day0Ctx) -> str:
     from .secrets import get_secret
     from .voice import SarvamTTS
@@ -89,7 +120,10 @@ def _agmarknet(ctx: Day0Ctx) -> str:
 
 CHECKS: tuple[Day0Check, ...] = (
     Day0Check("telegram", ("telegram_bot_token",), "send one message to the paired owner chat", _telegram),
-    Day0Check("anthropic", ("anthropic_api_key",), "one tiny Claude call with the configured model", _anthropic),
+    Day0Check("gemini", ("gemini_api_key",), "one tiny Gemini call with the configured model", _gemini,
+              provider="gemini"),
+    Day0Check("anthropic", ("anthropic_api_key",), "one tiny Claude call with the configured model", _anthropic,
+              provider="anthropic"),
     Day0Check("sarvam", ("sarvam_api_key",), "Marathi voice sample with numbers (₹0.01)", _sarvam),
     Day0Check("agmarknet", ("datagov_api_key",), "list Maharashtra commodity/market names (facet query)", _agmarknet),
     Day0Check("youtube-unlisted", ("youtube_client_json", "youtube_refresh_token"),
@@ -121,6 +155,10 @@ def run(paths: Paths, settings: Settings, *, yes: bool, http: Any = None,
         for c in CHECKS:
             if c.run is None:
                 results.append((c.name, "manual", c.description))
+                continue
+            if c.provider is not None and c.provider != settings.provider:
+                results.append((c.name, "skipped", f"script writer is {settings.provider!r} "
+                                                   f"(settings.yaml llm.provider); this check is for {c.provider!r}"))
                 continue
             missing = [s for s in c.secrets if not has(s)]
             if missing:
