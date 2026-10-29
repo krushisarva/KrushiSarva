@@ -431,7 +431,7 @@ Choose **My app does not have any health features**. Crop disease and animal tra
 
 Answer **No**: the app has no advertising or analytics library and never reads the advertising ID.
 
-Since 29 October 2026, `com.google.android.gms.permission.AD_ID` is in `blockedPermissions` in `frontend/app.json`, so no build can contain it even if a library (such as Firebase Cloud Messaging through `expo-notifications`) adds it. After the first upload you can confirm it: Test and release → **App bundle explorer** → pick the version → **Permissions**. `AD_ID` should not be listed. A build made before 29 October 2026 may still contain it; do not upload one of those to Play.
+No library in the app declares `com.google.android.gms.permission.AD_ID` (checked on 29 October 2026 across all 117 Android libraries the build pulls in, and in the 26 October test build), and since 29 October 2026 it is also in `blockedPermissions` in `frontend/app.json`, so a future library cannot add it by accident. After the first upload you can confirm it: Test and release → **App bundle explorer** → pick the version → **Permissions**. `AD_ID` should not be listed.
 
 ### 3.12 If Play asks for anything else
 

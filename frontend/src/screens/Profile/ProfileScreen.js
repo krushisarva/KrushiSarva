@@ -1008,7 +1008,6 @@ export default function ProfileScreen({ navigation }) {
             <RowItem icon="star-outline"              iconColor={D.gold}   label={t('rate')}                        subtitle={t('profile.rateStar')}          onPress={() => showPopup(t('profile.thankYou'), t('profile.thankYouMsg'))} />
             <RowItem icon="help-circle-outline"       iconColor={D.blue}   label={t('help')}                        subtitle={t('helpSub')}                   onPress={() => showPopup(t('profile.support'), t('profile.callUs'))} />
             <RowItem icon="document-text-outline"     iconColor={D.purple} label={t('profile.termsLabel')}                                                    onPress={() => openExternal(LEGAL_URLS.terms)} />
-            <RowItem icon="chatbubble-ellipses-outline" iconColor={D.cyan} label={t('profile.browseFAQs')}          subtitle={t('profile.faqsSub')}           onPress={() => openExternal('https://cropsetu.app/faqs')} />
             <AppVersionRow isLast />
           </SectionCard>
 

@@ -36,7 +36,7 @@ import { Linking, Platform } from 'react-native';
  */
 const SELLER_APP_DEEP_LINK = 'krushisarva-seller://dashboard';
 
-const SELLER_ANDROID_PACKAGE = 'com.cropsetu.seller';
+const SELLER_ANDROID_PACKAGE = 'com.krushisarva.seller';
 
 /**
  * The https Play URL rather than `market://`: Play intercepts it when installed

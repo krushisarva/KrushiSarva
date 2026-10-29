@@ -579,7 +579,7 @@ export default {
     schemesTitle: 'સરકારી યોજના', schemesSub: 'PM-KISAN, કિસાન ક્રેડિટ કાર્ડ અને વધુ',
     feedbackInfo: 'પ્રતિસાદ અને માહિતી', rateStar: 'અમે કેવી રીતે સુધારી શકીએ તે જણાવો',
     thankYou: 'આભાર!', thankYouMsg: 'તમારો પ્રતિસાદ અમારા માટે ઘણો મૂલ્યવાન છે!',
-    callUs: 'અમને કૉલ કરો: 1800-XXX-XXXX (મફત)',
+    callUs: 'અમને ઇમેઇલ કરો: krushisarva@gmail.com',
     termsLabel: 'શરતો, નીતિ અને લાઇસન્સ',
     browseFAQs: 'FAQ જુઓ', faqsSub: 'સામાન્ય પ્રશ્નોના જવાબ શોધો',
     versionText: 'KrushiSarva v{{version}} · ભારતીય ખેડૂતો માટે પ્રેમ સાથે બનાવ્યું',

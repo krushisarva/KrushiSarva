@@ -579,7 +579,7 @@ export default {
     schemesTitle: 'ਸਰਕਾਰੀ ਯੋਜਨਾਵਾਂ', schemesSub: 'PM-KISAN, ਕਿਸਾਨ ਕ੍ਰੈਡਿਟ ਕਾਰਡ ਅਤੇ ਹੋਰ',
     feedbackInfo: 'ਰਾਏ ਅਤੇ ਜਾਣਕਾਰੀ', rateStar: 'ਸਾਨੂੰ ਦੱਸੋ ਅਸੀਂ ਕਿਵੇਂ ਬਿਹਤਰ ਹੋ ਸਕਦੇ ਹਾਂ',
     thankYou: 'ਧੰਨਵਾਦ!', thankYouMsg: 'ਤੁਹਾਡੀ ਰਾਏ ਸਾਡੇ ਲਈ ਬਹੁਤ ਕੀਮਤੀ ਹੈ!',
-    callUs: 'ਸਾਨੂੰ ਕਾਲ ਕਰੋ: 1800-XXX-XXXX (ਮੁਫ਼ਤ)',
+    callUs: 'ਸਾਨੂੰ ਈਮੇਲ ਕਰੋ: krushisarva@gmail.com',
     termsLabel: 'ਸ਼ਰਤਾਂ, ਨੀਤੀਆਂ ਅਤੇ ਲਾਇਸੈਂਸ',
     browseFAQs: 'FAQ ਵੇਖੋ', faqsSub: 'ਆਮ ਸਵਾਲਾਂ ਦੇ ਜਵਾਬ ਲੱਭੋ',
     versionText: 'KrushiSarva v{{version}} · ਭਾਰਤੀ ਕਿਸਾਨਾਂ ਲਈ ਪਿਆਰ ਨਾਲ ਬਣਾਇਆ',

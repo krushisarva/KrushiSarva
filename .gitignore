@@ -89,3 +89,8 @@ play-store-credentials.json
 # Firebase service-account key (server credential — never commit)
 backend/firebase-service-account.json
 *firebase-adminsdk*.json
+
+# Private local files: keep them out of git AND out of Expo (EAS) build uploads,
+# which read only this root .gitignore (not .git/info/exclude or a global ignore).
+.claude/settings.local.json
+docs/handoff/2026-10-28-play-store-launch-session.md

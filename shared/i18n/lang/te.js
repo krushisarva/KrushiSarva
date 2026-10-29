@@ -579,7 +579,7 @@ export default {
     schemesTitle: 'ప్రభుత్వ పథకాలు', schemesSub: 'PM-KISAN, కిసాన్ క్రెడిట్ కార్డ్ & మరిన్ని',
     feedbackInfo: 'అభిప్రాయం & సమాచారం', rateStar: 'మేము ఎలా మెరుగుపడగలమో చెప్పండి',
     thankYou: 'ధన్యవాదాలు!', thankYouMsg: 'మీ అభిప్రాయం మాకు చాలా ముఖ్యం!',
-    callUs: 'మమ్మల్ని కాల్ చేయండి: 1800-XXX-XXXX (ఉచితం)',
+    callUs: 'మాకు ఈమెయిల్ చేయండి: krushisarva@gmail.com',
     termsLabel: 'నిబంధనలు, విధానాలు & లైసెన్సులు',
     browseFAQs: 'FAQ లు చూడండి', faqsSub: 'సాధారణ ప్రశ్నలకు సమాధానాలు కనుగొనండి',
     versionText: 'KrushiSarva v{{version}} · భారతీయ రైతుల కోసం ప్రేమతో నిర్మించబడింది',

@@ -352,7 +352,7 @@ Choose **My app does not have any health features**.
 
 Answer **No**: the app has no advertising or analytics library.
 
-Since 29 October 2026, `com.google.android.gms.permission.AD_ID` is in `blockedPermissions` in `seller-app/app.json`, so no build can contain it. After the first upload you can confirm it in Test and release → **App bundle explorer** → **Permissions**. Do not upload a build made before 29 October 2026.
+Since 29 October 2026, `com.google.android.gms.permission.AD_ID` is in `blockedPermissions` in `seller-app/app.json`, so a library cannot add it by accident. After the first upload you can confirm it in Test and release → **App bundle explorer** → **Permissions**.
 
 ### 3.12 If Play asks for anything else
 
