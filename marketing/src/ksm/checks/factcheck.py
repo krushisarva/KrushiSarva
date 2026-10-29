@@ -1,4 +1,5 @@
-"""Claude fact-check and Marathi QA (runs after the deterministic checks).
+"""LLM fact-check and Marathi QA (runs after the deterministic checks); Gemini or Claude per
+settings.provider, web research (below) on Claude only.
 
 Two calls when ``web`` is True: structured outputs are documented as incompatible with
 citations, which web-search results carry, so a tool-using research call collects evidence
@@ -22,6 +23,7 @@ from ..writer.claude import (
     ClaudeError, ClaudeRefusal, _common, _dumps, _g, _raise_if_refused, _system,
     add_usage, empty_usage, load_prompt, prompt_version, structured_call, usage_of,
 )
+from ..writer.gemini import GeminiHTTPError
 from ..writer.schemas import FactCheckReport
 
 WEB_SEARCH_MAX_USES = 3
@@ -223,8 +225,14 @@ def factcheck(client: Any, *, settings: Settings, plan: VideoPlan, script: Video
 
     A refusal or unusable response becomes a blocking issue rather than an exception, so a
     video can never advance on an unchecked script and the spend is still reported.
-    Config errors (missing/empty allow-list with web=True) raise: they need a human.
+    Config errors (missing/empty allow-list with web=True; web=True with the Gemini provider,
+    whose path has no allow-listed web tools) raise: they need a human. A Gemini HTTP failure
+    (quota, outage, bad key) is re-raised too, like the Anthropic SDK's own API errors: it says
+    nothing about the script, so the step is retried rather than the script rewritten.
     """
+    if web and getattr(settings, "provider", "anthropic") == "gemini":
+        raise ValueError("web fact-check (series.yaml web_factcheck: true) needs llm.provider: anthropic; "
+                         "the Gemini path has no allow-listed web research")
     system = _system(load_prompt(FACTCHECK_PROMPT))
     allowed = load_allowlist(config_dir) if web else None
     effort = factcheck_effort(settings, web)
@@ -244,6 +252,8 @@ def factcheck(client: Any, *, settings: Settings, plan: VideoPlan, script: Video
         )
         usage = add_usage(usage, u)
         report = report_from(fc, script, allowed=allowed, payload=plan.payload)
+    except GeminiHTTPError:
+        raise
     except ClaudeError as e:
         # A research-call failure carries only its own spend; the structured call's error
         # carries only the second call's. Either way, add it to what was already spent.

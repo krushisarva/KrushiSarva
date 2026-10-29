@@ -1,6 +1,7 @@
 """Shared fakes for the writer/factcheck tests: a recording Claude client and a valid script."""
 from __future__ import annotations
 
+import dataclasses
 from datetime import date
 from types import SimpleNamespace
 
@@ -70,7 +71,10 @@ def refusal_response(category="bio", u=None):
 
 @pytest.fixture
 def settings():
-    return settings_from_file(REPO_MARKETING_DIR / "config" / "settings.yaml")
+    # These fakes speak the Anthropic SDK shape, so the Claude path is pinned here whatever
+    # settings.yaml's llm.provider says (the Gemini path is tested in test_writer_gemini.py).
+    return dataclasses.replace(settings_from_file(REPO_MARKETING_DIR / "config" / "settings.yaml"),
+                               provider="anthropic")
 
 
 @pytest.fixture

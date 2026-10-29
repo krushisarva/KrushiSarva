@@ -2,7 +2,8 @@
 
 Each check prints ✓ / ✗ (or ! for a warning) with a one-line fix. Offline checks never touch
 the network; `--live` adds one cheap call per external service (Telegram getMe, YouTube
-channels.list, Meta debug_token, data.gov.in, Sarvam, Anthropic).
+channels.list, Meta debug_token, data.gov.in, Sarvam, and the configured script writer:
+Gemini models.get or Anthropic models.retrieve, per `llm.provider`).
 """
 from __future__ import annotations
 
@@ -23,6 +24,28 @@ NEEDED_BUILD_FLAGS = ("--enable-libass", "--enable-libharfbuzz", "--enable-libfr
 META_SCOPES = ("instagram_basic", "instagram_content_publish", "instagram_manage_insights", "pages_show_list",
                "pages_read_engagement", "pages_manage_posts", "read_insights", "business_management")
 OPTIONAL_SECRETS = {"pexels_api_key"}
+
+# Script-writer providers (settings.yaml `llm.provider`) and the API key each one needs.
+LLM_SECRETS = {"gemini": "gemini_api_key", "anthropic": "anthropic_api_key"}
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+GEMINI_TIMEOUT_S = 10.0
+
+
+def gemini_headers(key: str) -> dict[str, str]:
+    """The key goes in a header, never in the URL (URLs end up in logs and tracebacks)."""
+    return {"x-goog-api-key": key}
+
+
+def gemini_error(r: Any, key: str = "") -> str:
+    """One readable line for a non-200 Gemini response; the key is redacted if echoed back."""
+    try:
+        err = (r.json() or {}).get("error") or {}
+    except ValueError:
+        err = {}
+    msg = f"HTTP {r.status_code}" + (f" {err['status']}" if err.get("status") else "")
+    if err.get("message"):
+        msg += f": {str(err['message'])[:200]}"
+    return msg.replace(key, "***") if key else msg
 
 
 @dataclass
@@ -108,6 +131,11 @@ def check_settings(settings: Settings) -> list[CheckResult]:
     out.append(CheckResult("dry run", None if settings.dry_run else True,
                            "ON: publishers only log" if settings.dry_run else "off: posts are real",
                            "turn off `dry_run` after the dry-run week" if settings.dry_run else ""))
+    provider = settings.provider
+    model = settings.llm_model if provider == "gemini" else settings.model
+    out.append(CheckResult("script writer", provider in LLM_SECRETS, f"{provider} ({model or 'no model set'})",
+                           "" if provider in LLM_SECRETS else
+                           f"settings.yaml llm.provider must be one of: {', '.join(LLM_SECRETS)}"))
     if not settings.app_cta_url:
         out.append(CheckResult("app CTA", True, "no Play URL: videos never say 'download the app'"))
     return out
@@ -154,6 +182,8 @@ def needed_secrets(settings: Settings) -> list[str]:
             continue
         if name == "meta_system_user_token" and not ({"ig", "fb"} & set(settings.platforms)):
             continue
+        if name in LLM_SECRETS.values() and name != LLM_SECRETS.get(settings.provider):
+            continue                       # only the configured script writer's key is needed
         out.append(name)
     return out
 
@@ -219,6 +249,17 @@ def _live(name: str, fn: Callable[[], str], hint: str) -> CheckResult:
         return CheckResult(name, False, f"{type(e).__name__}: {str(e)[:200]}", hint)
 
 
+def gemini_model_check(http: Any, model: str, key: str, *, base: str = GEMINI_BASE) -> str:
+    """GET models/{model}: proves the key works and the configured model exists. Free; no tokens."""
+    if not model:
+        raise RuntimeError("no model set: add llm.model to settings.yaml")
+    r = http.get(f"{base}/models/{model}", headers=gemini_headers(key), timeout=GEMINI_TIMEOUT_S)
+    if r.status_code != 200:
+        raise RuntimeError(gemini_error(r, key))
+    data = r.json()
+    return f"{data.get('displayName') or data.get('name') or model} ({model})"
+
+
 def live_checks(settings: Settings, http: Any) -> list[CheckResult]:
     from .secrets import get_secret, has_secret
 
@@ -269,11 +310,17 @@ def live_checks(settings: Settings, http: Any) -> list[CheckResult]:
         return f"{len(wav)} bytes of audio"
     out.append(_live("sarvam TTS", sarvam, "ksm secrets set sarvam_api_key"))
 
-    def anthropic_check() -> str:
-        import anthropic
-        m = anthropic.Anthropic(api_key=get_secret("anthropic_api_key")).models.retrieve(settings.model)
-        return m.id
-    out.append(_live("anthropic", anthropic_check, "ksm secrets set anthropic_api_key"))
+    if settings.provider == "gemini":
+        def gemini() -> str:
+            return gemini_model_check(http, settings.llm_model, get_secret("gemini_api_key"))
+        out.append(_live("gemini", gemini, "ksm secrets set gemini_api_key"))
+
+    if settings.provider == "anthropic":
+        def anthropic_check() -> str:
+            import anthropic
+            m = anthropic.Anthropic(api_key=get_secret("anthropic_api_key")).models.retrieve(settings.model)
+            return m.id
+        out.append(_live("anthropic", anthropic_check, "ksm secrets set anthropic_api_key"))
     return out
 
 

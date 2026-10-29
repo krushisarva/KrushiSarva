@@ -117,6 +117,9 @@ YouTube and Meta both require a public privacy page. The app's own `/legal` page
 (`LEGAL_DOCS_APPROVED=false`), so for now we use Google Sites. The English text comes from
 `PRIVACY.md`.
 
+If the site is already published, paste the new text below over the old text and click
+**Publish** again. The 28 October 2026 version names Google (Gemini) as the script service.
+
 - [ ] **Create the site.** Signed in as krushisarva@gmail.com, go to https://sites.google.com → **+ Blank site**.
 - [ ] Site name: `KrushiSarva Publisher`. Page title: `Privacy / गोपनीयता`.
 - [ ] **Paste the text.** Use Insert → **Text box** and paste the text below. Select each URL and press ⌘K to make it a link (Sites sometimes does this by itself).
@@ -130,7 +133,7 @@ YouTube and Meta both require a public privacy page. The app's own `/legal` page
 
 ```text
 KrushiSarva Publisher — गोपनीयता सूचना / Privacy notice
-शेवटचा बदल / Last updated: 16 October 2026
+शेवटचा बदल / Last updated: 28 October 2026
 
 ━━━━━━━━━━━━━━━━ मराठी ━━━━━━━━━━━━━━━━
 
@@ -145,7 +148,7 @@ KrushiSarva Publisher हे KrushiSarva चे अंतर्गत साध�
 • आमच्या स्वतःच्या व्हिडिओंची आणि खात्यांची एकूण आकडेवारी: व्ह्यूज, पाहण्याचा वेळ, लाइक्स, शेअर्स, सेव्ह आणि फॉलोअर्सची संख्या. यात कोणत्याही एका प्रेक्षकाची माहिती नसते.
 • मंजुरी देणाऱ्या व्यक्तीचा Telegram user ID, जेणेकरून फक्त तीच व्यक्ती मंजुरी देऊ शकेल.
 • सार्वजनिक सरकारी माहिती: Agmarknet बाजारभाव (data.gov.in), हमीभाव (PIB) आणि अधिकृत कृषी सल्ला.
-• व्हिडिओची स्क्रिप्ट मसुदा व तपासणीसाठी Anthropic (Claude) कडे, आणि निवेदनाचा मजकूर AI आवाज तयार करण्यासाठी Sarvam AI कडे पाठवला जातो. त्यात कोणतीही वैयक्तिक माहिती नसते.
+• व्हिडिओची स्क्रिप्ट मसुदा व तपासणीसाठी Google (Gemini API, मोफत स्तर / free tier) कडे, आणि निवेदनाचा मजकूर AI आवाज तयार करण्यासाठी Sarvam AI कडे पाठवला जातो. स्क्रिप्ट आणि निवेदन फक्त सार्वजनिक सरकारी माहितीवर आधारित असतात; त्यात कोणतीही वैयक्तिक माहिती नसते. Gemini API च्या मोफत स्तरावर पाठवलेला मजकूर Google स्वतःची उत्पादने सुधारण्यासाठी वापरू शकते, आणि Google मधील व्यक्ती तो वाचू शकतात. Gemini API अटी: https://ai.google.dev/gemini-api/terms
 
 हे साधन काय करत नाही
 माहिती विकत नाही. जाहिरात किंवा टार्गेटिंगसाठी वापरत नाही. KrushiSarva ॲपमध्ये शेतकऱ्यांनी अपलोड केलेले फोटो, पीक-स्कॅन किंवा इतर काहीही वापरत नाही. कमेंट्स किंवा खाजगी मेसेज वाचत नाही. कोणाच्याही डिव्हाइस किंवा ब्राउझरवर कुकीज (cookies) किंवा तत्सम तंत्रज्ञान ठेवत नाही, वाचत नाही आणि इतर कोणालाही तसे करू देत नाही.
@@ -179,7 +182,7 @@ What it uses
 • Statistics for our own videos and accounts: views, watch time, likes, shares, saves and follower counts. These are totals only and never include anything about an individual viewer.
 • The approver's Telegram user ID, so that only that person can approve a video.
 • Public government data: Agmarknet mandi prices (data.gov.in), Minimum Support Prices (PIB) and official agricultural advisories.
-• The video script is sent to Anthropic (Claude), which drafts and checks it. The narration text is sent to Sarvam AI, which turns it into the AI voice. Neither contains personal data.
+• The video script is sent to Google (Gemini API, free tier), which drafts and checks it. The narration text is sent to Sarvam AI, which turns it into the AI voice. Scripts and narration are built only from public government data and contain no personal data. On the Gemini API's free tier, Google may use what is sent to improve its products, and people at Google may read it. Gemini API terms: https://ai.google.dev/gemini-api/terms
 
 What it does not do
 It does not sell data. It does not use data for advertising or targeting. It never uses photos, crop scans or anything else that farmers upload to the KrushiSarva app. It does not read comments or private messages. It does not place, read or recognise cookies or similar technology on anyone's device or browser, and it does not let third parties do so.
@@ -316,17 +319,19 @@ Signed in as **krushisarva@gmail.com** (check the avatar, top right):
 
 Each `ksm secrets set <name>` asks you to paste the value. Nothing is written to a file.
 
-- [ ] **Anthropic.** Use a **separate** key so marketing spend shows up on its own.
-  1. In https://console.anthropic.com, create a workspace called `marketing`.
-  2. Under API keys, create a key in that workspace.
-  3. Run `ksm secrets set anthropic_api_key`.
-  - Optional backstop: set a monthly spend limit on that workspace a little above ₹1,500.
+- [ ] **Gemini.** This writes and fact-checks the scripts. It's free, and it reuses the KrushiSarva app's key.
+  1. Copy `GEMINI_API_KEY` from the KrushiSarva Credentials vault.
+     - Or create a key at https://aistudio.google.com/apikey, signed in as krushisarva@gmail.com. Put it in a project **with no billing**. A key from the Firebase project (krushisarva-b234d) is a paid key and gets refused.
+     - Keys may start with `AQ.` instead of `AIza`. Both are fine.
+  2. Run `ksm secrets set gemini_api_key`.
+  - The app and ksm share this key's free-tier limits. ksm makes only a few calls per video.
+  - Only if you set `llm.provider: anthropic` (Claude, paid): create a key in a separate `marketing` workspace at https://console.anthropic.com, run `ksm secrets set anthropic_api_key`, and set a monthly spend limit on that workspace a little above ₹1,500.
 - [ ] **Sarvam.**
   1. Go to https://dashboard.sarvam.ai → API keys → create a key.
   2. Run `ksm secrets set sarvam_api_key`.
   3. Add some credit. The voice costs about ₹150 a month.
 - [ ] **data.gov.in.**
-  1. Register or sign in at https://data.gov.in → My Account → generate an API key.
+  1. Copy the app's `DATA_GOV_API_KEY` from the KrushiSarva Credentials vault. Or register or sign in at https://data.gov.in → My Account → generate an API key.
   2. Run `ksm secrets set datagov_api_key`.
 - [ ] **Pexels.** It's free and needed from milestone M3, but you can set it now.
   1. Go to https://www.pexels.com/api, sign up with krushisarva@gmail.com and describe the use.
@@ -357,8 +362,8 @@ Each `ksm secrets set <name>` asks you to paste the value. Nothing is written to
   - This copies the code, config, fonts and allow-listed brand art into `~/Library/Application Support/ks-marketing/`, then installs and loads the background agent. macOS blocks background processes from reading `~/Desktop`, so the agent runs from that copy.
   - **Re-run it after every `git pull` and after every config edit.**
 - [ ] **Check everything:** `ksm doctor`, then `ksm doctor --live`. Every line should say OK.
-  - `ksm doctor` checks this Mac: ffmpeg's libass, the font hashes, reading Keychain secrets without a prompt, disk, memory and the agent's state.
-  - `--live` also calls the services: Telegram `getMe`, your YouTube channel ID, the Meta scopes and the Page and Instagram IDs, and data.gov.in, Sarvam and Anthropic.
+  - `ksm doctor` checks this Mac: ffmpeg's libass, the font hashes, reading Keychain secrets without a prompt, disk, memory and the agent's state. Of the AI keys, it checks only the one for the active `llm.provider`.
+  - `--live` also calls the services: Telegram `getMe`, your YouTube channel ID, the Meta scopes and the Page and Instagram IDs, and data.gov.in, Sarvam and Gemini.
 
   Fix anything red using README.md → Troubleshooting.
 - [ ] **Run the live tests:** `ksm day0 --yes`. It makes **real test posts** and lists what it did:
@@ -368,7 +373,7 @@ Each `ksm secrets set <name>` asks you to paste the value. Nothing is written to
   - an Instagram Reel;
   - a Telegram round trip;
   - Sarvam voice samples;
-  - Claude structured output;
+  - one tiny Gemini call;
   - a check of the scheduled wake.
 
   While it runs:

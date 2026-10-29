@@ -1,4 +1,5 @@
-"""Claude script writer and fact-checker (see docs/ARCHITECTURE.md § writer/)."""
+"""Script writer and fact-checker: Gemini or Claude per settings.yaml `llm.provider`
+(see docs/ARCHITECTURE.md § writer/)."""
 from .claude import ClaudeError, ClaudeRefusal, write_script
 from .schemas import GLOSSARY, FactCheckReport, build_glossary
 

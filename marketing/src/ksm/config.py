@@ -50,10 +50,13 @@ class Settings:
     platforms: tuple[str, ...]              # enabled platforms, e.g. ("yt",) in M1
     dry_run: bool                           # publishers log instead of calling APIs
     app_cta_url: str | None                 # Play listing URL; None = no download CTA
+    provider: str = "anthropic"             # llm.provider: 'gemini' | 'anthropic' (default without an llm block)
+    llm_model: str = ""                     # llm.model: the Gemini model (claude.model is used for anthropic)
     raw: dict = field(default_factory=dict, repr=False)
 
 
 def _settings_from_dict(d: dict) -> Settings:
+    llm = d.get("llm") or {}
     return Settings(
         timezone=d["timezone"],
         slots=tuple(SlotWindow(**s) for s in d["slots"]),
@@ -73,6 +76,8 @@ def _settings_from_dict(d: dict) -> Settings:
         platforms=tuple(d["platforms"]),
         dry_run=bool(d.get("dry_run", True)),
         app_cta_url=d.get("app_cta_url") or None,
+        provider=str(llm.get("provider") or "anthropic").strip().lower(),
+        llm_model=str(llm.get("model") or "").strip(),
         raw=d,
     )
 
