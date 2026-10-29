@@ -108,6 +108,21 @@ describe('legal pages — production publishing gate', () => {
     expect(res.text).toContain('care@example.test');
     expect(res.text).toContain('1 November 2026');
   });
+
+  // Google Play needs the privacy policy live: once approved with every fact
+  // set, it must have no open owner decision left to hold it back.
+  test('the privacy policy publishes once approved with every fact supplied', async () => {
+    asProduction({ ...FACTS, docsApproved: true });
+    const res = await request(app).get('/legal/privacy');
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('class="owner-todo"');
+    expect(res.text).not.toContain('Draft — not yet approved');
+    expect(res.text).toContain('Example Agri Private Limited');
+    expect(res.text).toContain('grievance@example.test');
+    expect(res.text).toContain('24 hours');
+    expect(res.text).toContain('Groq');
+  });
 });
 
 // Google Play requires a public "delete your account" URL that works before

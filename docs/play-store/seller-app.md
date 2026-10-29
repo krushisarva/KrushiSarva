@@ -1,6 +1,6 @@
 # KrushiSarva Seller: Google Play Console answers
 
-Package name: `com.krushisarva.seller` · Written 15 October 2026 against the code in this folder.
+Package name: `com.krushisarva.seller` · Written 15 October 2026 against the code in this folder. Updated 28 October 2026 to match the final privacy policy.
 
 ## How to use this file
 
@@ -189,7 +189,7 @@ Paste:
 https://srv2061596.hstgr.cloud/legal/privacy
 ```
 
-**Warning:** this page shows an error (it returns "503 Service Unavailable") until you answer the 8 legal questions and Claude puts the answers on the server. Do not send anything for review until it opens a real policy.
+**Warning:** this page shows an error (it returns "503 Service Unavailable") until the finished policy, written from your answers on 28 October 2026, is on the server and switched on. It is the same policy as the farmer app's. Do not send anything for review until it opens a real policy.
 
 ### 3.2 App access
 
@@ -272,7 +272,7 @@ Click **Start**.
 | Delete account URL (web address) | `https://srv2061596.hstgr.cloud/legal/delete-account` |
 | Can users ask to delete some of their data without deleting their account? | **No** (leave the optional web address empty) |
 
-**This page is not live yet.** On 15 October 2026 it showed "404 Not Found", because the page is in this folder's uncommitted code and the server still runs older code. It goes live as soon as that code is on the server (Part 5, item 2). After that it works even before the legal answers are in. In the app, deletion is at **Dashboard → Profile → Delete my account**, or on the business profile screen for an account that is not a seller yet. One account covers both apps, and the delete-account page says so.
+**This page is live.** On 28 October 2026 it opened on the server. It does not wait for the privacy policy to be switched on. After deletion, the shop's orders and payout records are kept for 8 years because tax law requires it, and the seller licence details are kept too; bank, Aadhaar, PAN (Permanent Account Number) and KYC (Know Your Customer) details are deleted. The privacy policy says so (sections 5 and 6), so the answers above stay the same. In the app, deletion is at **Dashboard → Profile → Delete my account**, or on the business profile screen for an account that is not a seller yet. One account covers both apps, and the delete-account page says so.
 
 #### Step 2: Data types
 
@@ -282,7 +282,7 @@ Tick exactly the types marked **Yes** below and leave every other box empty.
 
 For **every** ticked type:
 
-1. **Collected or shared?** Tick **Collected** only.
+1. **Collected or shared?** Tick **Collected** only. Never tick **Shared** in this app; the note at the end of this section says why.
 2. **Processed ephemerally?** **No**, for every type. ("Ephemerally" means "only held in memory for a moment, never saved". No is always the safe answer.)
 3. **Required or optional?** As in the table.
 4. **Why is this data collected?** Tick the purposes in the table.
@@ -326,12 +326,12 @@ Google's rule: sending data to a company that **only does a job for you, under y
 | Company | What it does | What it receives from this app |
 |---|---|---|
 | Google Firebase | Sign-in by text-message code; delivering notifications | Phone number, app and device identifiers, IP address |
-| Expo | Sending notifications and app updates | Notification token, notification text, app version |
+| Expo | Sending notifications and app updates | Notification token, notification text, app version, internet (IP, Internet Protocol) address |
 | Cloudinary | Storing product photos | Product photos |
-| India Post | Filling in the area from a PIN code | The PIN code only |
+| India Post | Filling in the area from a PIN (Postal Index Number) code | The PIN code only |
 | Hostinger | Runs the server | Everything stored on the server |
 
-The Seller app sends nothing to the AI companies (it only shows reports farmers already made), and it opens no payment page. Payouts to sellers are recorded by the KrushiSarva team; the bank details are not sent to Razorpay. Information a seller gives to a farmer on purpose (a reply, products, a phone number for delivery) is not "sharing" under Google's rules either.
+**Why this app has no "Shared" ticks when the farmer app has seven.** The farmer app's ticks come from Google's free Gemini service, which may use what it receives for Google's own products. The Seller app sends nothing to Gemini, Groq, Sarvam AI or any other AI company: it only shows crop reports that farmers already made in the farmer app (checked in the code on 28 October 2026). The Seller app also opens no payment page. Payouts to sellers are recorded by the KrushiSarva team; the bank details are not sent to Razorpay. Information a seller gives to a farmer on purpose (a reply, products, a phone number for delivery) is not "sharing" under Google's rules either.
 
 ### 3.8 Government apps
 
@@ -402,8 +402,8 @@ First test version of KrushiSarva Seller. Please try setting up your business pr
 
 ## Part 5. Before you submit: checklist
 
-1. **Privacy policy and terms load:** `https://srv2061596.hstgr.cloud/legal/privacy` and `/legal/terms`. Waits on your 8 legal answers.
-2. **The server runs this folder's code.** The delete-account page and the server side of the Report buttons are uncommitted and **not on the server yet** (on 15 October 2026 the delete-account address showed "404 Not Found"). When you are ready, ask Claude to commit, push and update the server, then check the address opens.
+1. **Privacy policy and terms load:** `https://srv2061596.hstgr.cloud/legal/privacy` and `/legal/terms`. Your answers were written into the policy on 28 October 2026; the page opens once Claude puts your legal details on the server and switches the policy on.
+2. **The server runs the new code.** Done: the delete-account page and the server side of the Report buttons were merged as pull request #20, and on 28 October 2026 the delete-account address opened on the server. Open it once more just before you submit.
 3. **Firebase fingerprints for this app.** Play Console (Seller app) → Test and release → App integrity → **Play app signing**. Copy the SHA-1 and SHA-256 (Secure Hash Algorithm) fingerprints of **every certificate shown**: **App signing key certificate** and **Upload key certificate**. Also run `npx eas credentials` in `seller-app` and add its fingerprints if they differ. Paste each in Firebase console → Project settings → Your apps → **com.krushisarva.seller** → **Add fingerprint**. These are different from the farmer app's keys.
 4. **Firebase test number.** Firebase console → Authentication → Sign-in method → Phone → **Phone numbers for testing**: number 2 (seller reviewer) with its 6-digit code (the same list as the farmer app's numbers; one Firebase project serves both apps).
 5. **Demo shop ready** (3.2): verified in admin, 2 or 3 products approved in **Catalog QC**, a delivery area, one sample order. This needs the admin panel: if its text-message sign-in fails, add `krushi-sarva.vercel.app` in Firebase console → Authentication → Settings → **Authorized domains** (on 14 October 2026 it was missing from that list).
@@ -412,4 +412,4 @@ First test version of KrushiSarva Seller. Please try setting up your business pr
 8. **Advertising ID check** (3.11).
 9. **Renew the Hostinger server before about 14 November 2026** (1-month plan from 14 October). If it stops during testing or review, sign-in fails and the app is rejected.
 10. **Razorpay live keys before real money** (this matters for the farmer app's online payments; sellers then see "Paid online" orders for real).
-11. **Build from this folder's current code**, which holds uncommitted fixes: the Delete my account button on the business profile screen, Report buttons on crop reports and reviews, and full photo-library access blocked.
+11. **Build from the main branch, at pull request #20 (merged 15 October 2026) or later.** That code holds the fixes Google needs: the Delete my account button on the business profile screen, Report buttons on crop reports and reviews, and full photo-library access blocked.
