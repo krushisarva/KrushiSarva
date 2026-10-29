@@ -29,6 +29,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any, Optional
 
@@ -121,6 +122,9 @@ if _redis is not None and not _redis_available():
 # ── In-memory fallback ──────────────────────────────────────────────────────
 _MEM: dict[str, tuple[Any, float]] = {}
 _MEM_MAX = 500
+# get/set run on threadpool threads (PERF-013); the eviction scan below must not
+# iterate _MEM while another thread inserts into it.
+_MEM_LOCK = threading.Lock()
 
 
 # ── Canonicalisation ─────────────────────────────────────────────────────────
@@ -201,7 +205,8 @@ def set(key: str, value: dict) -> None:
         except Exception as exc:
             _mark_redis_down("set", exc)
     # In-mem fallback — LRU eviction
-    if len(_MEM) >= _MEM_MAX:
-        oldest = min(_MEM, key=lambda k: _MEM[k][1])
-        _MEM.pop(oldest, None)
-    _MEM[key] = (value, time.time())
+    with _MEM_LOCK:
+        if len(_MEM) >= _MEM_MAX:
+            oldest = min(_MEM, key=lambda k: _MEM[k][1])
+            _MEM.pop(oldest, None)
+        _MEM[key] = (value, time.time())

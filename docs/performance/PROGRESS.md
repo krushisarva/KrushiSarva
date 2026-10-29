@@ -631,6 +631,8 @@ Behavioural, measured locally — no production telemetry is available:
 | PERF-042 | §71 tail: lying page, unbounded thread, dead sort | revert → 3 of 5 fail |
 | PERF-043 | Two holes in cleanupTestData (78 + 77 phantom failures) | suite 1268 → 1345 |
 | PERF-044 | **OPEN** — one test fails intermittently, never captured | — |
+| PERF-013 | FastAPI sync Redis calls moved off the event loop (scan, signing, spend meters) | HEAD code → 2 of 4 new tests fail; suite 356 pass + 1 known Windows fail |
+| PERF-017 | **COMPLETE** — "422" comments fixed in rateLimit.js and auth.routes.js | `node --check` |
 
 ## Next item — what is genuinely left
 

@@ -37,6 +37,7 @@ import os
 import time
 
 from fastapi import Header, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,9 @@ async def verify_signed_request(
     #    Only enforced for state-changing methods: GET/HEAD are idempotent (the
     #    mobile client polls GET /ai/scan/{id} many times a second with the same
     #    ts→same signature, which is benign), so a nonce there would false-block.
-    if request.method.upper() not in ("GET", "HEAD", "OPTIONS") and _is_replay(x_sig_signature):
+    #    _is_replay is a synchronous Redis SET NX, so it runs off the event loop.
+    if (request.method.upper() not in ("GET", "HEAD", "OPTIONS")
+            and await run_in_threadpool(_is_replay, x_sig_signature)):
         logger.warning("[Auth] replayed signature rejected")
         raise HTTPException(status_code=401, detail="replayed_signature")
 

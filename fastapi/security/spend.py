@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -173,6 +174,12 @@ _MEM: dict[tuple[str, str], tuple[float, float]] = {}
 # forever in every web AND worker process. Days other than today are unreachable
 # by every read path here, so they are pure leak.
 _MEM_MAX = 5_000
+# The web routes call this module through run_in_threadpool (PERF-013), so two
+# threads can be inside a read-modify-write of _MEM at once. On one event loop
+# those blocks were atomic; the lock keeps them so — without it a concurrent
+# reserve could double-pass the in-memory cap and _mem_prune could iterate a
+# dict another thread is resizing.
+_MEM_LOCK = threading.Lock()
 
 
 def _mem_prune(keep_ymd: str) -> None:
@@ -249,9 +256,10 @@ def _adjust(user_id: str, delta: float, ymd: str | None = None) -> None:
     if not delta:
         return
     bucket = (user_id or "anon", ymd) if ymd else _today_key(user_id or "")
-    cur, ts = _MEM.get(bucket, (0.0, time.time()))
-    _MEM[bucket] = (max(0.0, cur + delta), ts)
-    _mem_prune(bucket[1])
+    with _MEM_LOCK:
+        cur, ts = _MEM.get(bucket, (0.0, time.time()))
+        _MEM[bucket] = (max(0.0, cur + delta), ts)
+        _mem_prune(bucket[1])
     if _redis_ready():
         try:
             # Floored in Lua, matching the clamp on the mirror above. These two
@@ -333,9 +341,10 @@ def check_under_cap(user_id: str, reserve: float = 0.0) -> None:
             allowed, value = _reserve_in_redis(bucket, cap, reserve)
             if allowed:
                 # Mirror so a later Redis outage does not zero this process's view.
-                cur, ts = _MEM.get(bucket, (0.0, time.time()))
-                _MEM[bucket] = (cur + reserve, ts)
-                _mem_prune(bucket[1])
+                with _MEM_LOCK:
+                    cur, ts = _MEM.get(bucket, (0.0, time.time()))
+                    _MEM[bucket] = (cur + reserve, ts)
+                    _mem_prune(bucket[1])
                 return
             used = value
         else:
@@ -350,12 +359,13 @@ def check_under_cap(user_id: str, reserve: float = 0.0) -> None:
             )
         # Dev / opt-out: degrade to the per-process mirror. A reserve still has
         # to be counted somewhere, so mirror it here too.
-        entry = _MEM.get(bucket)
-        used = float(entry[0]) if entry else 0.0
-        if reserve > 0 and used < cap:
-            _MEM[bucket] = (used + reserve, entry[1] if entry else time.time())
-            _mem_prune(bucket[1])
-            return
+        with _MEM_LOCK:
+            entry = _MEM.get(bucket)
+            used = float(entry[0]) if entry else 0.0
+            if reserve > 0 and used < cap:
+                _MEM[bucket] = (used + reserve, entry[1] if entry else time.time())
+                _mem_prune(bucket[1])
+                return
     if used >= cap:
         logger.warning(
             "[Spend] user=%s OVER cap — used $%.4f of $%.2f",
@@ -414,9 +424,10 @@ def record_spend(user_id: str, cost_usd: float) -> None:
     bucket = _today_key(user_id)
     # Always bump the in-mem mirror so even a Redis failure doesn't silently
     # zero the per-process accounting.
-    cur, ts = _MEM.get(bucket, (0.0, time.time()))
-    _MEM[bucket] = (cur + float(cost_usd), ts)
-    _mem_prune(bucket[1])
+    with _MEM_LOCK:
+        cur, ts = _MEM.get(bucket, (0.0, time.time()))
+        _MEM[bucket] = (cur + float(cost_usd), ts)
+        _mem_prune(bucket[1])
 
     # `_redis_ready()`, not the import-time `_REDIS_OK` latch: a worker that
     # forked during a Redis blip used to stop writing here forever, which turns

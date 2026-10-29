@@ -62,7 +62,7 @@ const otpPhoneLimiter = rateLimiter({
   max:      ENV.OTP_RATE_LIMIT_MAX,
   prefix:   'otp:phone',
   // Only key on a well-formed phone; malformed input falls through to the
-  // validator below (422) instead of being rate-limited.
+  // validator below (400) instead of being rate-limited.
   // Normalize so the per-phone limit keys consistently regardless of how the
   // number was formatted (+91 / 0 / spaces); malformed input → null (not limited,
   // falls through to the validator's 400).

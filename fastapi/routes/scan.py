@@ -20,6 +20,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import JSONResponse
 from slowapi.util import get_remote_address
+# The jobs.queue, idempotency and spend helpers use the synchronous redis client
+# (and Celery's AsyncResult/send_task), so every call from these async handlers
+# goes through run_in_threadpool; a slow Redis then holds one worker thread
+# instead of stalling every request on the process (PERF-013).
+from starlette.concurrency import run_in_threadpool
 
 from agents.registry import normalize_tier
 from jobs.queue import (
@@ -168,7 +173,7 @@ async def ai_scan(request: Request):
         # Spend cap — enforced at enqueue so we never queue work the user
         # has no budget for. The cap clock is daily UTC.
         user_id = (request.headers.get("x-user-id") or "").strip()
-        check_under_cap(user_id)
+        await run_in_threadpool(check_under_cap, user_id)
 
         # Idempotency — two layers:
         #   1. If a completed result is already cached for this key, return
@@ -184,7 +189,7 @@ async def ai_scan(request: Request):
             idem_header,
             user_id=user_id or None,
         )
-        cached_result = idempotency.get(cache_key)
+        cached_result = await run_in_threadpool(idempotency.get, cache_key)
         if cached_result is not None:
             replay_job_id, replay_report = _unwrap_replay(cached_result)
             logger.info(
@@ -199,9 +204,9 @@ async def ai_scan(request: Request):
                 "_idempotent_replay": True,
             })
 
-        existing_job_id = lookup_job_for_key(cache_key)
+        existing_job_id = await run_in_threadpool(lookup_job_for_key, cache_key)
         if existing_job_id:
-            snap = get_job_status(existing_job_id)
+            snap = await run_in_threadpool(get_job_status, existing_job_id)
             # Don't re-serve a FAILED prior job on retry — fall through to
             # enqueue. `enqueue_diagnosis` enforces the same rule itself
             # (one canonical place for the policy), so a fresh job spawns
@@ -238,7 +243,7 @@ async def ai_scan(request: Request):
         # the UTC day. That would also be a regression: before the reserve
         # existed nothing ever incremented the anon bucket, so it never blocked.
         if user_id:
-            check_under_cap(user_id, reserve=SCAN_RESERVE_USD)
+            await run_in_threadpool(check_under_cap, user_id, reserve=SCAN_RESERVE_USD)
 
         payload = {
             "params":     params,
@@ -254,7 +259,7 @@ async def ai_scan(request: Request):
                 "ymd":      utc_ymd(),
             } if user_id else None,
         }
-        job_id = enqueue_diagnosis(payload, idempotency_key=cache_key)
+        job_id = await run_in_threadpool(enqueue_diagnosis, payload, idempotency_key=cache_key)
 
         return JSONResponse({
             "success": True,
@@ -309,7 +314,7 @@ async def ai_scan_status(request: Request, job_id: str = Path(..., min_length=4,
         # the owner is unrecorded (Redis miss / legacy job) we don't hard-fail,
         # since the route already requires the signed Express secret.
         caller = (request.headers.get("x-user-id") or "").strip()
-        owner = get_job_owner(job_id)
+        owner = await run_in_threadpool(get_job_owner, job_id)
         if owner and caller and owner != caller:
             logger.warning(
                 "[Scan] IDOR blocked: caller=%s tried to read job owned by=%s", caller, owner,
@@ -319,7 +324,7 @@ async def ai_scan_status(request: Request, job_id: str = Path(..., min_length=4,
                 status_code=403,
             )
 
-        snap = get_job_status(job_id)
+        snap = await run_in_threadpool(get_job_status, job_id)
         response: dict = {
             "success": True,
             "job_id":  job_id,
@@ -338,9 +343,11 @@ async def ai_scan_status(request: Request, job_id: str = Path(..., min_length=4,
                 # inline-replay branch in ai_scan() was dead code.
                 # The stored envelope carries the job id so the replay can hand
                 # it to Express, whose settle-claim is keyed on it.
-                submit_key = get_job_idem_key(job_id)
+                submit_key = await run_in_threadpool(get_job_idem_key, job_id)
                 if submit_key:
-                    idempotency.set(submit_key, {"job_id": job_id, "data": snap["data"]})
+                    await run_in_threadpool(
+                        idempotency.set, submit_key, {"job_id": job_id, "data": snap["data"]},
+                    )
             except Exception:
                 pass
         return JSONResponse(response)
