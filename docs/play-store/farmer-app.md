@@ -1,6 +1,6 @@
 # KrushiSarva (farmer app): Google Play Console answers
 
-Package name: `com.krushisarva.app` · Written 15 October 2026 against the code in this folder.
+Package name: `com.krushisarva.app` · Written 15 October 2026 against the code in this folder. Updated 28 October 2026 to match the final privacy policy.
 
 ## How to use this file
 
@@ -251,7 +251,7 @@ Paste:
 https://srv2061596.hstgr.cloud/legal/privacy
 ```
 
-**Warning:** this page shows an error (it returns "503 Service Unavailable") until you answer the 8 legal questions and Claude puts the answers on the server. Google checks this link. Paste it now if you like, but do not send anything for review until the link opens a real policy.
+**Warning:** this page shows an error (it returns "503 Service Unavailable") until the finished policy, written from your answers on 28 October 2026, is on the server and switched on. Google checks this link. Paste it now if you like, but do not send anything for review until the link opens a real policy.
 
 ### 3.2 App access
 
@@ -317,7 +317,7 @@ Save, then **Submit** to see the rating. A low age rating with notes like "Users
 
 ### 3.7 Data safety
 
-Click **Start**. Read the "Who receives the data" note at the end of this section first. It explains why every "Shared" answer below is **No**, and the one case where that changes.
+Click **Start**. Read the "Who receives the data" note at the end of this section first. It explains why seven data types are ticked **Shared** as well as **Collected**.
 
 #### Step 1: Data collection and security
 
@@ -329,7 +329,7 @@ Click **Start**. Read the "Who receives the data" note at the end of this sectio
 | Delete account URL (web address) | `https://srv2061596.hstgr.cloud/legal/delete-account` |
 | Can users ask to delete some of their data without deleting their account? | **No** (leave the optional web address empty) |
 
-**This page is not live yet.** On 15 October 2026 it showed "404 Not Found", because the page is in this folder's uncommitted code and the server still runs older code. It goes live as soon as that code is on the server (Part 5, item 2). After that it works even before the legal answers are in. In the app, deletion is at **Account tab → bottom → Delete my account**.
+**This page is live.** On 28 October 2026 it opened on the server. It does not wait for the privacy policy to be switched on. In the app, deletion is at **Account tab → bottom → Delete my account**. After deletion, orders, bookings and their payment, refund and payout records are kept for 8 years because tax law requires it, with the delivery address removed and the name shown as "Deleted User". The privacy policy says so (section 5), so the answers above stay the same.
 
 #### Step 2: Data types
 
@@ -339,30 +339,30 @@ Tick exactly the data types marked **Yes** in the table below and leave every ot
 
 For **every** ticked type, Play asks the same four questions:
 
-1. **Collected or shared?** Tick **Collected** only.
+1. **Collected or shared?** Tick **Collected** for every type. For the seven types marked "**Yes**, also **Shared**" in the table, tick **Shared** too, and when Play asks why it is shared, tick only **App functionality**. Why: Google's free Gemini service may use what the app sends it for Google's own products, so Google Play counts that as sharing.
 2. **Is this data processed ephemerally?** **No**, for every type. ("Ephemerally" means "only held in memory for a moment, never saved". Answering No is always safe; answering Yes when it is not true breaks the rules.)
 3. **Required or optional?** As in the table. "Optional" means people can use the app without giving it.
 4. **Why is this data collected?** Tick the purposes in the table.
 
 | Play's data type | Collect? | Required or optional | Purposes to tick | Where it comes from in the app |
 |---|---|---|---|---|
-| Location → Approximate location | **Yes** | Optional | App functionality, Personalization | Weather, mandi prices, rent and animal ads near you, AI advice for your area. If location is off, people pick their district by hand. |
-| Location → Precise location | **Yes** | Optional | App functionality, Personalization | The "use my location" button in profile set-up and on a farm, and the location saved on animal and rent ads (others see only a rough distance). |
-| Personal info → Name | **Yes** | Optional | App functionality, Account management | Profile (set-up can be skipped). Shown to the seller of an order and to people you chat with. |
+| Location → Approximate location | **Yes**, also **Shared** | Optional | App functionality, Personalization | Weather, mandi prices, rent and animal ads near you, AI advice for your area. If location is off, people pick their district by hand. |
+| Location → Precise location | **Yes**, also **Shared** | Optional | App functionality, Personalization | The "use my location" button in profile set-up and on a farm, and the location saved on animal and rent ads (others see only a rough distance). |
+| Personal info → Name | **Yes**, also **Shared** | Optional | App functionality, Account management | Profile (set-up can be skipped). Shown to the seller of an order and to people you chat with. |
 | Personal info → Email address | **Yes** | Optional | Account management | Optional email in Account → edit profile. |
 | Personal info → User IDs | **Yes** | Required | App functionality, Account management, Fraud prevention, security, and compliance | Your KrushiSarva account number and your Firebase sign-in number. |
-| Personal info → Address | **Yes** | Optional | App functionality, Developer communications | Delivery addresses; village, taluka, district, state and PIN code in the profile. Announcements from the KrushiSarva team can be aimed at a district. |
+| Personal info → Address | **Yes**, also **Shared** | Optional | App functionality, Developer communications | Delivery addresses; village, taluka, district, state and PIN code in the profile. Announcements from the KrushiSarva team can be aimed at a district. |
 | Personal info → Phone number | **Yes** | Required | App functionality, Account management, Fraud prevention, security, and compliance | Sign-in. Given to the seller who delivers your order, and to signed-in users who ask to call you about your ad. |
 | Personal info → Race and ethnicity, Political or religious beliefs, Sexual orientation, Other info | No | | | Not collected. |
 | Financial info → User payment info | **Yes** | Optional | App functionality | Card or UPI (Unified Payments Interface) details typed into Razorpay's payment page, which opens inside the app. KrushiSarva's server never receives them; Razorpay processes them for us. Optional: nobody has to pay online to use the app, and shop orders can be paid in cash on delivery. |
 | Financial info → Purchase history | **Yes** | Optional | App functionality, Fraud prevention, security, and compliance | Shop orders, rent bookings, payments and refunds. |
 | Financial info → Credit score | No | | | |
-| Financial info → Other financial info | **Yes** | Optional | App functionality | Farm expense and income records in My Farm. |
+| Financial info → Other financial info | **Yes**, also **Shared** | Optional | App functionality | Farm expense and income records in My Farm. |
 | Health and fitness (both types) | No | | | Crop and animal health is not personal health. |
 | Messages → Emails | No | | | |
 | Messages → SMS or MMS (text and picture messages) | No | | | The app sends you a sign-in code by text message but never reads your messages. |
 | Messages → Other in-app messages | **Yes** | Optional | App functionality, Fraud prevention, security, and compliance | Animal trade chat. Reported chats are checked by the KrushiSarva team. |
-| Photos and videos → Photos | **Yes** | Optional | App functionality | Crop scans, soil card photos, photos in AI chat, animal and rent ads, profile photo. |
+| Photos and videos → Photos | **Yes**, also **Shared** | Optional | App functionality | Crop scans, soil card photos, photos in AI chat, animal and rent ads, profile photo, and photos on a farm or crop cycle (such as a 7/12 extract or a seed receipt). |
 | Photos and videos → Videos | **Yes** | Optional | App functionality | Videos on machinery and labour ads. |
 | Audio → Voice or sound recordings | **Yes** | Optional | App functionality | Krushi Vaani voice questions, turned into text by Sarvam AI. |
 | Audio → Music files, Other audio files | No | | | |
@@ -372,7 +372,7 @@ For **every** ticked type, Play asks the same four questions:
 | App activity → App interactions | **Yes** | Required | App functionality, Analytics | How many AI requests you made this month (for the monthly limit) and your online / last-seen status in chat. |
 | App activity → In-app search history | **Yes** | Optional | App functionality | Words you search for products, animals and machines go to the server to find results, and show up in its short-term logs. |
 | App activity → Installed apps | No | | | |
-| App activity → Other user-generated content | **Yes** | Optional | App functionality, Fraud prevention, security, and compliance | AI chat questions, ad descriptions, reviews, farm and crop notes, and the reports people send about bad content. |
+| App activity → Other user-generated content | **Yes**, also **Shared** | Optional | App functionality, Fraud prevention, security, and compliance | AI chat questions, ad descriptions, reviews, farm and crop notes, and the reports people send about bad content. |
 | App activity → Other actions | No | | | |
 | Web browsing → Web browsing history | No | | | |
 | App info and performance → Crash logs | **Yes** | Required | Analytics | When the app breaks, it sends the error to the KrushiSarva server, tagged with the account if signed in. |
@@ -381,28 +381,36 @@ For **every** ticked type, Play asks the same four questions:
 
 Then **Next** → check the preview → **Submit**.
 
-#### Who receives the data, and why every "Shared" answer is No
+#### Who receives the data, and why seven types are "Shared"
 
-Google's rule: sending data to a company that **only does a job for you, under your instructions**, is not "sharing". Google calls these companies "service providers". All of these are service providers for KrushiSarva:
+Google's rule: sending data to a company that **only does a job for you, under your instructions**, is not "sharing". Google calls these companies "service providers". If the company may also use the data **for its own products**, Google counts it as sharing.
+
+**Service providers (no "Shared" tick needed):**
 
 | Company | What it does for KrushiSarva | What it receives |
 |---|---|---|
-| Google Firebase | Sign-in by text-message code; delivering notifications | Phone number, app and device identifiers, IP address |
-| Expo | Sending notifications and app updates | Notification token, notification text, app version |
-| Cloudinary | Storing photos and videos | Photos and videos people upload |
-| Razorpay | Online payments and refunds | Name, phone number, order amount, and the card or UPI details people type into its page |
-| Google Gemini and Sarvam AI | Crop diagnosis, chat, voice-to-text and text-to-voice | Questions, photos, voice, the farmer's name, village and district, farm location, soil data, and past crop yield and profit from My Farm |
-| OpenAI, Groq, Anthropic | Backup AI, **only if their keys are switched on** on the server | The same as above |
-| Open-Meteo, OpenWeatherMap, OpenStreetMap Nominatim, India Post | Weather, place names and PIN code look-ups | Map coordinates or a PIN code only, never a name or number |
+| Google Firebase | Sign-in by text-message code; delivering notifications | Phone number, app and device identifiers, internet (IP, Internet Protocol) address |
+| Expo | Sending notifications and app updates | Notification token, notification text, app version, internet (IP, Internet Protocol) address |
+| Cloudinary | Storing photos, videos and documents | Photos and videos people upload, including crop-scan photos |
+| Razorpay | Online payments and refunds | Name, phone number, order reference and amount, and the card or UPI (Unified Payments Interface) details people type into its page |
+| Groq | Backup for AI chat when Gemini is not available. Text only, never photos | Chat questions, with the same farm details Gemini gets |
+| Sarvam AI (paid plan) | Krushi Vaani voice: speech-to-text, text-to-speech and translation | Voice recordings and text |
+| Open-Meteo, OpenWeatherMap, OpenStreetMap Nominatim, India Post | Weather, place names and PIN (Postal Index Number) code look-ups | Map coordinates or a PIN code only, never a name or number |
 | Hostinger | Runs the server | Everything stored on the server |
 
-Things a person sends to **another user** on purpose (an ad, a chat message, an address for the seller who delivers the order) are also not "sharing" under Google's rules, because the person starts it themselves.
+**Sharing (this is why seven types are ticked "Shared"):**
 
-**The one catch: AI companies on free plans.** Some free AI plans let the AI company use what you send to improve its own products. Then it is not only doing a job for you, and Google counts it as sharing. Before you submit:
+| Company | What it does for KrushiSarva | What it receives |
+|---|---|---|
+| Google Gemini (free service) | AI crop diagnosis, chat and advice | Questions, crop and soil photos, the farmer's name, village and district, farm location, soil data, and past crop yield and profit from My Farm |
 
-- If every AI company switched on uses a **paid plan** whose terms say it will not use your data for its own products, keep every "Shared" answer as **No**.
-- If any of them is on such a **free plan**, also tick **Shared** for Approximate location, Precise location, Name, Address, Other financial info, Photos, Voice or sound recordings, Other in-app messages and Other user-generated content, with the purpose **App functionality**.
-- Your answer to legal question 5 (option A: only Gemini and Sarvam, or option B: all five AI companies) must match this form and the privacy policy. If you pick A, ask Claude to switch off OpenAI, Groq and Anthropic on the server first.
+Google's terms for the free Gemini service let Google use what is sent to improve Google's products, and let people at Google read it. So Gemini is not only doing a job for KrushiSarva. That makes these seven types "Shared": Approximate location, Precise location, Name, Address, Other financial info, Photos and Other user-generated content.
+
+- **Voice or sound recordings** are not "Shared". The recording goes only to Sarvam AI. Only the typed-out text reaches Gemini, and that is already counted under Other user-generated content.
+- **Groq** receives nothing outside those seven types, so the form is the same whether or not Groq is used.
+- Things a person sends to **another user** on purpose (an ad, a chat message, a phone number or address for the seller who delivers the order) are not "sharing" under Google's rules either, because the person starts it themselves. That is why Phone number and Other in-app messages are not "Shared".
+
+**Keep the form, the privacy policy and the server in step.** The privacy policy names only three AI companies: Google Gemini (free service), Groq and Sarvam AI. OpenAI and Anthropic were switched off on the server on 28 October 2026. If anyone wants to switch on another AI company, or move Gemini to a paid plan, ask Claude to change the privacy policy and this form first.
 
 ### 3.8 Government apps
 
@@ -477,8 +485,8 @@ First test version of KrushiSarva. Please try Krushi AI (crop photo scan, chat a
 
 ## Part 5. Before you submit: checklist
 
-1. **Privacy policy and terms load.** `https://srv2061596.hstgr.cloud/legal/privacy` and `/legal/terms` must open real pages, not an error. Waits on your 8 legal answers.
-2. **The server runs this folder's code.** The delete-account page, the server side of the Report and Block buttons, the end of AI credit buying and the Krushi Intelligence name in AI answers are all uncommitted and **not on the server yet**. On 15 October 2026 `https://srv2061596.hstgr.cloud/legal/delete-account` showed "404 Not Found". You asked for no commits for now; when you are ready, ask Claude to commit, push and update the server, then check that the delete-account address opens.
+1. **Privacy policy and terms load.** `https://srv2061596.hstgr.cloud/legal/privacy` and `/legal/terms` must open real pages, not an error. Your answers were written into the policy on 28 October 2026; the page opens once Claude puts your legal details on the server and switches the policy on.
+2. **The server runs the new code.** Done: the delete-account page, the server side of the Report and Block buttons, the end of AI credit buying and the Krushi Intelligence name were merged as pull request #20, and on 28 October 2026 `https://srv2061596.hstgr.cloud/legal/delete-account` opened on the server. Open that address once more just before you submit.
 3. **Firebase fingerprints, or text-message sign-in fails on every copy installed from Google Play.** In Play Console: Test and release → App integrity → **Play app signing** (settings). Copy the SHA-1 and SHA-256 (Secure Hash Algorithm) fingerprints of **every certificate shown**: the **App signing key certificate** (Google's key) and the **Upload key certificate** (your Expo Application Services key, which also signed the test APKs (Android Package files) people already have). Also run `npx eas credentials` in `frontend`: if its SHA-1 or SHA-256 differs from the upload key, add that too. Paste each one in Firebase console → Project settings → Your apps → **com.krushisarva.app** → **Add fingerprint**. If you ever use Internal app sharing, add its certificate as well.
 4. **Firebase test numbers.** Firebase console → Authentication → Sign-in method → Phone → **Phone numbers for testing**. Add three made-up Indian mobile numbers (10 digits, starting with 6, 7, 8 or 9, belonging to nobody) with a 6-digit code each: number 1 = farmer reviewer, number 2 = seller reviewer, number 3 = your own spare. Put number 1 and its code into 3.2.
 5. **Test account ready.** Sign in with number 1, finish profile set-up with a PIN code inside the test seller's delivery area (so the Shop shows products), and raise its AI allowance (3.2 says how). This, the demo shop and the crop list all need the admin panel: if its text-message sign-in fails, add `krushi-sarva.vercel.app` in Firebase console → Authentication → Settings → **Authorized domains** (on 14 October 2026 it was missing from that list).
@@ -487,7 +495,7 @@ First test version of KrushiSarva. Please try Krushi AI (crop photo scan, chat a
 8. **Notifications key.** Firebase console → Project settings → Service accounts → **Generate new private key**. Then `npx eas credentials` in `frontend` → Android → production → Google Service Account → **Push Notifications (FCM V1)** (Firebase Cloud Messaging, version 1) → upload that file. The same file works for the Seller app.
 9. **Google Play access file for automatic uploads (only after the first manual upload).** In Google Cloud console: create a service account, add a JSON (JavaScript Object Notation) key, and turn on the Google Play Android Developer API. In Play Console → Users and permissions → invite the service account's email, give it both apps with permission to release to testing tracks. Save the file as `frontend/play-store-credentials.json` (git already ignores it; never commit it). After that, `npx eas submit -p android --profile production` uploads to Internal testing by itself.
 10. **Advertising ID check** (3.11).
-11. **AI companies decision** (legal question 5) matches the Data safety form and the privacy policy (3.7).
+11. **AI companies match.** The privacy policy names Google Gemini (free service), Groq and Sarvam AI only, and the Data safety form (3.7) ticks **Shared** for the seven types because of the free Gemini service. OpenAI and Anthropic must stay switched off on the server; if that ever changes, the policy and the form must change first.
 12. **Renew the Hostinger server before about 14 November 2026.** It is a 1-month plan bought on 14 October. If it stops during the 14-day test or Google's review, sign-in fails and both apps get rejected. A longer plan is safer.
 13. **Razorpay live keys before real money.** The server has Razorpay **test** keys, so any online payment during testing is pretend money. Before real farmers pay online, switch to live keys and add the Razorpay webhook (the address Razorpay calls to report each payment). Cash on delivery works either way.
-14. **Build the app from this folder's current code.** It holds fixes that are not committed yet: full photo-library access removed, Report and Block buttons, AI credit buying removed, the "not a government app" notice and the Krushi Intelligence name. Building an older version brings back problems Google rejects.
+14. **Build the app from the main branch, at pull request #20 (merged 15 October 2026) or later.** That code holds the fixes Google needs: full photo-library access removed, Report and Block buttons, AI credit buying removed, the "not a government app" notice and the Krushi Intelligence name. Building an older version brings back problems Google rejects.
