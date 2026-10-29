@@ -139,6 +139,10 @@ export default function MandiGlanceCard({ cropName, district, state, salePricePe
           ))}
         </View>
       )}
+
+      <Text style={styles.govNote}>
+        {t('govNotice.mandiSource', 'Prices from data.gov.in (Agmarknet). KrushiSarva is not a government app and is not affiliated with any government body.')}
+      </Text>
     </GlassCard>
   );
 }
@@ -165,4 +169,6 @@ const styles = StyleSheet.create({
   otherRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   otherMarket: { fontSize: 12, color: COSMIC.TEXT_2, fontFamily: CT.family.medium, flex: 1 },
   otherPrice: { fontSize: 12, color: COSMIC.TEXT, fontFamily: CT.family.bold },
+
+  govNote: { fontSize: 10, lineHeight: 14, color: COSMIC.TEXT_3, fontFamily: CT.family.medium, marginTop: 8 },
 });

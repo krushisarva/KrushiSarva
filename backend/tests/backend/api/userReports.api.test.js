@@ -300,6 +300,81 @@ describe('POST /reports — crop reports shared with a Krushi Seva Kendra (selle
   });
 });
 
+describe('POST /reports — a Krushi Seva Kendra\'s reply to a shared crop report (farmer app)', () => {
+  async function makeRepliedShare(extra = {}) {
+    const farmer = await createTestUser();
+    const kendra = await createTestSeller({ businessType: 'krushi_kendra' });
+    const scan = await createTestCropReport(farmer.user.id);
+    const share = await createTestCropShare(scan.id, farmer.user.id, kendra.user.id, {
+      status: 'REPLIED', sellerReply: 'Pay me 5000 first, then I tell the medicine', repliedAt: new Date(), ...extra,
+    });
+    return { farmer, kendra, share };
+  }
+
+  it('only the farmer who owns the report can report the reply; the Kendra and outsiders cannot', async () => {
+    const { kendra, share } = await makeRepliedShare();
+    const [outsider, otherKendra] = [await createTestUser(), await createTestSeller({ businessType: 'krushi_kendra' })];
+    const body = { targetType: 'CROP_REPORT_REPLY', targetId: share.id, reason: 'spam_or_fraud' };
+
+    expect((await report(outsider, body)).status).toBe(404);
+    expect((await report(otherKendra, body)).status).toBe(404);
+    expect((await report(kendra, body)).status).toBe(400);
+    expect((await report(outsider, { ...body, targetId: '00000000-0000-4000-8000-000000000000' })).status).toBe(404);
+    expect((await report(outsider, { targetType: 'CROP_REPORT_REPLY', reason: 'offensive', snapshot: 'rude reply' })).status).toBe(400);
+    expect(await prisma.contentFlag.count()).toBe(0);
+  });
+
+  it('404s a share the Kendra has not replied to yet', async () => {
+    const farmer = await createTestUser();
+    const kendra = await createTestSeller({ businessType: 'krushi_kendra' });
+    const scan = await createTestCropReport(farmer.user.id);
+    const share = await createTestCropShare(scan.id, farmer.user.id, kendra.user.id);
+
+    expect((await report(farmer, { targetType: 'CROP_REPORT_REPLY', targetId: share.id, reason: 'offensive' })).status).toBe(404);
+    expect(await prisma.contentFlag.count()).toBe(0);
+  });
+
+  it('files the reply text from the server, with the Kendra as the author, apart from reports on the share itself', async () => {
+    const { farmer, kendra, share } = await makeRepliedShare({ recommendedSku: 'Mancozeb 75 WP', fulfillmentNote: 'Cash only' });
+
+    const res = await report(farmer, {
+      targetType: 'CROP_REPORT_REPLY', targetId: share.id, reason: 'spam_or_fraud',
+      snapshot: 'made-up text', details: 'asked for money',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toEqual({ reported: true, duplicate: false });
+
+    const [flag] = await flagsFor('CROP_REPORT_REPLY');
+    expect(flag).toMatchObject({ entityId: share.id, authorId: kendra.user.id, score: 1, reasons: ['user_report:spam_or_fraud'] });
+    expect(metaOf(flag)).toMatchObject({
+      snapshot: 'Reply to Tomato: Early Blight\nPay me 5000 first, then I tell the medicine\nRecommended product: Mancozeb 75 WP\nNote: Cash only',
+      snapshotSource: 'server',
+      reports: [expect.objectContaining({ reporterId: farmer.user.id, reason: 'spam_or_fraud', details: 'asked for money' })],
+    });
+    expect(await flagsFor('CROP_REPORT_SHARE')).toHaveLength(0);
+  });
+
+  it('is listed in the admin queue under its own type, and the detail shows the reply', async () => {
+    const { farmer, kendra, share } = await makeRepliedShare();
+    const admin = await createTestUser({ role: 'ADMIN' });
+    await report(farmer, { targetType: 'CROP_REPORT_REPLY', targetId: share.id, reason: 'harassment' });
+
+    const res = await request(app).get(ADMIN_API).query({ entityType: 'CROP_REPORT_REPLY' }).set(admin.headers);
+    expect(res.status).toBe(200);
+    expect(res.body.data.flags).toEqual([
+      expect.objectContaining({ entityType: 'CROP_REPORT_REPLY', entityId: share.id, authorId: kendra.user.id, score: 1 }),
+    ]);
+
+    const detail = await request(app).get(`${ADMIN_API}/${res.body.data.flags[0].id}`).set(admin.headers);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.entity).toMatchObject({
+      id: share.id, sellerReply: 'Pay me 5000 first, then I tell the medicine',
+      seller: { id: kendra.user.id }, farmer: { id: farmer.user.id },
+    });
+    expect(detail.body.data.report).toMatchObject({ author: { id: kendra.user.id }, reporterCount: 1 });
+  });
+});
+
 describe('POST /reports — rate limit', () => {
   it('caps a user at 20 reports an hour', async () => {
     const u = await createTestUser();

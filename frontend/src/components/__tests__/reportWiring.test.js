@@ -23,8 +23,8 @@ const BACKEND_REPORTS = path.join(SRC, '..', '..', 'backend', 'src', 'services',
 const SCREENS = {
   'screens/AI/AIChatScreen.js':            ['AI_MESSAGE'],
   'screens/AI/VoiceChatScreen.js':         ['AI_VOICE_MESSAGE'],
-  'screens/AI/DiagnosisResultScreen.js':   ['AI_DIAGNOSIS'],
-  'screens/AI/PastReportScreen.js':        ['AI_DIAGNOSIS'],
+  'screens/AI/DiagnosisResultScreen.js':   ['AI_DIAGNOSIS', 'CROP_REPORT_REPLY'],
+  'screens/AI/PastReportScreen.js':        ['AI_DIAGNOSIS', 'CROP_REPORT_REPLY'],
   'screens/AnimalTrade/ChatScreen.js':     ['USER'],
   'screens/Rent/MachineryDetail.js':       ['MACHINERY_LISTING'],
   'screens/Rent/LabourDetail.js':          ['LABOUR_LISTING'],
@@ -71,6 +71,23 @@ describe('AI results carry what the farmer was shown', () => {
     const onDelta = src.slice(src.indexOf('const onDelta'), src.indexOf('const onChunk'));
     expect(onDelta).not.toMatch(/setReplyDone/);
     expect((src.match(/setReplyDone\(true\)/g) || []).length).toBe(6);
+  });
+});
+
+describe('a Krushi Kendra\'s reply to a shared crop report', () => {
+  test('scan result: Report sits in the reply box and sends the share id', () => {
+    const src = read('screens/AI/DiagnosisResultScreen.js');
+    expect(src).toMatch(/const openReplyReport = \(share\) => setReportTarget\(\{ targetType: 'CROP_REPORT_REPLY', targetId: share\.id \}\);/);
+    const box = src.slice(src.indexOf('{s.sellerReply ? ('), src.indexOf('{/* Recommended products from this seller'));
+    expect(box).toMatch(/onPress=\{\(\) => openReplyReport\(s\)\}/);
+    expect(box).toMatch(/t\('report\.titleKendraReply', 'Report this reply'\)/);
+  });
+
+  test('past report: each reply card offers Report only once there is a reply', () => {
+    const src = read('screens/AI/PastReportScreen.js');
+    expect(src).toMatch(/onReport=\{\(\) => setReportTarget\(\{ targetType: 'CROP_REPORT_REPLY', targetId: s\.id \}\)\}/);
+    const card = src.slice(src.indexOf('function KendraReplyCard'), src.indexOf('const S = StyleSheet.create'));
+    expect(card).toMatch(/\{share\.sellerReply \? \(\s*<TouchableOpacity\s+style=\{S\.replyReportLink\}\s+onPress=\{onReport\}/);
   });
 });
 

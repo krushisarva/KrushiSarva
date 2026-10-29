@@ -258,6 +258,9 @@ export default function DiagnosisResultScreen({ navigation, route }) {
       typeof immediateAction === 'string' ? immediateAction : '',
     ].filter(Boolean).join(' · '),
   });
+  // A Krushi Kendra's reply (people, not the AI, wrote it): the server reads the
+  // reply text from the share, so the share id is all it needs.
+  const openReplyReport = (share) => setReportTarget({ targetType: 'CROP_REPORT_REPLY', targetId: share.id });
 
   const loadShares = async () => {
     if (!shareReportId) return;
@@ -1879,6 +1882,16 @@ ${(() => {
                           {t('share.sku', 'Recommended product')}: {s.recommendedSku}
                         </Text>
                       ) : null}
+                      <TouchableOpacity
+                        style={D.replyReportLink}
+                        onPress={() => openReplyReport(s)}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('report.titleKendraReply', 'Report this reply')}
+                      >
+                        <Ionicons name="flag-outline" size={KICON.sm} color={KHET.mutedForeground} />
+                        <Text style={D.reportLinkTxt}>{t('report.titleKendraReply', 'Report this reply')}</Text>
+                      </TouchableOpacity>
 
                       {/* Recommended products from this seller's shop */}
                       {Array.isArray(s.recommendedProducts) && s.recommendedProducts.length > 0 ? (
@@ -2434,4 +2447,8 @@ const D = StyleSheet.create({
     minHeight: 44, marginHorizontal: KGUTTER.base, marginTop: KSPACE.s8, paddingRight: KSPACE.s12,
   },
   reportLinkTxt: { fontSize: 13, fontWeight: '600', color: KHET.mutedForeground, textDecorationLine: 'underline' },
+  replyReportLink: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: KSPACE.s6,
+    minHeight: 44, paddingRight: KSPACE.s12,
+  },
 });

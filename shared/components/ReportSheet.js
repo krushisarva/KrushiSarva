@@ -65,6 +65,7 @@ const TITLES = {
   LABOUR_LISTING:    { tKey: 'report.titleListing',    fallback: 'Report listing' },
   PRODUCT_REVIEW:    { tKey: 'report.titleReview',     fallback: 'Report review' },
   CROP_REPORT_SHARE: { tKey: 'report.titleCropReport', fallback: 'Report this crop report' },
+  CROP_REPORT_REPLY: { tKey: 'report.titleKendraReply', fallback: 'Report this reply' },
 };
 
 /**

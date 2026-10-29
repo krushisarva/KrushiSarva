@@ -69,24 +69,16 @@ POST   /upload/image
 PUT    /users/me
 ```
 
-## Known limitation: EAS Build and `../shared`
+## Cloud builds (EAS Build) and `../shared`
 
-`eas build` uploads the directory it runs in, so a cloud build from here would not
-include `../shared` and would fail to resolve `@krushisarva/shared/*`. Local runs
-(`npm start`, `expo run:android`) are unaffected — Metro reads `../shared` from disk.
+EAS Build uploads the whole git repository, not just this folder, so `../shared`
+is included and cloud builds work without any extra set-up. Run builds from this
+folder:
 
-To fix before the first cloud build, make the repo an npm workspace so EAS uploads
-the whole tree. Add a root `package.json`:
-
-```json
-{
-  "name": "krushisarva",
-  "private": true,
-  "workspaces": ["frontend", "seller-app", "shared"]
-}
+```
+npx eas build --platform android --profile preview --non-interactive
 ```
 
-then reinstall in both apps (`rm -rf node_modules && npm install` from the root) and
-add `nodeModulesPaths` entries for the hoisted root `node_modules` in both
-`metro.config.js` files. Do this when no Metro instance is running — it moves
-dependencies out of each app's own `node_modules`.
+The Expo account is on the free plan, and a failed build still uses up one of the
+month's builds. Run `npx expo export --platform android --output-dir <a temp folder>`
+first as a free check that the app bundles.

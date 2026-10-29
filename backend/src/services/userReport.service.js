@@ -2,8 +2,8 @@
  * User reports → moderation queue (Google Play UGC / AI-generated content policy).
  *
  * Anyone signed in can report an AI reply, a crop-scan result, a person, a chat
- * message, a listing, a review or a crop report a farmer shared with their Krushi
- * Seva Kendra (seller app). Reports land in the SAME queue the fraud
+ * message, a listing, a review, a crop report a farmer shared with their Krushi
+ * Seva Kendra (seller app) or that Kendra's reply (farmer app). Reports land in the SAME queue the fraud
  * signals use (ContentFlag, admin "Moderation queue"), so moderators work one
  * list. No schema change: one ContentFlag row per reported item —
  *
@@ -28,13 +28,14 @@ import prisma from '../config/db.js';
 export const REPORT_TARGET_TYPES = [
   'AI_MESSAGE', 'AI_VOICE_MESSAGE', 'AI_DIAGNOSIS',
   'USER', 'CHAT_MESSAGE', 'MACHINERY_LISTING', 'LABOUR_LISTING', 'PRODUCT_REVIEW',
-  'CROP_REPORT_SHARE',
+  'CROP_REPORT_SHARE', 'CROP_REPORT_REPLY',
 ];
 export const REPORT_REASONS = ['offensive', 'harmful_or_dangerous', 'wrong_information', 'spam_or_fraud', 'harassment', 'other'];
 
 /** Types that point at a stored row the reporter can see — an id is mandatory. */
 export const ID_REQUIRED_TYPES = [
   'USER', 'CHAT_MESSAGE', 'MACHINERY_LISTING', 'LABOUR_LISTING', 'PRODUCT_REVIEW', 'CROP_REPORT_SHARE',
+  'CROP_REPORT_REPLY',
 ];
 
 /** Animal-listing reports keep their own table and are mirrored in under this type. */
@@ -169,6 +170,29 @@ export async function resolveReportTarget({ targetType, targetId = null, reporte
         `${row.report.cropType}: ${row.report.primaryDisease}`,
         row.message ? `Note: ${row.message}` : null,
         ...(row.report.imageUrls || []).map((url) => `[image] ${url}`),
+      ].filter(Boolean).join('\n'));
+    }
+    case 'CROP_REPORT_REPLY': {
+      // The Kendra's reply to a crop report a farmer shared with it (keyed on the
+      // share). Only the farmer who owns the report sees the reply, so only they
+      // can report it — the Kendra is its author.
+      const row = await prisma.cropReportShare.findUnique({
+        where: { id: targetId },
+        select: {
+          id: true, farmerId: true, sellerId: true,
+          sellerReply: true, recommendedSku: true, fulfillmentNote: true,
+          report: { select: { userId: true, cropType: true, primaryDisease: true } },
+        },
+      });
+      if (row && row.sellerId === reporterId) throw httpError('You cannot report your own reply.', 400);
+      if (!row || row.farmerId !== reporterId || row.report.userId !== reporterId || !row.sellerReply) {
+        throw httpError('Reply not found', 404);
+      }
+      return stored(row.id, row.sellerId, [
+        `Reply to ${row.report.cropType}: ${row.report.primaryDisease}`,
+        row.sellerReply,
+        row.recommendedSku ? `Recommended product: ${row.recommendedSku}` : null,
+        row.fulfillmentNote ? `Note: ${row.fulfillmentNote}` : null,
       ].filter(Boolean).join('\n'));
     }
     case 'AI_MESSAGE':

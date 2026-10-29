@@ -52,6 +52,8 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   PRODUCT_REVIEW: 'Product review',
   // Seller app: a farmer's scan photos and note, shared with a Krushi Seva Kendra.
   CROP_REPORT_SHARE: 'Shared crop report',
+  // Farmer app: the Kendra's reply to a crop report the farmer shared.
+  CROP_REPORT_REPLY: 'Kendra reply to crop report',
   Review: 'Review (fraud signal)',
   Product: 'Product (fraud signal)',
 };

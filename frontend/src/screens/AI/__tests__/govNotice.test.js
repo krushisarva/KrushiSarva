@@ -47,3 +47,33 @@ describe('MarketScreen', () => {
     expect(read('MarketScreen.js')).toMatch(/t\('govNotice\.mandiSource',/);
   });
 });
+
+describe('MandiGlanceCard', () => {
+  const src = fs.readFileSync(
+    path.join(AI, '..', 'FarmProfile', 'components', 'MandiGlanceCard.js'),
+    'utf8',
+  );
+
+  test('names the price source and says it is not a government app', () => {
+    expect(src).toMatch(/t\('govNotice\.mandiSource',/);
+  });
+
+  test('the notice sits in the card that shows prices, not only in the loading skeleton', () => {
+    const shown = src.slice(src.indexOf('if (!best) return null;'));
+    expect(shown).toMatch(/t\('govNotice\.mandiSource',/);
+  });
+});
+
+describe('WeatherHome IMD alerts', () => {
+  const src = fs.readFileSync(path.join(AI, '..', 'Weather', 'WeatherHome.js'), 'utf8');
+  const banner = src.slice(src.indexOf('2. IMD ALERT BANNER'), src.indexOf('3. FARMING ADVISORIES'));
+  const alertList = src.slice(src.indexOf('6. WEATHER ALERTS'), src.indexOf('7. SOIL DASHBOARD'));
+
+  test('the alert banner names IMD and says KrushiSarva is not a government app', () => {
+    expect(banner).toMatch(/t\('govNotice\.imdSource'\)/);
+  });
+
+  test('the alert list carries the same notice when it holds IMD alerts', () => {
+    expect(alertList).toMatch(/alerts\.length > 0 && \(\s*<Text style=\{S\.govNote\}>\{t\('govNotice\.imdSource'\)\}/);
+  });
+});

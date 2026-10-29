@@ -12,7 +12,7 @@
 import prisma from '../config/db.js';
 
 // ── Standard task templates keyed by taskType ─────────────────────────────────
-function buildTasks(sowingDate, crop, fertSchedule, maturityDays) {
+export function buildTasks(sowingDate, crop, fertSchedule, maturityDays) {
   const d = (offsetDays) => {
     const dt = new Date(sowingDate);
     dt.setDate(dt.getDate() + offsetDays);
@@ -80,8 +80,12 @@ function buildTasks(sowingDate, crop, fertSchedule, maturityDays) {
         taskType:      i === 0 ? 'fertilizer_basal' : `fertilizer_topdress_${i}`,
         title:         `${fs.stage} — Fertilizer Application`,
         titleHi:       `${fs.stage} — खाद डालना`,
-        description:   `Apply: ${fertList}`,
-        descriptionHi: `डालें: ${fertList}`,
+        description:   fertList
+          ? `Apply: ${fertList}`
+          : 'Apply the fertilizer dose recommended for this stage. Check your soil health card or ask your Krushi Seva Kendra for the exact amount.',
+        descriptionHi: fertList
+          ? `डालें: ${fertList}`
+          : 'इस अवस्था के लिए सुझाई गई खाद की मात्रा डालें। सही मात्रा के लिए अपना मृदा स्वास्थ्य कार्ड देखें या अपने कृषि सेवा केंद्र से पूछें।',
         scheduledDate: d(fs.stageDays || (i === 0 ? 0 : 30 * i)),
         windowStart:   d((fs.stageDays || 0) - 3),
         windowEnd:     d((fs.stageDays || 0) + 5),

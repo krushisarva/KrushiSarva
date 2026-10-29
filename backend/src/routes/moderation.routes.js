@@ -124,6 +124,15 @@ async function loadFlaggedEntity(flag) {
           report: { select: { id: true, cropType: true, primaryDisease: true, imageUrls: true } },
         },
       });
+    case 'CROP_REPORT_REPLY':
+      return prisma.cropReportShare.findUnique({
+        where,
+        select: {
+          id: true, sellerReply: true, recommendedSku: true, fulfillmentNote: true, available: true,
+          status: true, repliedAt: true, farmer: USER_BRIEF, seller: USER_BRIEF,
+          report: { select: { id: true, cropType: true, primaryDisease: true } },
+        },
+      });
     case 'AI_DIAGNOSIS':
       return prisma.cropDiseaseReport.findUnique({
         where,

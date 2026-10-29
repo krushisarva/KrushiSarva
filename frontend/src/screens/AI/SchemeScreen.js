@@ -14,6 +14,9 @@ import { showPopup } from '../../utils/popup';
 // `url` is the scheme's official government portal. Only schemes with ONE
 // well-known official site carry it; the card shows no link button without it
 // (KCC is applied for at banks, PKVY through the district office).
+// The app knows nothing about a farmer's eligibility, so cards carry no
+// "Eligible" status, and `benefit` names a rupee amount only where the scheme's
+// own guidelines fix one (PM-KISAN, PKVY).
 const SCHEMES = [
   {
     id: 1,
@@ -23,7 +26,6 @@ const SCHEMES = [
     fullName: 'Pradhan Mantri Kisan Samman Nidhi',
     benefit: '₹6,000/year',
     benefitType: 'Cash Transfer',
-    status: 'eligible',
     icon: 'cash-outline',
     color: COLORS.primary,
     desc: 'Direct income support of ₹6,000/year to land-owning farmer families in 3 installments of ₹2,000.',
@@ -37,9 +39,8 @@ const SCHEMES = [
     code: 'PMFBY',
     url: 'https://pmfby.gov.in',
     fullName: 'Pradhan Mantri Fasal Bima Yojana',
-    benefit: 'Up to ₹50,000 coverage',
+    benefit: 'Low-premium crop insurance',
     benefitType: 'Crop Insurance',
-    status: 'eligible',
     icon: 'shield-checkmark-outline',
     color: COLORS.blue,
     desc: 'Comprehensive crop insurance at low premium rates. Covers yield losses due to weather, pests & diseases.',
@@ -52,9 +53,8 @@ const SCHEMES = [
     name: 'KCC',
     code: 'KCC',
     fullName: 'Kisan Credit Card',
-    benefit: 'Loan up to ₹3 lakh @ 4%',
+    benefit: 'Low-interest crop loans',
     benefitType: 'Credit',
-    status: 'eligible',
     icon: 'card-outline',
     color: COLORS.purple,
     desc: 'Short-term crop loans at 4% interest rate (after government subvention). Covers cultivation + household needs.',
@@ -70,10 +70,9 @@ const SCHEMES = [
     fullName: 'Soil Health Card Scheme',
     benefit: 'Free soil testing',
     benefitType: 'Advisory',
-    status: 'check',
     icon: 'earth-outline',
     color: COLORS.tangerine,
-    desc: 'Free soil testing every 2 years with nutrient recommendations to reduce fertilizer costs by 20–30%.',
+    desc: 'Free soil testing every 2 years with nutrient recommendations that help you apply the right amount of fertilizer.',
     eligibility: ['Any farmer with agricultural land'],
     howToApply: 'Visit nearest Krishi Vigyan Kendra or apply online at soilhealth.dac.gov.in',
     deadline: 'Rolling — check camp schedule',
@@ -85,7 +84,6 @@ const SCHEMES = [
     fullName: 'Paramparagat Krishi Vikas Yojana',
     benefit: '₹50,000/hectare for 3 yrs',
     benefitType: 'Organic Farming',
-    status: 'check',
     icon: 'leaf-outline',
     color: COLORS.primary,
     desc: 'Promotes organic farming through cluster-based approach. Covers certification, inputs, and marketing support.',
@@ -95,14 +93,7 @@ const SCHEMES = [
   },
 ];
 
-const STATUS_CONFIG = {
-  eligible: { color: COLORS.primary, tKey: 'statusEligible', icon: 'checkmark-circle' },
-  check:    { color: COLORS.amberDark, tKey: 'statusCheck',    icon: 'help-circle' },
-  applied:  { color: COLORS.blue, tKey: 'statusApplied',  icon: 'time' },
-};
-
 function SchemeCard({ scheme, onExpand, expanded, t }) {
-  const sc = STATUS_CONFIG[scheme.status];
   const heightAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -123,10 +114,6 @@ function SchemeCard({ scheme, onExpand, expanded, t }) {
         <View style={{ flex: 1 }}>
           <View style={SC.nameRow}>
             <Text style={SC.name}>{scheme.name}</Text>
-            <View style={[SC.statusBadge, { backgroundColor: `${sc.color}12` }]}>
-              <Ionicons name={sc.icon} size={10} color={sc.color} />
-              <Text style={[SC.statusText, { color: sc.color }]}>{t(`scheme.${sc.tKey}`)}</Text>
-            </View>
           </View>
           <Text style={SC.fullName} numberOfLines={1}>{scheme.fullName}</Text>
         </View>
@@ -196,8 +183,6 @@ export default function SchemeScreen({ navigation }) {
     s.benefitType.toLowerCase().includes(search.toLowerCase())
   );
 
-  const eligible = filtered.filter(s => s.status === 'eligible').length;
-
   return (
     <View style={SC.root}>
       <StatusBar barStyle="dark-content" />
@@ -211,9 +196,9 @@ export default function SchemeScreen({ navigation }) {
           <Text style={SC.headerTitle}>{t('scheme.title')}</Text>
           <Text style={SC.headerSub}>{t('scheme.subtitle')}</Text>
         </View>
-        <View style={SC.eligibleBadge} accessible>
-          <Text style={SC.eligibleCount}>{eligible}</Text>
-          <Text style={SC.eligibleLabel}>{t('scheme.eligible')}</Text>
+        <View style={SC.countBadge} accessible>
+          <Text style={SC.countValue}>{SCHEMES.length}</Text>
+          <Text style={SC.countLabel}>{t('scheme.totalSchemes')}</Text>
         </View>
       </View>
 
@@ -228,24 +213,6 @@ export default function SchemeScreen({ navigation }) {
           onChangeText={setSearch}
           accessibilityLabel={t('scheme.searchPlaceholder', 'Search schemes...')}
         />
-      </View>
-
-      {/* ── Summary chips ── */}
-      <View style={SC.summaryRow}>
-        <View style={SC.summaryChip} accessible>
-          <Text style={SC.summaryValue}>{SCHEMES.filter(s => s.status === 'eligible').length}</Text>
-          <Text style={SC.summaryLabel}>{t('scheme.eligible')}</Text>
-        </View>
-        <View style={SC.summaryChipDiv} />
-        <View style={SC.summaryChip} accessible>
-          <Text style={[SC.summaryValue, { color: COLORS.amberDark }]}>₹59,000</Text>
-          <Text style={SC.summaryLabel}>{t('scheme.maxAnnualBenefit')}</Text>
-        </View>
-        <View style={SC.summaryChipDiv} />
-        <View style={SC.summaryChip} accessible>
-          <Text style={[SC.summaryValue, { color: COLORS.blue }]}>{SCHEMES.length}</Text>
-          <Text style={SC.summaryLabel}>{t('scheme.totalSchemes')}</Text>
-        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={SC.list}>
@@ -296,9 +263,9 @@ const SC = StyleSheet.create({
   backBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   headerTitle:  { fontSize: 18, fontWeight: '900', color: COLORS.slate800 },
   headerSub:    { fontSize: 10, color: COLORS.gray350, marginTop: 1 },
-  eligibleBadge:{ marginLeft: 'auto', alignItems: 'center' },
-  eligibleCount:{ fontSize: 22, fontWeight: '900', color: COLORS.primary, lineHeight: 24 },
-  eligibleLabel:{ fontSize: 10, color: COLORS.gray350 },
+  countBadge:   { marginLeft: 'auto', alignItems: 'center' },
+  countValue:   { fontSize: 22, fontWeight: '900', color: COLORS.primary, lineHeight: 24 },
+  countLabel:   { fontSize: 10, color: COLORS.gray350 },
 
   // Search
   searchRow: {
@@ -309,20 +276,6 @@ const SC = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.slate800 },
-
-  // Summary
-  summaryRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 18, marginBottom: 14,
-    backgroundColor: COLORS.white,
-    borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
-  },
-  summaryChip:    { flex: 1, alignItems: 'center', gap: 2 },
-  summaryValue:   { fontSize: 18, fontWeight: '900', color: COLORS.primary },
-  summaryLabel:   { fontSize: 9, color: COLORS.gray350, fontWeight: '600', textAlign: 'center' },
-  summaryChipDiv: { width: 1, height: 28, backgroundColor: 'rgba(0,0,0,0.06)' },
 
   // Scheme card
   list: { paddingHorizontal: 18, paddingBottom: 48, gap: 10 },
@@ -343,8 +296,6 @@ const SC = StyleSheet.create({
   nameRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   name:       { fontSize: 15, fontWeight: '800', color: COLORS.slate800 },
   fullName:   { fontSize: 11, color: COLORS.gray350, marginTop: 2 },
-  statusBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  statusText: { fontSize: 10, fontWeight: '700' },
   benefitRow: { flexDirection: 'row' },
   benefit:    {
     backgroundColor: COLORS.background, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,

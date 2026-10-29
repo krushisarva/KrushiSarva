@@ -553,6 +553,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                 {visibleAlerts[0].title}
               </Text>
               <Text style={S.alertDesc} numberOfLines={2}>{visibleAlerts[0].description}</Text>
+              <Text style={S.govNote}>{t('govNotice.imdSource')}</Text>
             </View>
             <TouchableOpacity onPress={() => setDismissed(true)} accessibilityRole="button" accessibilityLabel={t('close', 'Close')}>
               <Ionicons name="close" size={18} color={COLORS.textMedium} />
@@ -665,6 +666,9 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                     </View>
                   );
                 })
+              )}
+              {alerts.length > 0 && (
+                <Text style={S.govNote}>{t('govNotice.imdSource')}</Text>
               )}
             </View>
           );
@@ -969,6 +973,7 @@ const S = StyleSheet.create({
   alertBody:  { flex: 1 },
   alertTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
   alertDesc:  { fontSize: 11, color: COLORS.textMedium, lineHeight: 15 },
+  govNote:    { fontSize: 10, color: COLORS.textMedium, lineHeight: 14, marginTop: 4 },
 
   // ── Section
   section: { marginTop: 18, marginHorizontal: 16 },

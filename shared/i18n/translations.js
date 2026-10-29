@@ -2354,6 +2354,7 @@ export const translations = {
       titleResult: 'Report this result',
       titleReview: 'Report review',
       titleCropReport: 'Report this crop report',
+      titleKendraReply: 'Report this reply',
       titleUser: 'Report user',
       tooMany: 'You have sent many reports in a short time. Please try again later.',
       tryAgain: 'Please try again.',
@@ -2390,6 +2391,7 @@ export const translations = {
     govNotice: {
       schemes: 'KrushiSarva is not affiliated with any government body. Scheme details here are short summaries and may be out of date; always confirm on the official government portal before applying.',
       mandiSource: 'Prices from data.gov.in (Agmarknet). KrushiSarva is not a government app and is not affiliated with any government body.',
+      imdSource: 'Weather alerts from IMD (India Meteorological Department). KrushiSarva is not a government app and is not affiliated with any government body.',
       officialWebsite: 'Official website',
       openFailed: 'Open {{url}} in your phone browser.',
     },
@@ -4972,6 +4974,7 @@ export const translations = {
       titleResult: 'इस नतीजे की शिकायत करें',
       titleReview: 'समीक्षा की शिकायत करें',
       titleCropReport: 'इस फसल रिपोर्ट की शिकायत करें',
+      titleKendraReply: 'केंद्र के इस जवाब की शिकायत करें',
       titleUser: 'व्यक्ति की शिकायत करें',
       tooMany: 'आपने कम समय में बहुत सारी शिकायतें भेजी हैं। कृपया थोड़ी देर बाद फिर कोशिश करें।',
       tryAgain: 'कृपया फिर कोशिश करें।',
@@ -5006,6 +5009,7 @@ export const translations = {
     govNotice: {
       schemes: 'KrushiSarva किसी भी सरकारी संस्था से जुड़ा नहीं है। यहां योजनाओं की जानकारी संक्षेप में दी गई है और पुरानी हो सकती है। आवेदन करने से पहले हमेशा आधिकारिक सरकारी पोर्टल पर जानकारी पक्की कर लें।',
       mandiSource: 'भाव data.gov.in (Agmarknet) से लिए गए हैं। KrushiSarva सरकारी ऐप नहीं है और किसी भी सरकारी संस्था से जुड़ा नहीं है।',
+      imdSource: 'मौसम की चेतावनियाँ IMD (भारत मौसम विज्ञान विभाग) से ली गई हैं। KrushiSarva सरकारी ऐप नहीं है और किसी भी सरकारी संस्था से जुड़ा नहीं है।',
       officialWebsite: 'आधिकारिक वेबसाइट',
       openFailed: '{{url}} को अपने फ़ोन के ब्राउज़र में खोलें।',
     },
@@ -7622,6 +7626,7 @@ export const translations = {
       titleResult: 'या निकालाची तक्रार करा',
       titleReview: 'अभिप्रायाची तक्रार करा',
       titleCropReport: 'या पीक अहवालाची तक्रार करा',
+      titleKendraReply: 'केंद्राच्या या उत्तराची तक्रार करा',
       titleUser: 'व्यक्तीची तक्रार करा',
       tooMany: 'तुम्ही कमी वेळात खूप तक्रारी पाठवल्या आहेत. कृपया थोड्या वेळाने पुन्हा प्रयत्न करा.',
       tryAgain: 'कृपया पुन्हा प्रयत्न करा.',
@@ -7656,6 +7661,7 @@ export const translations = {
     govNotice: {
       schemes: 'KrushiSarva कोणत्याही सरकारी संस्थेशी संबंधित नाही. येथे योजनांची माहिती थोडक्यात दिली आहे आणि ती जुनी असू शकते. अर्ज करण्यापूर्वी नेहमी अधिकृत सरकारी पोर्टलवर माहितीची खात्री करा.',
       mandiSource: 'भाव data.gov.in (Agmarknet) वरून घेतले आहेत. KrushiSarva हे सरकारी ॲप नाही आणि कोणत्याही सरकारी संस्थेशी संबंधित नाही.',
+      imdSource: 'हवामानाचे इशारे IMD (भारतीय हवामान विभाग) कडून घेतले आहेत. KrushiSarva हे सरकारी ॲप नाही आणि कोणत्याही सरकारी संस्थेशी संबंधित नाही.',
       officialWebsite: 'अधिकृत वेबसाइट',
       openFailed: '{{url}} तुमच्या फोनच्या ब्राउझरमध्ये उघडा.',
     },

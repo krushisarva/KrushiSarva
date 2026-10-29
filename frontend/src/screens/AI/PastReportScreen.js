@@ -483,7 +483,14 @@ export default function PastReportScreen({ navigation, route }) {
             more nearby Kendras, surface their reply, stock status and how the
             farmer can get the product (collect vs. home delivery). */}
         {Array.isArray(row.shares) && row.shares.length > 0
-          ? row.shares.map((s) => <KendraReplyCard key={s.id} share={s} t={t} />)
+          ? row.shares.map((s) => (
+            <KendraReplyCard
+              key={s.id}
+              share={s}
+              t={t}
+              onReport={() => setReportTarget({ targetType: 'CROP_REPORT_REPLY', targetId: s.id })}
+            />
+          ))
           : null}
       </ScrollView>
 
@@ -542,7 +549,7 @@ function BulletList({ title, items, accent }) {
 
 // One Krushi Kendra's response to a shared report: shop name, reply status,
 // stock availability, fulfillment mode, the dosage note and recommended SKU.
-function KendraReplyCard({ share, t }) {
+function KendraReplyCard({ share, t, onReport }) {
   const seller    = share.seller || {};
   const replied   = share.status === 'REPLIED';
   const available = !!share.available;
@@ -611,6 +618,19 @@ function KendraReplyCard({ share, t }) {
           {share.repliedAt ? (
             <Text style={[S.kendraLoc, { marginTop: 8 }]}>{formatDate(share.repliedAt)}</Text>
           ) : null}
+
+          {share.sellerReply ? (
+            <TouchableOpacity
+              style={S.replyReportLink}
+              onPress={onReport}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('report.titleKendraReply', 'Report this reply')}
+            >
+              <Ionicons name="flag-outline" size={15} color={COLORS.textMedium} />
+              <Text style={S.reportLinkTxt}>{t('report.titleKendraReply', 'Report this reply')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </>
       ) : (
         <Text style={[S.bodyTxt, { marginTop: 8 }]}>
@@ -674,6 +694,7 @@ const S = StyleSheet.create({
   // 44dp tall so a quiet link is still an easy tap.
   reportLink:      { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 44, marginHorizontal: 16, marginBottom: 14, paddingRight: 12 },
   reportLinkTxt:   { fontSize: 13, fontWeight: '600', color: COLORS.textMedium, textDecorationLine: 'underline' },
+  replyReportLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 44, marginTop: 4, paddingRight: 12 },
 
   // Native-language strips (report.local_blocks). Indic scripts need the extra
   // line-height so Devanagari matras and Tamil/Malayalam loops don't clip.
