@@ -966,7 +966,7 @@ export default {
     surface01cm: 'পৃষ্ঠতল 0\u20131cm',
     etDescription: 'ফসল + মাটি থেকে বায়ুমণ্ডলে জলের ক্ষতি',
     gddDescription: 'গ্রোয়িং ডিগ্রি ডেজ (GDD) \u2014 ফসল বিকাশের হার',
-    combinedForecast: '\u26A1 সম্মিলিত পূর্বাভাস: Open-Meteo + IMD',
+    combinedForecast: 'পূর্বাভাস: Open-Meteo · সতর্কতা: IMD',
     thunderstormWarning: 'বজ্রঝড় সতর্কতা', heavyRainWarning: 'ভারী বৃষ্টি সতর্কতা',
     rainExpected: 'বৃষ্টি প্রত্যাশিত', strongWindWarning: 'প্রবল বাতাস সতর্কতা',
     highUvIndex: 'উচ্চ UV সূচক', farmingAdvisories: 'কৃষি পরামর্শ',

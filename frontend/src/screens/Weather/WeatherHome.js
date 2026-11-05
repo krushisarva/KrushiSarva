@@ -69,6 +69,21 @@ function generateWeatherAlerts(daily, imdAlerts, lang, t) {
   const list = [];
   const hi = lang === 'hi';
 
+  // Official IMD warnings first, so the 3-item cap never hides them behind the
+  // app's own forecast alerts. `source: 'imd'` drives the "from IMD" notice:
+  // only IMD rows may be credited to IMD (Play misleading-claims rule).
+  for (const a of (imdAlerts || [])) {
+    list.push({
+      source:   'imd',
+      color:    a.severity === 'high' ? 'red' : a.severity === 'medium' ? 'orange' : 'yellow',
+      severity: a.severity === 'high' ? 'HIGH' : a.severity === 'medium' ? 'MED' : 'LOW',
+      icon:     'warning-outline',
+      title:    a.title,
+      day:      'IMD',
+      desc:     a.description,
+    });
+  }
+
   for (const day of (daily || [])) {
     // Thunderstorm (WMO 95–99)
     if (day.weatherCode >= 95) {
@@ -123,18 +138,6 @@ function generateWeatherAlerts(daily, imdAlerts, lang, t) {
         desc:  t('weatherHome.alertUvDesc', { date: day.dateLabel, uv: day.uvIndexMax }),
       });
     }
-  }
-
-  // Append IMD alerts (already fetched by backend)
-  for (const a of (imdAlerts || [])) {
-    list.push({
-      color:    a.severity === 'high' ? 'red' : a.severity === 'medium' ? 'orange' : 'yellow',
-      severity: a.severity === 'high' ? 'HIGH' : a.severity === 'medium' ? 'MED' : 'LOW',
-      icon:     'warning-outline',
-      title:    a.title,
-      day:      'IMD',
-      desc:     a.description,
-    });
   }
 
   return list.slice(0, 3);
@@ -667,7 +670,7 @@ export default function WeatherHome({ navigation, embeddedInHub }) {
                   );
                 })
               )}
-              {alerts.length > 0 && (
+              {wxAlerts.some((a) => a.source === 'imd') && (
                 <Text style={S.govNote}>{t('govNotice.imdSource')}</Text>
               )}
             </View>

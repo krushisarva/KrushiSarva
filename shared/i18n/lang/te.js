@@ -966,7 +966,7 @@ export default {
     surface01cm: 'ఉపరితలం 0\u20131cm',
     etDescription: 'పంట + నేల నుండి వాతావరణానికి నీటి నష్టం',
     gddDescription: 'పెరుగుదల డిగ్రీ రోజులు (GDD) \u2014 పంట అభివృద్ధి రేటు',
-    combinedForecast: '\u26A1 సంయుక్త సూచన: Open-Meteo + IMD',
+    combinedForecast: 'సూచన: Open-Meteo · హెచ్చరికలు: IMD',
     thunderstormWarning: 'ఉరుముల హెచ్చరిక', heavyRainWarning: 'భారీ వర్షం హెచ్చరిక',
     rainExpected: 'వర్షం ఆశించబడుతోంది', strongWindWarning: 'బలమైన గాలి హెచ్చరిక',
     highUvIndex: 'అధిక UV సూచిక', farmingAdvisories: 'వ్యవసాయ సలహాలు',

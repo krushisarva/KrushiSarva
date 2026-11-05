@@ -513,7 +513,7 @@ def validate_advice_text(text: str, *, state: str | None = None) -> TextValidati
     + Telugu spellings of at least chlorpyrifos, monocrotophos, endosulfan and
     imidacloprid) plus an Indic-aware tokeniser — see _ADVICE_WORD. Until that
     ships, the only thing keeping actives in Latin is the instruction in
-    agents/prompts/chat_rules.v1.md — a prompt, not a gate. Chat/voice is the
+    agents/prompts/chat_rules.v2.md — a prompt, not a gate. Chat/voice is the
     surface with no other validator behind it, so this is the known hole, and it
     is a known hole rather than a covered case.
     """

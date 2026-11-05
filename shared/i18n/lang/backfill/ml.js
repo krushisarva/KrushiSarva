@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 871 keys.
+// 870 keys.
 
 export default {
   "aiChat.attachHint": "വേഗത്തിലുള്ള രോഗനിർണയത്തിന് നിങ്ങളുടെ വിളയുടെ ഫോട്ടോ പങ്കിടുക.",
@@ -175,7 +175,7 @@ export default {
   "diagReport.humidity": "ഈർപ്പം",
   "diagReport.irrigation": "ജലസേചനം",
   "diagReport.kisanCallCentre": "കിസാൻ കോൾ സെന്റർ:",
-  "diagReport.kvkLocator": "KVK ലൊക്കേറ്റർ:",
+  "diagReport.kvkIcar": "കൃഷി വിജ്ഞാന കേന്ദ്രങ്ങൾ (ICAR):",
   "diagReport.labSub": "AI വിള ആരോഗ്യ ഉപദേശം",
   "diagReport.labTag": "AI സഹായത്തോടെയുള്ള വിള ആരോഗ്യ രോഗനിർണയ സേവനം",
   "diagReport.language": "ഭാഷ:",
@@ -198,7 +198,6 @@ export default {
   "diagReport.perAcre": "ഒരു ഏക്കറിന്",
   "diagReport.phone": "ഫോൺ",
   "diagReport.pipelineLatency": "പൈപ്പ്‌ലൈൻ ലേറ്റൻസി",
-  "diagReport.plantHelpline": "പ്ലാന്റ് ഹെൽപ്പ്‌ലൈൻ:",
   "diagReport.predisposingFactors": "അനുകൂല ഘടകങ്ങൾ",
   "diagReport.presentsWith": "<b>{{disease}}</b> രോഗത്തിന് അനുയോജ്യമായ ലക്ഷണങ്ങൾ കാണിക്കുന്നു.",
   "diagReport.preventiveMeasures": "പ്രതിരോധ നടപടികൾ (അടുത്ത സീസൺ)",

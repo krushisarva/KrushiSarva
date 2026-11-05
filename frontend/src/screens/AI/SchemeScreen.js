@@ -11,9 +11,11 @@ import { COLORS } from '@krushisarva/shared/constants/colors';
 import { showPopup } from '../../utils/popup';
 
 
-// `url` is the scheme's official government portal. Only schemes with ONE
-// well-known official site carry it; the card shows no link button without it
-// (KCC is applied for at banks, PKVY through the district office).
+// `url` is the scheme's official government source. Every scheme needs one,
+// and it must be the SAME link the Play store description lists under
+// "SOURCES OF GOVERNMENT INFORMATION" (docs/play-store/farmer-app.md); Google
+// rejected the app when the two differed. Each link must also load outside
+// India, because Play reviewers test from abroad (pmkisan.gov.in does not).
 // The app knows nothing about a farmer's eligibility, so cards carry no
 // "Eligible" status, and `benefit` names a rupee amount only where the scheme's
 // own guidelines fix one (PM-KISAN, PKVY).
@@ -22,7 +24,7 @@ const SCHEMES = [
     id: 1,
     name: 'PM-KISAN',
     code: 'PMKISAN',
-    url: 'https://pmkisan.gov.in',
+    url: 'https://www.myscheme.gov.in/schemes/pm-kisan',
     fullName: 'Pradhan Mantri Kisan Samman Nidhi',
     benefit: '₹6,000/year',
     benefitType: 'Cash Transfer',
@@ -37,7 +39,7 @@ const SCHEMES = [
     id: 2,
     name: 'PMFBY',
     code: 'PMFBY',
-    url: 'https://pmfby.gov.in',
+    url: 'https://www.myscheme.gov.in/schemes/pmfby',
     fullName: 'Pradhan Mantri Fasal Bima Yojana',
     benefit: 'Low-premium crop insurance',
     benefitType: 'Crop Insurance',
@@ -52,6 +54,7 @@ const SCHEMES = [
     id: 3,
     name: 'KCC',
     code: 'KCC',
+    url: 'https://www.myscheme.gov.in/schemes/kcc',
     fullName: 'Kisan Credit Card',
     benefit: 'Low-interest crop loans',
     benefitType: 'Credit',
@@ -66,7 +69,7 @@ const SCHEMES = [
     id: 4,
     name: 'Soil Health Card',
     code: 'NMSA-SHC',
-    url: 'https://soilhealth.dac.gov.in',
+    url: 'https://www.myscheme.gov.in/schemes/rkvyshfshc',
     fullName: 'Soil Health Card Scheme',
     benefit: 'Free soil testing',
     benefitType: 'Advisory',
@@ -74,13 +77,14 @@ const SCHEMES = [
     color: COLORS.tangerine,
     desc: 'Free soil testing every 2 years with nutrient recommendations that help you apply the right amount of fertilizer.',
     eligibility: ['Any farmer with agricultural land'],
-    howToApply: 'Visit nearest Krishi Vigyan Kendra or apply online at soilhealth.dac.gov.in',
+    howToApply: 'Visit your nearest Krishi Vigyan Kendra or Block Agriculture Office.',
     deadline: 'Rolling — check camp schedule',
   },
   {
     id: 5,
     name: 'PKVY',
     code: 'SMAM',
+    url: 'https://www.myscheme.gov.in/schemes/pkvy',
     fullName: 'Paramparagat Krishi Vikas Yojana',
     benefit: '₹50,000/hectare for 3 yrs',
     benefitType: 'Organic Farming',
@@ -147,6 +151,14 @@ function SchemeCard({ scheme, onExpand, expanded, t }) {
             <Ionicons name="calendar-outline" size={12} color={COLORS.grayMedium} />
             <Text style={SC.deadlineText}>{scheme.deadline}</Text>
           </View>
+
+          {/* Name the source in plain text too, so the farmer (and a Play
+              reviewer) can see where the summary comes from without tapping. */}
+          {scheme.url ? (
+            <Text style={SC.sourceText} selectable>
+              {t('govNotice.source', { url: scheme.url, defaultValue: 'Source: {{url}}' })}
+            </Text>
+          ) : null}
 
           {scheme.url ? (
             <TouchableOpacity
@@ -315,6 +327,7 @@ const SC = StyleSheet.create({
   applyText:   { fontSize: 13, color: COLORS.textMedium, lineHeight: 19 },
   deadlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   deadlineText:{ fontSize: 11, color: COLORS.gray350 },
+  sourceText:  { fontSize: 11, color: COLORS.textMedium, lineHeight: 16 },
   applyBtn:    {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: 10, paddingVertical: 11, marginTop: 4,

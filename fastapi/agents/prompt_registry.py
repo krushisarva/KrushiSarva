@@ -59,7 +59,14 @@ ACTIVE_VERSIONS: dict[str, str | dict[str, float]] = {
     "chat_writer":    "v1",
     "chat_enhancer":  "v1",
     "chat_vision":    "v1",
-    "chat_rules":     "v1",
+    # v2 adds the Google Play government-information rules (private app, not a
+    # government one; no eligibility verdicts) and the ONLY official sources the
+    # chat may link or name. That source list is the one copy in the backend;
+    # everything in it must also be in docs/play-store/farmer-app.md
+    # "SOURCES OF GOVERNMENT INFORMATION", and tests/test_chat_gov_sources.py
+    # fails when the two drift. Change both together, as a new chat_rules
+    # version.
+    "chat_rules":     "v2",
     "chat_followups": "v1",
     "chat_clarify":   "v1",
 }
