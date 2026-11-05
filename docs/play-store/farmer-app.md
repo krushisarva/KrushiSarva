@@ -63,9 +63,15 @@ KrushiSarva
 AI crop doctor, mandi prices, weather, farm shop, animal trade and rentals
 ```
 
-**Full description** (2386 of 4000 characters):
+**Full description** (3973 of 4000 characters). Rewritten on 1 November 2026 after Google rejected the first version under the Misleading Claims policy: the "not a government app" disclaimer must be at the top, and every kind of government information in the app needs an official, working source link. Do not move the disclaimer down or drop a source.
+
+Sources rewritten again on 5 November 2026 after the second rejection ("Insufficient Sources Provided"). The reviewer tapped PM-KISAN's "Official website" in the app: it opened pmkisan.gov.in, which the description did not list and which does not load outside India. Rules now:
+- Every government link the app opens must appear in the list below, character for character. `frontend/src/screens/AI/__tests__/govNotice.test.js` fails if it does not.
+- In-app links must load outside India (Play reviewers test from abroad). Checked on 5 November 2026 from servers in the United States, United Kingdom, Germany, Netherlands, Singapore, Japan and Brazil: the myscheme.gov.in pages, mausam.imd.gov.in, city.imd.gov.in, icar.org.in and enam.gov.in load. pmkisan.gov.in, pmfby.gov.in, soilhealth.dac.gov.in, agmarknet.gov.in, data.gov.in, cacp.da.gov.in, agriwelfare.gov.in and ppqs.gov.in are blocked or time out; kvk.icar.gov.in and services.india.gov.in no longer exist.
 
 ```text
+IMPORTANT: KrushiSarva is a private app. It is NOT a government app, it does not represent any government entity, and it is not affiliated with or endorsed by any government body. Government information shown in the app (mandi prices, minimum support prices, weather alerts and scheme summaries) comes from the official public sources listed at the end of this description.
+
 KrushiSarva puts the everyday tools a farmer needs into one app: an AI crop doctor, mandi prices, weather, a farm shop, animal trade, machinery and labour on rent, and simple farm records.
 
 KRUSHI INTELLIGENCE (AI)
@@ -77,10 +83,10 @@ KRUSHI INTELLIGENCE (AI)
 There is no charge for the AI tools; a monthly fair-use limit applies. AI answers can be wrong. Check with a local agriculture expert before you spray or spend money.
 
 MANDI PRICES
-See today's crop prices in the markets of your state and district. Prices come from data.gov.in (Agmarknet).
+See today's crop prices in the markets of your state and district, with minimum support prices for comparison.
 
 WEATHER
-Hourly and 7-day forecast for your location, with farming advice, rain and wind, and soil temperature and moisture.
+Hourly and 7-day forecast for your location, with farming advice, rain and wind, soil temperature and moisture, and weather alerts.
 
 FARM SHOP
 Buy seeds, fertilisers, pesticides and tools from local sellers such as Krushi Seva Kendras that deliver to your district and PIN code. Pay cash on delivery, or online where available. Follow your order and rate what you bought. Sellers in the shop are in Maharashtra for now.
@@ -96,14 +102,30 @@ Add your farms and crops. Record land preparation, sowing, irrigation, spraying,
 
 ALSO IN THE APP
 • Main crops and growing guides for 22 states
-• Short summaries of major government schemes for farmers, with links to their official websites
+• Short summaries of major government schemes for farmers, with links to their official websites. Scheme details are summaries; always confirm on the official website before you apply.
 
 LANGUAGES
 English, हिन्दी and मराठी.
 
 Sign in with your mobile number and a one-time SMS code.
 
-KrushiSarva is not a government app and is not affiliated with or endorsed by any government body. Scheme details are summaries; always confirm on the official website before you apply.
+SOURCES OF GOVERNMENT INFORMATION (official websites)
+Each scheme card in the app opens the same link shown here.
+• PM-KISAN: https://www.myscheme.gov.in/schemes/pm-kisan
+• PM Fasal Bima Yojana (crop insurance): https://www.myscheme.gov.in/schemes/pmfby
+• Kisan Credit Card: https://www.myscheme.gov.in/schemes/kcc
+• Soil Health Card: https://www.myscheme.gov.in/schemes/rkvyshfshc
+• Paramparagat Krishi Vikas Yojana: https://www.myscheme.gov.in/schemes/pkvy
+• Weather alerts: India Meteorological Department – https://mausam.imd.gov.in and https://city.imd.gov.in
+• Krishi Vigyan Kendras (soil testing, farm advice): ICAR – https://icar.org.in/en/krishi-vigyan-kendras
+• National Agriculture Market (eNAM): https://enam.gov.in
+• Kisan Call Centre (farmer helpline): 1800-180-1551, Department of Agriculture and Farmers Welfare – https://agriwelfare.gov.in
+• Mandi prices: Agmarknet, Government of India – https://agmarknet.gov.in, via the Open Government Data Platform India – https://data.gov.in
+• Minimum support prices: Commission for Agricultural Costs and Prices – https://cacp.da.gov.in
+Note: agmarknet.gov.in, data.gov.in, cacp.da.gov.in and agriwelfare.gov.in open only from inside India.
+
+OTHER DATA SOURCES (not government)
+• Weather forecasts: Open-Meteo – https://open-meteo.com
 ```
 
 **Graphics**

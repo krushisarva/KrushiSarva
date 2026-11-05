@@ -888,13 +888,12 @@ body{font-family:Georgia,'Times New Roman',serif;color:#1c2526;line-height:1.5;f
     <div class="stamp"><div><b>${t('diagReport.verified')}</b>KRUSHISARVA AI<br/>v${esc(sysMeta.version || '2.4.1')}</div></div>
     <div class="sig-row">
       <div class="sig"><b>Krushi Drishti</b><span>${t('diagReport.diagnosingPathologist')}</span></div>
-      <div class="sig"><b>${esc(farmCtx.district ? `KVK ${farmCtx.district}` : t('diagReport.localAgronomist'))}</b><span>${t('diagReport.reviewingAuthority')}</span></div>
+      <div class="sig"><b>${esc(t('diagReport.localAgronomist'))}</b><span>${t('diagReport.reviewingAuthority')}</span></div>
       <div class="sig"><b>${esc(farmerName || t('diagReport.farmer'))}</b><span>${t('diagReport.recipient')}</span></div>
     </div>
     <div class="helpline">
       <div>\u{1F4DE} ${t('diagReport.kisanCallCentre')} <b>1800-180-1551</b></div>
-      <div>\u{1F310} ${t('diagReport.kvkLocator')} <b>kvk.icar.gov.in</b></div>
-      <div>\u{1F6A8} ${t('diagReport.plantHelpline')} <b>1551</b></div>
+      <div>\u{1F310} ${t('diagReport.kvkIcar')} <b>https://icar.org.in/en/krishi-vigyan-kendras</b></div>
     </div>
     <div class="disclaimer">
       ${esc(disclaimerEn)}

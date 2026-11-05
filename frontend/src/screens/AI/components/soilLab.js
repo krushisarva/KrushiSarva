@@ -1,14 +1,17 @@
 /**
- * soilLab — open the official Government of India "Locate Soil Testing
- * Laboratory" service. There is no public API for this, so we deep-link the
- * farmer to the authoritative locator (always up to date, zero data upkeep).
+ * soilLab — open ICAR's official list of Krishi Vigyan Kendras, which test
+ * soil for farmers. There is no public lab-finder API, so we deep-link.
+ *
+ * The old target, services.india.gov.in's "Locate Soil Testing Laboratory",
+ * no longer exists (the domain stopped resolving), and soilhealth.dac.gov.in
+ * is blocked outside India, where Play reviewers test. This link must stay in
+ * the store description's source list (docs/play-store/farmer-app.md); a
+ * test in __tests__/govNotice.test.js enforces that.
  */
 import { Linking } from 'react-native';
 import { showPopup } from '../../../utils/popup';
 
-// National Government Services Portal — locate soil testing laboratory.
-const SOIL_LAB_LOCATOR_URL =
-  'https://services.india.gov.in/service/detail/locate-soil-testing-laboratory';
+const SOIL_LAB_LOCATOR_URL = 'https://icar.org.in/en/krishi-vigyan-kendras';
 
 /**
  * Open the locator in the device browser.

@@ -966,7 +966,7 @@ export default {
     surface01cm: 'સપાટી 0\u20131cm',
     etDescription: 'પાક + જમીનમાંથી વાતાવરણમાં પાણીનું નુકસાન',
     gddDescription: 'ગ્રોઇંગ ડિગ્રી ડેઝ (GDD) \u2014 પાક વિકાસ દર',
-    combinedForecast: '\u26A1 સંયુક્ત આગાહી: Open-Meteo + IMD',
+    combinedForecast: 'આગાહી: Open-Meteo · ચેતવણી: IMD',
     thunderstormWarning: 'વાવાઝોડું ચેતવણી', heavyRainWarning: 'ભારે વરસાદ ચેતવણી',
     rainExpected: 'વરસાદ અપેક્ષિત', strongWindWarning: 'તીવ્ર પવન ચેતવણી',
     highUvIndex: 'ઊંચો UV ઇન્ડેક્સ', farmingAdvisories: 'ખેતી સલાહ',

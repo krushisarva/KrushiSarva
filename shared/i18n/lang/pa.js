@@ -966,7 +966,7 @@ export default {
     surface01cm: 'ਸਤ੍ਹਾ 0\u20131cm',
     etDescription: 'ਫ਼ਸਲ + ਮਿੱਟੀ ਤੋਂ ਵਾਯੂਮੰਡਲ ਵਿੱਚ ਪਾਣੀ ਦਾ ਨੁਕਸਾਨ',
     gddDescription: 'ਗ੍ਰੋਇੰਗ ਡਿਗਰੀ ਡੇਜ਼ (GDD) \u2014 ਫ਼ਸਲ ਵਿਕਾਸ ਦਰ',
-    combinedForecast: '\u26A1 ਸੰਯੁਕਤ ਭਵਿੱਖਬਾਣੀ: Open-Meteo + IMD',
+    combinedForecast: 'ਭਵਿੱਖਬਾਣੀ: Open-Meteo · ਚੇਤਾਵਨੀਆਂ: IMD',
     thunderstormWarning: 'ਤੂਫ਼ਾਨ ਚੇਤਾਵਨੀ', heavyRainWarning: 'ਭਾਰੀ ਮੀਂਹ ਚੇਤਾਵਨੀ',
     rainExpected: 'ਮੀਂਹ ਦੀ ਸੰਭਾਵਨਾ', strongWindWarning: 'ਤੇਜ਼ ਹਵਾ ਚੇਤਾਵਨੀ',
     highUvIndex: 'ਉੱਚ UV ਪੱਧਰ', farmingAdvisories: 'ਖੇਤੀ ਸਲਾਹ',

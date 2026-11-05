@@ -32,6 +32,16 @@ describe('SchemeScreen', () => {
     }
   });
 
+  test('every scheme has an official source link', () => {
+    const schemes = [...src.matchAll(/^\s*code:\s*'/gm)].length;
+    expect(schemes).toBeGreaterThan(0);
+    expect(urls).toHaveLength(schemes);
+  });
+
+  test('each card names its source in plain text', () => {
+    expect(src).toMatch(/t\('govNotice\.source', \{ url: scheme\.url/);
+  });
+
   test('the link button opens the scheme portal', () => {
     expect(src).toMatch(/Linking\.openURL\(scheme\.url\)/);
   });
@@ -39,6 +49,32 @@ describe('SchemeScreen', () => {
   test('a link that cannot open shows the address instead of doing nothing', () => {
     expect(src).not.toMatch(/openURL\(scheme\.url\)\.catch\(\(\) => \{\}\)/);
     expect(src).toMatch(/t\('govNotice\.openFailed', \{ url: scheme\.url/);
+  });
+});
+
+// Google rejected the app (Misleading Claims, "Insufficient Sources Provided")
+// when the PM-KISAN button opened a site the store description did not list.
+// Every government link the app opens must appear in the description's
+// "SOURCES OF GOVERNMENT INFORMATION" list in docs/play-store/farmer-app.md.
+describe('in-app government links match the Play store description', () => {
+  const doc = fs.readFileSync(
+    path.join(AI, '..', '..', '..', '..', 'docs', 'play-store', 'farmer-app.md'),
+    'utf8',
+  );
+  const start = doc.indexOf('SOURCES OF GOVERNMENT INFORMATION');
+  const sources = doc.slice(start, doc.indexOf('```', start));
+  const appLinks = [
+    ...[...read('SchemeScreen.js').matchAll(/^\s*url:\s*'([^']*)'/gm)].map((m) => m[1]),
+    ...[...read(path.join('components', 'soilLab.js')).matchAll(/'(https:\/\/[^']+)'/g)].map((m) => m[1]),
+  ];
+
+  test('the description has a sources list', () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(appLinks.length).toBeGreaterThan(1);
+  });
+
+  test.each(appLinks)('%s is listed as a source', (url) => {
+    expect(sources).toContain(url);
   });
 });
 
@@ -73,7 +109,21 @@ describe('WeatherHome IMD alerts', () => {
     expect(banner).toMatch(/t\('govNotice\.imdSource'\)/);
   });
 
-  test('the alert list carries the same notice when it holds IMD alerts', () => {
-    expect(alertList).toMatch(/alerts\.length > 0 && \(\s*<Text style=\{S\.govNote\}>\{t\('govNotice\.imdSource'\)\}/);
+  test('the alert list credits IMD only when an IMD alert is on screen', () => {
+    expect(alertList).toMatch(/wxAlerts\.some\(\(a\) => a\.source === 'imd'\) && \(\s*<Text style=\{S\.govNote\}>\{t\('govNotice\.imdSource'\)\}/);
+  });
+
+  test('IMD warnings come before the app\'s own forecast alerts, so the 3-item cap cannot hide them', () => {
+    const gen = src.slice(src.indexOf('function generateWeatherAlerts'), src.indexOf('return list.slice(0, 3)'));
+    expect(gen.indexOf("source:   'imd'")).toBeGreaterThan(-1);
+    expect(gen.indexOf("source:   'imd'")).toBeLessThan(gen.indexOf('for (const day of (daily'));
+  });
+});
+
+describe('CropDetail market tips', () => {
+  test('names the official MSP source under the market tips', () => {
+    const src = fs.readFileSync(path.join(AI, '..', 'Weather', 'CropDetail.js'), 'utf8');
+    const market = src.slice(src.indexOf('guide.marketTips}</Text>'), src.indexOf('guide.dosDonts?.length'));
+    expect(market).toMatch(/t\('cropGuide\.marketSource',/);
   });
 });

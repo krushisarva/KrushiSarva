@@ -1107,7 +1107,7 @@ export default {
     surface01cm: 'மேற்பரப்பு 0\u20131cm',
     etDescription: 'பயிர் + மண்ணிலிருந்து வளிமண்டலத்திற்கு நீர் இழப்பு',
     gddDescription: 'வளர்ச்சி டிகிரி நாட்கள் (GDD) \u2014 பயிர் வளர்ச்சி விகிதம்',
-    combinedForecast: '\u26A1 ஒருங்கிணைந்த முன்னறிவிப்பு: Open-Meteo + IMD',
+    combinedForecast: 'முன்னறிவிப்பு: Open-Meteo · எச்சரிக்கைகள்: IMD',
     thunderstormWarning: 'இடி மின்னல் எச்சரிக்கை', heavyRainWarning: 'கனமழை எச்சரிக்கை',
     rainExpected: 'மழை எதிர்பார்க்கப்படுகிறது', strongWindWarning: 'பலத்த காற்று எச்சரிக்கை',
     highUvIndex: 'அதிக UV குறியீடு', farmingAdvisories: 'விவசாய ஆலோசனைகள்',

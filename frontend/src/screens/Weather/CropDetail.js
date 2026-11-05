@@ -184,6 +184,11 @@ export default function CropDetail({ route }) {
             {!!guide.marketTips && (
               <InfoSection icon="trending-up" tint={TINT.market} title={t('cropGuide.market', 'Market & economics')}>
                 <Text style={styles.gBody}>{guide.marketTips}</Text>
+                {/* The tips quote MSP figures: name the official source (Play
+                    misleading-claims rule; listed in the store description). */}
+                <Text style={[styles.gMeta, { marginTop: KSPACE.s8 }]}>
+                  {t('cropGuide.marketSource', 'Minimum support prices (MSP) are set by the Government of India on the advice of the Commission for Agricultural Costs and Prices (CACP). Figures here may be out of date. KrushiSarva is not a government app.')}
+                </Text>
               </InfoSection>
             )}
 

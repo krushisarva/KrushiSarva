@@ -970,7 +970,7 @@ export default {
     surface01cm: 'മേല്‍പ്പരപ്പ് 0\u20131cm',
     etDescription: 'വിളയില്‍ നിന്നും മണ്ണില്‍ നിന്നും അന്തരീക്ഷത്തിലേക്ക് ജല നഷ്ടം',
     gddDescription: 'വളര്‍ച്ച ഡിഗ്രി ദിനങ്ങള്‍ (GDD) \u2014 വിള വളര്‍ച്ച നിരക്ക്',
-    combinedForecast: '\u26A1 സംയോജിത പ്രവചനം: Open-Meteo + IMD',
+    combinedForecast: 'പ്രവചനം: Open-Meteo · മുന്നറിയിപ്പുകൾ: IMD',
     thunderstormWarning: 'ഇടിമിന്നല്‍ മുന്നറിയിപ്പ്', heavyRainWarning: 'കനത്ത മഴ മുന്നറിയിപ്പ്',
     rainExpected: 'മഴ പ്രതീക്ഷിക്കുന്നു', strongWindWarning: 'ശക്തമായ കാറ്റ് മുന്നറിയിപ്പ്',
     highUvIndex: 'ഉയര്‍ന്ന UV സൂചിക', farmingAdvisories: 'കാര്‍ഷിക ഉപദേശങ്ങള്‍',

@@ -8,7 +8,7 @@
 // edited by hand after it was produced. Adding a key means editing the file for
 // each language that needs it.
 //
-// 871 keys.
+// 870 keys.
 
 export default {
   "aiChat.attachHint": "ತ್ವರಿತ ರೋಗನಿರ್ಣಯಕ್ಕಾಗಿ ನಿಮ್ಮ ಬೆಳೆಯ ಫೋಟೋ ಹಂಚಿಕೊಳ್ಳಿ.",
@@ -175,7 +175,7 @@ export default {
   "diagReport.humidity": "ಆರ್ದ್ರತೆ",
   "diagReport.irrigation": "ನೀರಾವರಿ",
   "diagReport.kisanCallCentre": "ಕಿಸಾನ್ ಕಾಲ್ ಸೆಂಟರ್:",
-  "diagReport.kvkLocator": "KVK ಲೊಕೇಟರ್:",
+  "diagReport.kvkIcar": "ಕೃಷಿ ವಿಜ್ಞಾನ ಕೇಂದ್ರಗಳು (ICAR):",
   "diagReport.labSub": "AI ಬೆಳೆ ಆರೋಗ್ಯ ಸಲಹೆ",
   "diagReport.labTag": "AI-ಸಹಾಯಿತ ಬೆಳೆ ಆರೋಗ್ಯ ರೋಗನಿರ್ಣಯ ಸೇವೆ",
   "diagReport.language": "ಭಾಷೆ:",
@@ -198,7 +198,6 @@ export default {
   "diagReport.perAcre": "ಪ್ರತಿ ಎಕರೆಗೆ",
   "diagReport.phone": "ಫೋನ್",
   "diagReport.pipelineLatency": "ಪೈಪ್‌ಲೈನ್ ವಿಳಂಬ",
-  "diagReport.plantHelpline": "ಸಸ್ಯ ಸಹಾಯವಾಣಿ:",
   "diagReport.predisposingFactors": "ಪೂರ್ವಭಾವಿ ಅಂಶಗಳು",
   "diagReport.presentsWith": "<b>{{disease}}</b> ಗೆ ಹೊಂದುವ ಲಕ್ಷಣಗಳನ್ನು ತೋರಿಸುತ್ತದೆ.",
   "diagReport.preventiveMeasures": "ತಡೆಗಟ್ಟುವ ಕ್ರಮಗಳು (ಮುಂದಿನ ಹಂಗಾಮು)",

@@ -973,7 +973,7 @@ export default {
     surface01cm: 'ಮೇಲ್ಮೈ 0\u20131cm',
     etDescription: 'ಬೆಳೆ + ಮಣ್ಣಿನಿಂದ ವಾಯುಮಂಡಲಕ್ಕೆ ನೀರಿನ ನಷ್ಟ',
     gddDescription: 'ಬೆಳವಣಿಗೆ ಡಿಗ್ರಿ ದಿನಗಳು (GDD) \u2014 ಬೆಳೆ ಬೆಳವಣಿಗೆ ದರ',
-    combinedForecast: '\u26A1 ಸಂಯೋಜಿತ ಮುನ್ಸೂಚನೆ: Open-Meteo + IMD',
+    combinedForecast: 'ಮುನ್ಸೂಚನೆ: Open-Meteo · ಎಚ್ಚರಿಕೆಗಳು: IMD',
     thunderstormWarning: 'ಗುಡುಗು ಮಳೆ ಎಚ್ಚರಿಕೆ', heavyRainWarning: 'ಭಾರೀ ಮಳೆ ಎಚ್ಚರಿಕೆ',
     rainExpected: 'ಮಳೆ ನಿರೀಕ್ಷಿಸಲಾಗಿದೆ', strongWindWarning: 'ಬಲವಾದ ಗಾಳಿ ಎಚ್ಚರಿಕೆ',
     highUvIndex: 'ಹೆಚ್ಚಿನ UV ಸೂಚ್ಯಂಕ', farmingAdvisories: 'ಕೃಷಿ ಸಲಹೆಗಳು',
